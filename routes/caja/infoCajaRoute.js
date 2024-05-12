@@ -53,4 +53,12 @@ infoCajaRouter.post('/caja/cobranzasctacte', infoCajaRindeController.crearCobran
 infoCajaRouter.get('/caja/saldosctacte', infoCajaRindeController.obtenerSaldosCuentaCorriente);
 infoCajaRouter.post('/caja/detalledecaja', infoCajaRindeController.obtenerDetalleDeCajaPorFechaYSucursal);
 
+infoCajaRouter.post("/caja/cierres", infoCajaRindeController.crearCierre);
+infoCajaRouter.get("/caja/cierres", infoCajaRindeController.obtenerCierres);
+infoCajaRouter.post('/caja/cierres_filrados', infoCajaRindeController.obtenerCierresFiltrados);
+infoCajaRouter.get("/caja/cierres/:id", infoCajaRindeController.obtenerCierrePorId);
+infoCajaRouter.delete("/caja/cierres/:id", infoCajaRindeController.eliminarCierre);
+infoCajaRouter.put("/caja/cierres/:id", infoCajaRindeController.actualizarCierre);
+
+
 export default infoCajaRouter;

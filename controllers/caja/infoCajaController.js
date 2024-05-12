@@ -983,6 +983,112 @@ const obtenerDetalleDeCajaPorFechaYSucursal = async (req, res, next) => {
   }
 };
 
+// Crear un nuevo cierre
+const crearCierre = async (req, res, next) => {
+  try {
+    const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
+    const nuevoCierre = await Cierre.create({
+      fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre
+    });
+    res.status(201).json(nuevoCierre);
+  } catch (error) {
+    console.error("Error al crear el cierre:", error);
+    next(error);
+  }
+};
+
+// Obtener todos los cierres
+const obtenerCierres = async (req, res, next) => {
+  try {
+    const cierres = await Cierre.findAll();
+    res.status(200).json(cierres);
+  } catch (error) {
+    console.error("Error al obtener los cierres:", error);
+    next(error);
+  }
+};
+
+// Controlador para obtener ingresos filtrados
+const obtenerCierresFiltrados = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+    // Define los filtros para la consulta
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    // Realiza la consulta a la base de datos
+    const cierresFiltrados = await Cierre.findAll({ where: filters });
+
+    res.json(cierresFiltrados);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// Obtener un cierre por ID
+const obtenerCierrePorId = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const cierre = await Cierre.findByPk(id);
+    if (!cierre) {
+      res.status(404).json({ message: "Cierre no encontrado" });
+    } else {
+      res.status(200).json(cierre);
+    }
+  } catch (error) {
+    console.error("Error al obtener el cierre:", error);
+    next(error);
+  }
+};
+
+// Actualizar un cierre
+const actualizarCierre = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
+    const cierreActualizado = await Cierre.update({
+      fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre
+    }, {
+      where: { id }
+    });
+    if (cierreActualizado[0] === 0) {
+      res.status(404).json({ message: "Cierre no encontrado" });
+    } else {
+      res.status(200).json({ message: "Cierre actualizado correctamente" });
+    }
+  } catch (error) {
+    console.error("Error al actualizar el cierre:", error);
+    next(error);
+  }
+};
+
+// Eliminar un cierre
+const eliminarCierre = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const resultado = await Cierre.destroy({
+      where: { id }
+    });
+    if (resultado === 0) {
+      res.status(404).json({ message: "Cierre no encontrado" });
+    } else {
+      res.status(200).json({ message: "Cierre eliminado correctamente" });
+    }
+  } catch (error) {
+    console.error("Error al eliminar el cierre:", error);
+    next(error);
+  }
+};
+
 export {
   obtenerCajas,
   obtenerCajasPorCajaId,
@@ -1022,4 +1128,10 @@ export {
   crearCobranzasctasctes,
   obtenerSaldosCuentaCorriente,
   obtenerDetalleDeCajaPorFechaYSucursal,
+  crearCierre,
+  obtenerCierres,
+  obtenerCierresFiltrados,
+  obtenerCierrePorId,
+  actualizarCierre,
+  eliminarCierre
 };
