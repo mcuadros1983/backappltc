@@ -5,7 +5,7 @@ import Producto from "./productoModel.js";
 
 const Orden = sequelize.define("Orden", {  
     peso_total: {
-        type: DataTypes.INTEGER, 
+        type: DataTypes.DECIMAL, 
     },
     cantidad_total: {
         type: DataTypes.INTEGER, 

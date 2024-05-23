@@ -29,7 +29,7 @@ const Sueldo = sequelize.define(
       allowNull: false,
     },
     fecha: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     importe: {

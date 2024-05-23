@@ -1,10 +1,11 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../../config/database.js";
 import ClienteTabla from "../tablas/clienteModel.js";
+// import Caja from "./cajaModel.js";
 // import Vtactacte from "./vtactacteModel.js";
 // import ClienteTabla from "../tablas/clienteModel.js";
 
-const Cobranzactacte = sequelize.define(
+const Cobranzactacte = sequelize.define(  
   "Cobranzactacte",
   {
     id: {
@@ -14,10 +15,11 @@ const Cobranzactacte = sequelize.define(
     },
     cobranzaId: {
       type: DataTypes.BIGINT,
+      allowNull: true,
     },
     caja_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     cliente_id: {
       type: DataTypes.INTEGER,
@@ -28,7 +30,7 @@ const Cobranzactacte = sequelize.define(
       allowNull: false,
     },
     fecha: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     importe: {
@@ -37,7 +39,7 @@ const Cobranzactacte = sequelize.define(
     },
     numero: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     observaciones: {
       type: DataTypes.STRING,
@@ -45,7 +47,7 @@ const Cobranzactacte = sequelize.define(
     },
     saldocobranza: {
       type: DataTypes.DECIMAL(12, 3),
-      allowNull: false,
+      allowNull: true,
     },
     sucursal_id: {
       type: DataTypes.INTEGER,
@@ -64,5 +66,6 @@ const Cobranzactacte = sequelize.define(
 
 ClienteTabla.hasOne(Cobranzactacte, { foreignKey: 'cliente_id', sourceKey: 'id' });
 Cobranzactacte.belongsTo(ClienteTabla, { foreignKey: 'cliente_id', targetKey: 'id' });
+
 
 export default Cobranzactacte; 

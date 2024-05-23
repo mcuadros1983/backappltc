@@ -44,7 +44,7 @@ export const crearUsuario = async (req, res, next) => {
 
     // console.log("text7", userFound);
     if (userFound) {
-      console.log("Usuario ya existe.");
+      // console.log("Usuario ya existe.");
       return res.status(400).json({ error: "El usuario ya existe" });
     }
 

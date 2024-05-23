@@ -36,10 +36,10 @@ const Producto = sequelize.define(
       // allowNull: false,
     },
     kg: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL,
     },
     tropa: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
     },
     sucursal_id: {
       type: DataTypes.INTEGER,

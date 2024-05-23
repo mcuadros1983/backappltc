@@ -11,6 +11,7 @@ import { sequelize } from "./config/database.js";
 // import "./models/gmedias/detalleCuentaCorrienteModel.js";
 // import "./models/gmedias/cobranzaModel.js";
 // import "./models/gmedias/detalleCobranzaModel.js";
+// import "./models/gmedias/sucursalModel.js";
 import "./libs/configuracionInicial.js"
  
 
@@ -23,7 +24,7 @@ async function main() {
   
     // Sincroniza las tablas después de que el servidor esté escuchando
     app.listen(PORT, async () => {
-      // await sequelize.sync({ force: true }); // force: false evita que se borren las tablas para recrearlas
+       // await sequelize.sync({ force: true }); // force: false evita que se borren las tablas para recrearlas
       console.log(`Server is listening on port ${PORT}`);
     });
   } catch (error) {

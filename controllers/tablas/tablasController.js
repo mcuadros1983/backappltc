@@ -668,13 +668,13 @@ const actualizarPreciosDesdeExcel = async (req, res, next) => {
     // Itera sobre los datos del archivo Excel
     for (const row of data) {
       const { codigo, precio } = row;
-      //console.log("datos", codigo, precio);
+      console.log("datos", codigo, precio);
 
       // Busca el artículo en la base de datos por el código de barras
       const articulo = await ArticuloPrecioTabla.findOne({
         include: {
           model: ArticuloTabla,
-          where: { codigobarra: codigo },
+          where: { codigobarra: codigo.toString() },
         },
       });
       if (articulo && articulo.Articulotabla) {
@@ -794,13 +794,13 @@ const crearEmpleados = async (req, res, next) => {
       let mensaje = "";
 
       try {
-        console.log("empelado.id", dato.empleado.id);
+        // console.log("empelado.id", dato.empleado.id);
         // Verificar si el empleado ya existe en la base de datos
         const empleadoExistente = await EmpleadoTabla.findOne({
           where: { id: dato.empleado.id },
         });
 
-        console.log("exiset", empleadoExistente);
+        // console.log("exiset", empleadoExistente);
 
         if (empleadoExistente) {
           // Si existe, actualizar el empleado existente
@@ -810,7 +810,7 @@ const crearEmpleados = async (req, res, next) => {
           mensaje = `El empleado con ID ${dato.empleado.id} se actualizó.`;
         } else {
           // Verificar si existe un ClientePersona asociado
-          console.log("numero", dato.clientePersona.numero);
+          // console.log("numero", dato.clientePersona.numero);
           const clienteExistente = await ClientePersonaTabla.findOne({
             where: { numero: dato.clientePersona.numero },
           });

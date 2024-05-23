@@ -416,7 +416,7 @@ const eliminarProducto = async (req, res, next) => {
 };
 
 const procesarDesdeExcel = async (req, res, next) => {
-  console.log("datosexcel", req.body);
+  // console.log("datosexcel", req.body);
 
   try {
     if (!req.file) {
@@ -520,6 +520,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
           // Aplica la lógica de checkAndReplaceEmpty
           const newData = verificarYReemplazarVacios({
             categoria_producto: row.categoria,
+            subcategoria:row.subcategoria,
             // orden_id: row.orden_id,
             // sucursal_id: row.sucursal_id,
             // cliente_id: row.cliente_id,
@@ -590,7 +591,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         formaPago_id: formaPago,
       });
 
-      console.log("venta --------------", nuevaVenta);
+      // console.log("venta --------------", nuevaVenta);
 
       // Actualiza los productos con el id de la venta
       const productosActualizados = await Promise.all(
@@ -737,7 +738,8 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
             await detalleCtacte.save();
           }
         }
-
+        if (categoria_producto) producto.categoria_producto = categoria_producto;
+        if (subcategoria) producto.subcategoria = subcategoria;
         if (garron) producto.garron = garron;
         if (precio) producto.precio = precio;
         if (costo) producto.costo = costo;
@@ -766,7 +768,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
 };
 
 const generarCodigos = async (req, res, next) => {
-  console.log("categoria----------", req.body)
+  // console.log("categoria----------", req.body)
   try {
     const { categoria } = req.body;
 

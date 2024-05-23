@@ -1,43 +1,40 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../../config/database.js";
+import Rinde from "./rindeModel.js";
+// import ClienteTabla from "../tablas/clienteModel.js";
 
-const Retiro = sequelize.define(
-  "Retiro",
+const AjusteRinde = sequelize.define(
+  "AjusteRinde",
   {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
-    retiroId: {
+    rinde_id: {
       type: DataTypes.BIGINT,
     },
-    caja_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
     descripcion: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    fecha: {
-      type: DataTypes.DATEONLY,
-      allowNull: false,
+      type: DataTypes.STRING(255),
+      allowNull: true,
     },
     importe: {
       type: DataTypes.DECIMAL(12, 3),
       allowNull: false,
     },
-    sucursal_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
+    // fecha: {
+    //   type: DataTypes.DATEONLY,
+    //   allowNull: true,
+    // },
   },
   {
-    // tableName: "retiro",
     timestamps: false,
     freezeTableName: true,
   }
 );
 
-export default  Retiro;
+AjusteRinde.belongsTo(Rinde, {
+  foreignKey: "rinde_id",
+});
+
+export default AjusteRinde;

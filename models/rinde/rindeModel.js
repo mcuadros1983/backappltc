@@ -11,11 +11,11 @@ const Rinde = sequelize.define(
       autoIncrement: true,
     },
     fechaDesde: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     fechaHasta: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     mes: {

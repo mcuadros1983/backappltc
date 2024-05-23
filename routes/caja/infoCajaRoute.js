@@ -45,7 +45,7 @@ infoCajaRouter.get('/caja/ingresos', infoCajaRindeController.obtenerIngresos);
 infoCajaRouter.post('/caja/ingresos_filtrados', infoCajaRindeController.obtenerIngresosFiltrados);
 infoCajaRouter.post('/caja/ingresos', infoCajaRindeController.crearIngresos);
 infoCajaRouter.get('/caja/vtasctacte', infoCajaRindeController.obtenerVtasctasctes);
-infoCajaRouter.post('/caja/vtasctacte_filtrados', infoCajaRindeController.obtenerVtasctasctesFiltradas);
+infoCajaRouter.post('/caja/vtasctacte_filtrados', infoCajaRindeController.obtenerVtasctasctesFiltradas); 
 infoCajaRouter.post('/caja/vtasctacte', infoCajaRindeController.crearVtasctasctes);
 infoCajaRouter.get('/caja/cobranzasctacte', infoCajaRindeController.obtenerCobranzasctasctes);
 infoCajaRouter.post('/caja/cobranzasctacte_filtrados', infoCajaRindeController.obtenerCobranzasctasctesFiltradas);
@@ -59,6 +59,13 @@ infoCajaRouter.post('/caja/cierres_filrados', infoCajaRindeController.obtenerCie
 infoCajaRouter.get("/caja/cierres/:id", infoCajaRindeController.obtenerCierrePorId);
 infoCajaRouter.delete("/caja/cierres/:id", infoCajaRindeController.eliminarCierre);
 infoCajaRouter.put("/caja/cierres/:id", infoCajaRindeController.actualizarCierre);
+
+infoCajaRouter.post("/caja/ajustectacte", infoCajaRindeController.crearAjustectacte);
+infoCajaRouter.get("/caja/ajustectacte", infoCajaRindeController.obtenerAjustectacte);
+infoCajaRouter.get('/caja/ajustectacte/:id', infoCajaRindeController.obtenerAjustectactePorId);
+infoCajaRouter.put("/caja/ajustectacte/:id", infoCajaRindeController.actualizarAjustectacte);
+infoCajaRouter.delete("/caja/ajustectacte/:id", infoCajaRindeController.eliminarAjustectacte);
+
 
 
 export default infoCajaRouter;

@@ -17,7 +17,7 @@ const ArticuloPrecioTabla = sequelize.define(
       allowNull: true,
     },
     precio: {
-      type: DataTypes.NUMERIC(12, 2),
+      type: DataTypes.FLOAT,
       allowNull: false,
     },
     articulo_id: {

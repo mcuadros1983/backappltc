@@ -5,7 +5,7 @@ import { obtenerUsuarios } from "../auth/usuariosController.js";
 export const index = async (req, res, next) => {
   try {
     const user = req.user;
-    console.log("userindex", user, req.user)
+    // console.log("userindex", user, req.user)
     res.status(200);
 
   } catch (err) {

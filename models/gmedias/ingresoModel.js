@@ -12,7 +12,7 @@ const Ingreso = sequelize.define("IngresoMedias", {
     type: DataTypes.INTEGER,
   },
   peso_total: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DECIMAL,
   },
   categoria_ingreso: {
     type: DataTypes.STRING,

@@ -45,7 +45,7 @@ const obtenerUltimoIdTablaPorSucursal = async (
   nombreColumna,
   sucursalId
 ) => {
-  console.log("datos", nombreTabla, nombreColumna, sucursalId);
+  // console.log("datos", nombreTabla, nombreColumna, sucursalId);
   try {
     // Consulta utilizando Sequelize para obtener el último ID de la tabla para la sucursal dada
     const ultimoId = await nombreTabla.findOne({
@@ -54,7 +54,7 @@ const obtenerUltimoIdTablaPorSucursal = async (
         sucursal_id: sucursalId,
       },
     });
-    console.log("ultimoId", ultimoId);
+    // console.log("ultimoId", ultimoId);
     return ultimoId ? ultimoId.id : null;
   } catch (error) {
     console.error(
@@ -85,7 +85,7 @@ const crearVentaTotal = async (req, res, next) => {
       "cierreventa_id",
       ventasTotales[0].sucursal_id
     );
-    console.log("ultimo", ultimoId);
+    // console.log("ultimo", ultimoId);
 
     // Mapear los datos para prepararlos para la inserción
     const nuevasVentasTotalesBulk = ventasTotales.map((venta) => {
@@ -114,7 +114,7 @@ const crearVentaTotal = async (req, res, next) => {
       (venta) => venta !== null
     );
 
-    console.log("nuevasVentasTotalesFiltradas", nuevasVentasTotalesFiltradas);
+    // console.log("nuevasVentasTotalesFiltradas", nuevasVentasTotalesFiltradas);
 
     // Insertar las nuevas ventas totales en la base de datos en lotes (bulk)
     const nuevasVentasTotales = await VentaTotal.bulkCreate(
@@ -129,48 +129,6 @@ const crearVentaTotal = async (req, res, next) => {
     next(error);
   }
 };
-
-// const crearVentaTotal = async (req, res, next) => {
-//   try {
-//     // Extraer los datos del cuerpo de la solicitud
-//     const ventasTotales = req.body;
-
-//     // Validar si se recibieron datos
-//     if (!Array.isArray(ventasTotales)) {
-//       return res
-//         .status(400)
-//         .json({ error: "Los datos deben estar en formato de matriz." });
-//     }
-
-//     // Mapear los datos para prepararlos para la inserción
-//     const nuevasVentasTotalesBulk = ventasTotales.map((venta) => {
-//       const { id, fecha } = venta.data;
-//       const { monto_total, sucursal_id } = venta;
-
-//       // Convertir la fecha de string a objeto Date
-//       const fechaDate = new Date(fecha);
-
-//       return {
-//         fecha: fechaDate,
-//         cierreventa_id: id,
-//         monto: parseFloat(monto_total),
-//         sucursal_id: parseInt(sucursal_id),
-//       };
-//     });
-
-//     // Insertar las nuevas ventas totales en la base de datos en lotes (bulk)
-//     const nuevasVentasTotales = await VentaTotal.bulkCreate(
-//       nuevasVentasTotalesBulk
-//     );
-
-//     // Enviar las nuevas ventas totales creadas como respuesta
-//     res.status(201).json(nuevasVentasTotales);
-//   } catch (error) {
-//     // Manejar errores
-//     console.error("Error al crear las ventas totales:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerVentasAnuladas = async (req, res, next) => {
   try {
@@ -207,50 +165,6 @@ const obtenerVentasAnuladasFiltradas = async (req, res, next) => {
   }
 };
 
-// const crearVentasAnuladas = async (req, res, next) => {
-//   try {
-//     const ventasAnuladas = req.body; // Suponiendo que las ventas anuladas vienen en req.body
-
-//     // Validar si se recibieron datos
-//     if (!Array.isArray(ventasAnuladas)) {
-//       return res
-//         .status(400)
-//         .json({ error: "Los datos deben estar en formato de matriz." });
-//     }
-
-//     // Iterar sobre los datos de las cajas y asignar el id como cajaId
-//     const ventasAnuladasConId = ventasAnuladas.map((venta) => ({
-//       ...venta,
-//       ventaanuladoId: venta.id, // Asignamos el valor del id existente como cajaId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Mapear los datos para prepararlos para la inserción
-//     const nuevasVentasAnuladasBulk = ventasAnuladasConId.map(
-//       (ventaAnulada) => ({
-//         id: ventaAnulada.id,
-//         ventaanuladoId: ventaAnulada.ventaanuladoId,
-//         fecha: ventaAnulada.fecha,
-//         monto: parseFloat(ventaAnulada.monto),
-//         numeroticket: ventaAnulada.numeroticket,
-//         sucursal_id: parseInt(ventaAnulada.sucursal_id),
-//       })
-//     );
-
-//     // Insertar las nuevas ventas anuladas en la base de datos en lotes (bulk)
-//     const nuevasVentasAnuladas = await VentasAnuladas.bulkCreate(
-//       nuevasVentasAnuladasBulk
-//     );
-
-//     console.log("Registros de Ventas Anuladas creados exitosamente.");
-//     // Enviar las nuevas ventas anuladas creadas como respuesta
-//     res.status(201).json(nuevasVentasAnuladas);
-//   } catch (error) {
-//     console.error("Error al crear los registros de Ventas Anuladas:", error);
-//     next(error);
-//   }
-// };
-
 const crearVentasAnuladas = async (req, res, next) => {
   try {
     // Obtener las ventas anuladas del cuerpo de la solicitud
@@ -269,7 +183,7 @@ const crearVentasAnuladas = async (req, res, next) => {
       "ventaanuladoId",
       ventasAnuladas[0].sucursal_id
     );
-    console.log("ultimo", ultimoId);
+    // console.log("ultimo", ultimoId);
 
     // Iterar sobre las ventas anuladas y asignar el id existente como ventaanuladoId
     const ventasAnuladasConId = ventasAnuladas.map((venta) => ({
@@ -362,7 +276,7 @@ const obtenerVentasConDescuentoFiltradas = async (req, res, next) => {
 const crearVentasConDescuento = async (req, res, next) => {
   try {
     const ventasConDescuento = req.body; // Suponiendo que las ventas con descuento vienen en req.body
-    console.log("descuento", ventasConDescuento)
+    // console.log("descuento", ventasConDescuento)
 
     // Validar si se recibieron datos
     if (!Array.isArray(ventasConDescuento)) {
@@ -377,7 +291,7 @@ const crearVentasConDescuento = async (req, res, next) => {
       "ventadescuentoId",
       ventasConDescuento[0].sucursal_id
     );
-    console.log("ultimo", ultimoId);
+    // console.log("ultimo", ultimoId);
 
     // Iterar sobre los datos de las cajas y asignar el id como cajaId
     const ventasConDescuentoConId = ventasConDescuento.map((venta) => ({
@@ -490,7 +404,7 @@ const crearVentasPorCliente = async (req, res, next) => {
       "cierreventas_id",
       ventasPorClienteData[0].sucursal_id
     );
-    console.log("ultimo", ultimoId);
+    // console.log("ultimo", ultimoId);
 
     // Mapear los datos para prepararlos para la inserción
     const ventasPorClienteBulk = ventasPorClienteData
@@ -568,17 +482,11 @@ const obtenerVentasConArticuloFiltradas = async (req, res, next) => {
 const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => { 
   try {
     const { fechaDesde, fechaHasta, sucursalId, excludedCategories } = req.body;
-    // Convertir las fechas a objetos Date
-    const fechaInicio = new Date(fechaDesde);
-    const fechaFin = new Date(fechaHasta);
-
-    // Incrementar la fecha final en un día para que incluya el rango completo
-    fechaFin.setDate(fechaFin.getDate() + 1);
 
     // Define los filtros para la consulta de VentasArticulo
     const filters = {
       fecha: {
-        [Op.between]: [fechaInicio, fechaFin],
+        [Op.between]: [fechaDesde, fechaHasta],
       },
     };
 
@@ -775,7 +683,7 @@ const crearVentasConArticulo = async (req, res, next) => {
       "ventaarticuloId",
       ventas[0].sucursal_id
     );
-    console.log("ultimo", ultimoId);
+    // console.log("ultimo", ultimoId);
     const ventasConId = ventas.map((venta) => ({
       ...venta,
       ventaarticuloId: venta.id, // Asignamos el valor del id existente como cajaId

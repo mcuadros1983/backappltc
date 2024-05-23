@@ -41,16 +41,16 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
       req.body;
 
     // Convertir las fechas a objetos Date
-    const fechaInicio = new Date(fechaDesde);
-    const fechaFin = new Date(fechaHasta);
+    // const fechaInicio = new Date(fechaDesde);
+    // const fechaFin = new Date(fechaHasta);
 
     // Incrementar la fecha final en un día para que incluya el rango completo
-    fechaFin.setDate(fechaFin.getDate() + 1);
+    // fechaFin.setDate(fechaFin.getDate() + 1);
 
     // Define los filtros para la consulta
     const filters = {
       fecha: {
-        [Op.between]: [fechaInicio, fechaFin],
+        [Op.between]: [fechaDesde, fechaHasta],
       },
     };
 
@@ -64,7 +64,7 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
     }
 
     // Si se proporciona la subcategoría, agrega el filtro por subcategoría de producto
-    console.log("sub", subcategoria);
+    // console.log("sub", subcategoria);
     if (subcategoria) {
       filters["$Productos.subcategoria$"] = subcategoria;
     }
@@ -92,7 +92,7 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
       ],
       where: filters,
     });
-    console.log("ordenes", ordenes);
+    // console.log("ordenes", ordenes);
 
     // Calcular la suma de los campos 'kg' de los productos de las órdenes
     let sumaKg = 0;

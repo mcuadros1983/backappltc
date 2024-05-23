@@ -6,21 +6,26 @@ const Cupon = sequelize.define(
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
-      autoIncrement: true,
+      autoIncrement: true
+    },
+    caja_id: {
+      type: DataTypes.BIGINT,
+      allowNull: false
     },
     cuponId: {
       type: DataTypes.BIGINT,
+      // allowNull: false
     },
-    caja_id: {
+    sucursal_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: false
     },
     cliente_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
     fecha: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     importecupon: {
@@ -43,10 +48,10 @@ const Cupon = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    sucursal_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
+    // sucursal_id: {
+    //   type: DataTypes.INTEGER,
+    //   allowNull: false,
+    // },
     venta_id: {
       type: DataTypes.INTEGER,
       allowNull: false,

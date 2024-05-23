@@ -14,10 +14,10 @@ passport.use(
       passwordField: "password",
     },
     async (usuario, password, done) => {
-      console.log("obteniendousuario", usuario, password)
+      // console.log("obteniendousuario", usuario, password)
       try {
         const user = await obtenerUsuarioPorNombre(usuario);  
-        console.log("user passport", user)
+        // console.log("user passport", user)
 
         if (!user) {
           return done(null, false, { message: "User not found." });

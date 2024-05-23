@@ -10,6 +10,8 @@ import { Op } from "sequelize";
 import { sequelize } from "../../config/database.js";
 import ClienteTabla from "../../models/tablas/clienteModel.js";
 import Caja from "../../models/caja/cajaModel.js";
+import Cierre from "../../models/caja/cierreModel.js";
+import { format } from "date-fns";
 
 const obtenerCajas = async (req, res, next) => {
   try {
@@ -67,10 +69,12 @@ const crearCajas = async (req, res, next) => {
     // Filtrar los datos para omitir los que ya existen en la base de datos
     const cajasFiltradas = await Promise.all(
       cajasData.map(async (caja) => {
+        // const fechaFormatoDateOnly = format(new Date(caja.fecha), 'yyyy-MM-dd'); // Asegurar formato DATEONLY
         const existeCaja = await Caja.findOne({
           where: {
             cajaId: caja.id,
             sucursal_id: caja.sucursal_id,
+            // fecha:fechaFormatoDateOnly
           },
         });
         return existeCaja ? null : caja;
@@ -147,34 +151,84 @@ const obtenerGastosFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearGastos = async (req, res, next) => {
+//   try {
+//     const gastosData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const gastosFiltrados = await Promise.all(
+//       gastosData.map(async (gasto) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(gasto.fecha),
+//           "yyyy-MM-dd"
+//         ); // Asegurar formato DATEONLY
+//         const existeGasto = await Gasto.findOne({
+//           where: {
+//             gastoId: gasto.id,
+//             sucursal_id: gasto.sucursal_id,
+//             fecha: fechaFormatoDateOnly, // Comprobar si ya existe un gasto con la misma fecha
+//           },
+//         });
+//         return existeGasto ? null : gasto;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const gastosParaCrear = gastosFiltrados.filter((gasto) => gasto !== null);
+
+//     // Modificar los datos de los gastos para asignar gasto.id a gastoId
+//     const gastosConId = gastosParaCrear.map((gasto) => ({
+//       ...gasto,
+//       gastoId: gasto.id, // Asignar gasto.id a gastoId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los gastos en la base de datos
+//     const nuevosGastos = await Gasto.bulkCreate(gastosConId);
+
+//     res.status(201).json(nuevosGastos);
+//   } catch (error) {
+//     console.error("Error al crear los gastos:", error);
+//     next(error);
+//   }
+// };
+
 const crearGastos = async (req, res, next) => {
   try {
     const gastosData = req.body;
-
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const gastosFiltrados = await Promise.all(
-      gastosData.map(async (gasto) => {
-        const existeGasto = await Gasto.findOne({
-          where: {
-            gastoId: gasto.id,
-            sucursal_id: gasto.sucursal_id,
-          },
-        });
-        return existeGasto ? null : gasto;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const gastosParaCrear = gastosFiltrados.filter((gasto) => gasto !== null);
-
-    // Modificar los datos de los gastos para asignar gasto.id a gastoId
-    const gastosConId = gastosParaCrear.map((gasto) => ({
+    const fechasFormateadas = gastosData.map(gasto => ({
       ...gasto,
-      gastoId: gasto.id, // Asignar gasto.id a gastoId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(gasto.fecha), "yyyy-MM-dd") // Asegurar formato DATEONLY
     }));
 
-    // Crear los gastos en la base de datos
+    // Obtiene todos los gastos que podrían ser duplicados en una única consulta
+    const posiblesDuplicados = await Gasto.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(gasto => ({
+          gastoId: gasto.id,
+          sucursal_id: gasto.sucursal_id,
+          fecha: gasto.fecha
+        }))
+      }
+    });
+
+    // Crear un conjunto de claves de duplicados para comparación rápida
+    const duplicadosSet = new Set(posiblesDuplicados.map(gasto => `${gasto.gastoId}-${gasto.sucursal_id}-${gasto.fecha}`));
+
+    // Filtrar los gastos para omitir los que ya existen en la base de datos
+    const gastosParaCrear = fechasFormateadas.filter(gasto => {
+      const clave = `${gasto.id}-${gasto.sucursal_id}-${gasto.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    // Preparar gastos con los campos correctos para la inserción
+    const gastosConId = gastosParaCrear.map(gasto => ({
+      ...gasto,
+      gastoId: gasto.id, // Asignar gasto.id a gastoId
+      id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+    }));
+
+    // Crear los gastos en la base de datos usando bulkCreate
     const nuevosGastos = await Gasto.bulkCreate(gastosConId);
 
     res.status(201).json(nuevosGastos);
@@ -234,46 +288,95 @@ const obtenerRetirosFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearRetiros = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de los retiros desde el cuerpo de la solicitud
+//     const retirosData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const retirosFiltrados = await Promise.all(
+//       retirosData.map(async (retiro) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(retiro.fecha),
+//           "yyyy-MM-dd"
+//         ); // Asegurar formato DATEONLY
+//         const existeRetiro = await Retiro.findOne({
+//           where: {
+//             retiroId: retiro.id,
+//             sucursal_id: retiro.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeRetiro ? null : retiro;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const retirosParaCrear = retirosFiltrados.filter(
+//       (retiro) => retiro !== null
+//     );
+
+//     // Iterar sobre los datos de las retiros y asignar el id como retiroId
+//     const retirosConId = retirosParaCrear.map((retiro) => ({
+//       ...retiro,
+//       retiroId: retiro.id, // Asignar el valor del id existente como retiroId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los retiros en la base de datos
+//     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
+
+//     // Retornar los nuevos retiros creados como respuesta
+//     res.status(201).json(nuevosRetiros);
+//   } catch (error) {
+//     console.error("Error al crear los retiros:", error);
+//     next(error);
+//   }
+// };
+
 const crearRetiros = async (req, res, next) => {
   try {
-    // Obtener los datos de los retiros desde el cuerpo de la solicitud
     const retirosData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const retirosFiltrados = await Promise.all(
-      retirosData.map(async (retiro) => {
-        const existeRetiro = await Retiro.findOne({
-          where: {
-            retiroId: retiro.id,
-            sucursal_id: retiro.sucursal_id,
-          },
-        });
-        return existeRetiro ? null : retiro;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const retirosParaCrear = retirosFiltrados.filter(
-      (retiro) => retiro !== null
-    );
-
-    // Iterar sobre los datos de las retiros y asignar el id como retiroId
-    const retirosConId = retirosParaCrear.map((retiro) => ({
+    const fechasFormateadas = retirosData.map(retiro => ({
       ...retiro,
-      retiroId: retiro.id, // Asignar el valor del id existente como retiroId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(retiro.fecha), "yyyy-MM-dd")
     }));
 
-    // Crear los retiros en la base de datos
+    // Obtiene todos los retiros que podrían ser duplicados en una única consulta
+    const posiblesDuplicados = await Retiro.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(retiro => ({
+          retiroId: retiro.id,
+          sucursal_id: retiro.sucursal_id,
+          fecha: retiro.fecha
+        }))
+      }
+    });
+
+    const duplicadosSet = new Set(posiblesDuplicados.map(retiro => `${retiro.retiroId}-${retiro.sucursal_id}-${retiro.fecha}`));
+
+    const retirosParaCrear = fechasFormateadas.filter(retiro => {
+      const clave = `${retiro.id}-${retiro.sucursal_id}-${retiro.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const retirosConId = retirosParaCrear.map(retiro => ({
+      ...retiro,
+      retiroId: retiro.id,
+      id: undefined
+    }));
+
+    // Crear los retiros en la base de datos usando bulkCreate para eficiencia
     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
 
-    // Retornar los nuevos retiros creados como respuesta
     res.status(201).json(nuevosRetiros);
   } catch (error) {
     console.error("Error al crear los retiros:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todos los vales
 const obtenerVales = async (req, res, next) => {
@@ -325,44 +428,90 @@ const obtenerValesFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearVales = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de los vales desde el cuerpo de la solicitud
+//     const valesData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const valesFiltrados = await Promise.all(
+//       valesData.map(async (vale) => {
+//         const fechaFormatoDateOnly = format(new Date(vale.fecha), "yyyy-MM-dd"); // Asegurar formato DATEONLY
+//         const existeVale = await Vale.findOne({
+//           where: {
+//             valeId: vale.id,
+//             sucursal_id: vale.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeVale ? null : vale;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const valesParaCrear = valesFiltrados.filter((vale) => vale !== null);
+
+//     // Iterar sobre los datos de los vales y asignar el id como valeId
+//     const valesConId = valesParaCrear.map((vale) => ({
+//       ...vale,
+//       valeId: vale.id, // Asignar el valor del id existente como valeId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los vales en la base de datos
+//     const nuevosVales = await Vale.bulkCreate(valesConId);
+
+//     // Retornar los nuevos vales creados como respuesta
+//     res.status(201).json(nuevosVales);
+//   } catch (error) {
+//     console.error("Error al crear los vales:", error);
+//     next(error);
+//   }
+// };
+
 const crearVales = async (req, res, next) => {
   try {
-    // Obtener los datos de los vales desde el cuerpo de la solicitud
     const valesData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const valesFiltrados = await Promise.all(
-      valesData.map(async (vale) => {
-        const existeVale = await Vale.findOne({
-          where: {
-            valeId: vale.id,
-            sucursal_id: vale.sucursal_id,
-          },
-        });
-        return existeVale ? null : vale;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const valesParaCrear = valesFiltrados.filter((vale) => vale !== null);
-
-    // Iterar sobre los datos de los vales y asignar el id como valeId
-    const valesConId = valesParaCrear.map((vale) => ({
+    const fechasFormateadas = valesData.map(vale => ({
       ...vale,
-      valeId: vale.id, // Asignar el valor del id existente como valeId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(vale.fecha), "yyyy-MM-dd")
     }));
 
-    // Crear los vales en la base de datos
+    // Obtiene todos los vales que podrían ser duplicados en una única consulta
+    const posiblesDuplicados = await Vale.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(vale => ({
+          valeId: vale.id,
+          sucursal_id: vale.sucursal_id,
+          fecha: vale.fecha
+        }))
+      }
+    });
+
+    const duplicadosSet = new Set(posiblesDuplicados.map(vale => `${vale.valeId}-${vale.sucursal_id}-${vale.fecha}`));
+
+    const valesParaCrear = fechasFormateadas.filter(vale => {
+      const clave = `${vale.id}-${vale.sucursal_id}-${vale.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const valesConId = valesParaCrear.map(vale => ({
+      ...vale,
+      valeId: vale.id, // Asignar el valor del id existente como valeId
+      id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+    }));
+
+    // Crear los vales en la base de datos usando bulkCreate para eficiencia
     const nuevosVales = await Vale.bulkCreate(valesConId);
 
-    // Retornar los nuevos vales creados como respuesta
     res.status(201).json(nuevosVales);
   } catch (error) {
     console.error("Error al crear los vales:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todos los cupones
 const obtenerCupones = async (req, res, next) => {
@@ -390,6 +539,7 @@ const obtenerCuponesPorCajaId = async (req, res, next) => {
 const obtenerCuponesFiltrados = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
     // Define los filtros para la consulta
     const filters = {
       fecha: {
@@ -401,7 +551,7 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
     if (sucursalId) {
       filters.sucursal_id = sucursalId;
     }
-
+    // console.log("filters", filters);
     // Realiza la consulta a la base de datos
     const cuponesFiltrados = await Cupon.findAll({ where: filters });
 
@@ -412,44 +562,91 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
 };
 
 // Controlador para crear múltiples cupones
+// const crearCupones = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de los cupones desde el cuerpo de la solicitud
+//     const cuponesData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const cuponesFiltrados = await Promise.all(
+//       cuponesData.map(async (cupon) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(cupon.fecha),
+//           "yyyy-MM-dd"
+//         );
+//          // Asegurar formato DATEONLY
+//         const existeCupon = await Cupon.findOne({
+//           where: {
+//             cuponId: cupon.id,
+//             sucursal_id: cupon.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeCupon ? null : cupon;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const cuponesParaCrear = cuponesFiltrados.filter((cupon) => cupon !== null);
+
+//     // Iterar sobre los datos de los cupones y asignar el id como cuponId
+//     const cuponesConId = cuponesParaCrear.map((cupon) => ({
+//       ...cupon,
+//       cuponId: cupon.id, // Asignar el valor del id existente como cuponId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los cupones en la base de datos
+//     const nuevosCupones = await Cupon.bulkCreate(cuponesConId);
+
+//     // Retornar los nuevos cupones creados como respuesta
+//     res.status(201).json(nuevosCupones);
+//   } catch (error) {
+//     console.error("Error al crear los cupones:", error);
+//     next(error);
+//   }
+// };
+
 const crearCupones = async (req, res, next) => {
   try {
-    // Obtener los datos de los cupones desde el cuerpo de la solicitud
     const cuponesData = req.body;
-
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const cuponesFiltrados = await Promise.all(
-      cuponesData.map(async (cupon) => {
-        const existeCupon = await Cupon.findOne({
-          where: {
-            cuponId: cupon.id,
-            sucursal_id: cupon.sucursal_id,
-          },
-        });
-        return existeCupon ? null : cupon;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const cuponesParaCrear = cuponesFiltrados.filter((cupon) => cupon !== null);
-
-    // Iterar sobre los datos de los cupones y asignar el id como cuponId
-    const cuponesConId = cuponesParaCrear.map((cupon) => ({
+    const fechasFormateadas = cuponesData.map(cupon => ({
       ...cupon,
-      cuponId: cupon.id, // Asignar el valor del id existente como cuponId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
     }));
 
-    // Crear los cupones en la base de datos
-    const nuevosCupones = await Cupon.bulkCreate(cuponesConId);
+    // Obtiene todos los cupones que podrían ser duplicados en una única consulta
+    const posiblesDuplicados = await Cupon.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(cupon => ({
+          cuponId: cupon.id,
+          sucursal_id: cupon.sucursal_id,
+          fecha: cupon.fecha
+        }))
+      }
+    });
 
-    // Retornar los nuevos cupones creados como respuesta
+    const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
+
+    const cuponesParaCrear = fechasFormateadas.filter(cupon => {
+      const clave = `${cupon.id}-${cupon.sucursal_id}-${cupon.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const nuevosCupones = await Cupon.bulkCreate(cuponesParaCrear.map(cupon => ({
+      ...cupon,
+      cuponId: cupon.id,
+      id: undefined
+    })));
+
     res.status(201).json(nuevosCupones);
   } catch (error) {
     console.error("Error al crear los cupones:", error);
     next(error);
   }
 };
+
+
 // Controlador para obtener todos los sueldos
 const obtenerSueldos = async (req, res, next) => {
   try {
@@ -497,47 +694,96 @@ const obtenerSueldosFiltrados = async (req, res, next) => {
   }
 };
 
-// Controlador para crear múltiples sueldos
+// // Controlador para crear múltiples sueldos
+// const crearSueldos = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de los sueldos desde el cuerpo de la solicitud
+//     const sueldosData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const sueldosFiltrados = await Promise.all(
+//       sueldosData.map(async (sueldo) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(sueldo.fecha),
+//           "yyyy-MM-dd"
+//         ); // Asegurar formato DATEONLY
+//         const existeSueldo = await Sueldo.findOne({
+//           where: {
+//             sueldoId: sueldo.id,
+//             sucursal_id: sueldo.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeSueldo ? null : sueldo;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const sueldosParaCrear = sueldosFiltrados.filter(
+//       (sueldo) => sueldo !== null
+//     );
+
+//     // Iterar sobre los datos de los sueldos y asignar el id como sueldoId
+//     const sueldosConId = sueldosParaCrear.map((sueldo) => ({
+//       ...sueldo,
+//       sueldoId: sueldo.id, // Asignar el valor del id existente como sueldoId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los sueldos en la base de datos
+//     const nuevosSueldos = await Sueldo.bulkCreate(sueldosConId);
+
+//     // Retornar los nuevos sueldos creados como respuesta
+//     res.status(201).json(nuevosSueldos);
+//   } catch (error) {
+//     console.error("Error al crear los sueldos:", error);
+//     next(error);
+//   }
+// };
+
 const crearSueldos = async (req, res, next) => {
   try {
-    // Obtener los datos de los sueldos desde el cuerpo de la solicitud
     const sueldosData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const sueldosFiltrados = await Promise.all(
-      sueldosData.map(async (sueldo) => {
-        const existeSueldo = await Sueldo.findOne({
-          where: {
-            sueldoId: sueldo.id,
-            sucursal_id: sueldo.sucursal_id,
-          },
-        });
-        return existeSueldo ? null : sueldo;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const sueldosParaCrear = sueldosFiltrados.filter(
-      (sueldo) => sueldo !== null
-    );
-
-    // Iterar sobre los datos de los sueldos y asignar el id como sueldoId
-    const sueldosConId = sueldosParaCrear.map((sueldo) => ({
+    const fechasFormateadas = sueldosData.map(sueldo => ({
       ...sueldo,
-      sueldoId: sueldo.id, // Asignar el valor del id existente como sueldoId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(sueldo.fecha), "yyyy-MM-dd")
     }));
 
-    // Crear los sueldos en la base de datos
+    // Obtener todos los sueldos que podrían ser duplicados en una sola consulta
+    const posiblesDuplicados = await Sueldo.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(sueldo => ({
+          sueldoId: sueldo.id,
+          sucursal_id: sueldo.sucursal_id,
+          fecha: sueldo.fecha
+        }))
+      }
+    });
+
+    const duplicadosSet = new Set(posiblesDuplicados.map(sueldo => `${sueldo.sueldoId}-${sueldo.sucursal_id}-${sueldo.fecha}`));
+
+    const sueldosParaCrear = fechasFormateadas.filter(sueldo => {
+      const clave = `${sueldo.id}-${sueldo.sucursal_id}-${sueldo.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const sueldosConId = sueldosParaCrear.map(sueldo => ({
+      ...sueldo,
+      sueldoId: sueldo.id,
+      id: undefined
+    }));
+
+    // Crear los sueldos en la base de datos utilizando bulkCreate para eficiencia
     const nuevosSueldos = await Sueldo.bulkCreate(sueldosConId);
 
-    // Retornar los nuevos sueldos creados como respuesta
     res.status(201).json(nuevosSueldos);
   } catch (error) {
     console.error("Error al crear los sueldos:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todos los ingresos
 const obtenerIngresos = async (req, res, next) => {
@@ -586,47 +832,96 @@ const obtenerIngresosFiltrados = async (req, res, next) => {
   }
 };
 
-// Controlador para crear múltiples ingresos
+// // Controlador para crear múltiples ingresos
+// const crearIngresos = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de los ingresos desde el cuerpo de la solicitud
+//     const ingresosData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const ingresosFiltrados = await Promise.all(
+//       ingresosData.map(async (ingreso) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(ingreso.fecha),
+//           "yyyy-MM-dd"
+//         ); // Asegurar formato DATEONLY
+//         const existeIngreso = await Ingreso.findOne({
+//           where: {
+//             ingresoId: ingreso.id,
+//             sucursal_id: ingreso.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeIngreso ? null : ingreso;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const ingresosParaCrear = ingresosFiltrados.filter(
+//       (ingreso) => ingreso !== null
+//     );
+
+//     // Iterar sobre los datos de los ingresos y asignar el id como ingresoId
+//     const ingresosConId = ingresosParaCrear.map((ingreso) => ({
+//       ...ingreso,
+//       ingresoId: ingreso.id, // Asignar el valor del id existente como ingresoId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear los ingresos en la base de datos
+//     const nuevosIngresos = await Ingreso.bulkCreate(ingresosConId);
+
+//     // Retornar los nuevos ingresos creados como respuesta
+//     res.status(201).json(nuevosIngresos);
+//   } catch (error) {
+//     console.error("Error al crear los ingresos:", error);
+//     next(error);
+//   }
+// };
+
 const crearIngresos = async (req, res, next) => {
   try {
-    // Obtener los datos de los ingresos desde el cuerpo de la solicitud
     const ingresosData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const ingresosFiltrados = await Promise.all(
-      ingresosData.map(async (ingreso) => {
-        const existeIngreso = await Ingreso.findOne({
-          where: {
-            ingresoId: ingreso.id,
-            sucursal_id: ingreso.sucursal_id,
-          },
-        });
-        return existeIngreso ? null : ingreso;
-      })
-    );
-
-    // Eliminar los elementos nulos del array
-    const ingresosParaCrear = ingresosFiltrados.filter(
-      (ingreso) => ingreso !== null
-    );
-
-    // Iterar sobre los datos de los ingresos y asignar el id como ingresoId
-    const ingresosConId = ingresosParaCrear.map((ingreso) => ({
+    const fechasFormateadas = ingresosData.map(ingreso => ({
       ...ingreso,
-      ingresoId: ingreso.id, // Asignar el valor del id existente como ingresoId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      fecha: format(new Date(ingreso.fecha), "yyyy-MM-dd")
     }));
 
-    // Crear los ingresos en la base de datos
+    // Obtiene todos los ingresos que podrían ser duplicados en una única consulta
+    const posiblesDuplicados = await Ingreso.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(ingreso => ({
+          ingresoId: ingreso.id,
+          sucursal_id: ingreso.sucursal_id,
+          fecha: ingreso.fecha
+        }))
+      }
+    });
+
+    const duplicadosSet = new Set(posiblesDuplicados.map(ingreso => `${ingreso.ingresoId}-${ingreso.sucursal_id}-${ingreso.fecha}`));
+
+    const ingresosParaCrear = fechasFormateadas.filter(ingreso => {
+      const clave = `${ingreso.id}-${ingreso.sucursal_id}-${ingreso.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const ingresosConId = ingresosParaCrear.map(ingreso => ({
+      ...ingreso,
+      ingresoId: ingreso.id,
+      id: undefined
+    }));
+
+    // Crear los ingresos en la base de datos utilizando bulkCreate para eficiencia
     const nuevosIngresos = await Ingreso.bulkCreate(ingresosConId);
 
-    // Retornar los nuevos ingresos creados como respuesta
     res.status(201).json(nuevosIngresos);
   } catch (error) {
     console.error("Error al crear los ingresos:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todas las ventas a cuenta corriente
 const obtenerVtasctasctes = async (req, res, next) => {
@@ -657,18 +952,10 @@ const obtenerVtasctasctesPorCajaId = async (req, res, next) => {
 const obtenerVtasctasctesFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-    // Convertir las fechas a objetos Date
-    const fechaInicio = new Date(fechaDesde);
-    const fechaFin = new Date(fechaHasta);
-
-    // Incrementar la fecha final en un día para que incluya el rango completo
-    fechaFin.setDate(fechaFin.getDate() + 1);
-
     // Define los filtros para la consulta
     const filters = {
       fecha: {
-        [Op.between]: [fechaInicio, fechaFin],
+        [Op.between]: [fechaDesde, fechaHasta],
       },
     };
 
@@ -686,47 +973,141 @@ const obtenerVtasctasctesFiltradas = async (req, res, next) => {
   }
 };
 
-// Controlador para crear múltiples ventas a cuenta corriente
+// // Controlador para crear múltiples ventas a cuenta corriente
+// const crearVtasctasctes = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de las ventas a cuenta corriente desde el cuerpo de la solicitud
+//     const vtasctasctesData = req.body;
+//     // console.log("vtas", vtasctasctesData);
+
+//     // Verificar si todos los objetos en el array no tienen `id`
+//     const todosSinId = vtasctasctesData.every((venta) => !venta.id);
+
+//     if (todosSinId) {
+//       // Si todos los objetos no tienen `id`, hacer bulkCreate directamente
+//       const nuevasVtasctasctes = await Vtactacte.bulkCreate(vtasctasctesData);
+//       return res.status(201).json(nuevasVtasctasctes);
+//     } else {
+//       // Filtrar los datos para omitir los que ya existen en la base de datos
+//       const vtasctasctesFiltradas = await Promise.all(
+//         vtasctasctesData.map(async (venta) => {
+//           const fechaFormatoDateOnly = format(
+//             new Date(venta.fecha),
+//             "yyyy-MM-dd"
+//           ); // Asegurar formato DATEONLY
+//           const existeVenta = await Vtactacte.findOne({
+//             where: {
+//               vtactacteId: venta.id,
+//               sucursal_id: venta.sucursal_id,
+//               fecha: fechaFormatoDateOnly,
+//             },
+//           });
+//           return existeVenta ? null : venta;
+//         })
+//       );
+
+//       // Eliminar los elementos nulos del array
+//       const vtasctasctesParaCrear = vtasctasctesFiltradas.filter(
+//         (venta) => venta !== null
+//       );
+
+//       // Iterar sobre los datos de las ventas a cuenta corriente y asignar el id como ventaId
+//       const ventasConId = vtasctasctesParaCrear.map((venta) => ({
+//         ...venta,
+//         vtactacteId: venta.id, // Asignar el valor del id existente como ventaId
+//         id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//       }));
+
+//       // Crear las ventas a cuenta corriente en la base de datos
+//       const nuevasVtasctasctes = await Vtactacte.bulkCreate(ventasConId);
+
+//       // Retornar las nuevas ventas a cuenta corriente creadas como respuesta
+//       return res.status(201).json(nuevasVtasctasctes);
+//     }
+//   } catch (error) {
+//     console.error("Error al crear las ventas a cuenta corriente:", error);
+//     next(error);
+//   }
+// };
+
 const crearVtasctasctes = async (req, res, next) => {
   try {
-    // Obtener los datos de las ventas a cuenta corriente desde el cuerpo de la solicitud
     const vtasctasctesData = req.body;
+    // console.log("vtas", vtasctasctesData);
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const vtasctasctesFiltradas = await Promise.all(
-      vtasctasctesData.map(async (venta) => {
-        const existeVenta = await Vtactacte.findOne({
-          where: {
+    // Verificar si todos los objetos en el array no tienen `id`
+    const todosSinId = vtasctasctesData.every((venta) => !venta.id);
+
+    if (todosSinId) {
+      // Si todos los objetos no tienen `id`, hacer bulkCreate directamente
+      const nuevasVtasctasctes = await Vtactacte.bulkCreate(vtasctasctesData);
+      return res.status(201).json(nuevasVtasctasctes);
+    } else {
+      // Preparar datos y realizar una única consulta para identificar duplicados
+      const fechasFormateadas = vtasctasctesData.map(venta => ({
+        ...venta,
+        fecha: format(new Date(venta.fecha), "yyyy-MM-dd")
+      }));
+
+      const posiblesDuplicados = await Vtactacte.findAll({
+        where: {
+          [Op.or]: fechasFormateadas.map(venta => ({
             vtactacteId: venta.id,
             sucursal_id: venta.sucursal_id,
-          },
-        });
-        return existeVenta ? null : venta;
-      })
-    );
+            fecha: venta.fecha
+          }))
+        }
+      });
 
-    // Eliminar los elementos nulos del array
-    const vtasctasctesParaCrear = vtasctasctesFiltradas.filter(
-      (venta) => venta !== null
-    );
+      const duplicadosSet = new Set(posiblesDuplicados.map(venta => `${venta.vtactacteId}-${venta.sucursal_id}-${venta.fecha}`));
 
-    // Iterar sobre los datos de las ventas a cuenta corriente y asignar el id como ventaId
-    const ventasConId = vtasctasctesParaCrear.map((venta) => ({
-      ...venta,
-      ventaId: venta.id, // Asignar el valor del id existente como ventaId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-    }));
+      const vtasctasctesParaCrear = fechasFormateadas.filter(venta => {
+        const clave = `${venta.id}-${venta.sucursal_id}-${venta.fecha}`;
+        return !duplicadosSet.has(clave);
+      });
 
-    // Crear las ventas a cuenta corriente en la base de datos
-    const nuevasVtasctasctes = await Vtactacte.bulkCreate(ventasConId);
+      const ventasConId = vtasctasctesParaCrear.map(venta => ({
+        ...venta,
+        vtactacteId: venta.id,
+        id: undefined
+      }));
 
-    // Retornar las nuevas ventas a cuenta corriente creadas como respuesta
-    res.status(201).json(nuevasVtasctasctes);
+      // Crear las ventas a cuenta corriente en la base de datos
+      const nuevasVtasctasctes = await Vtactacte.bulkCreate(ventasConId);
+
+      // Retornar las nuevas ventas a cuenta corriente creadas como respuesta
+      return res.status(201).json(nuevasVtasctasctes);
+    }
   } catch (error) {
     console.error("Error al crear las ventas a cuenta corriente:", error);
     next(error);
   }
 };
+
+
+const eliminarVtasctasctes = async (req, res, next) => {
+  const { id } = req.params; // Extraer el id de la URL
+
+  try {
+    // Buscar la venta a cuenta corriente por ID para verificar que existe
+    const venta = await Vtactacte.findByPk(id);
+    if (!venta) {
+      return res
+        .status(404)
+        .json({ message: "Venta a cuenta corriente no encontrada" });
+    }
+
+    // Eliminar la venta a cuenta corriente
+    await venta.destroy();
+    res
+      .status(200)
+      .json({ message: "Venta a cuenta corriente eliminada exitosamente" });
+  } catch (error) {
+    console.error("Error al eliminar la venta a cuenta corriente:", error);
+    next(error);
+  }
+};
+
 const obtenerCobranzasctasctesPorCajaId = async (req, res, next) => {
   try {
     const { caja_id } = req.body;
@@ -780,30 +1161,85 @@ const obtenerCobranzasctasctesFiltradas = async (req, res, next) => {
 };
 
 // Controlador para crear múltiples cobranzas a cuenta corriente
+// const crearCobranzasctasctes = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de las cobranzas a cuenta corriente desde el cuerpo de la solicitud
+//     const cobranzasctasctesData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const cobranzasctasctesFiltradas = await Promise.all(
+//       cobranzasctasctesData.map(async (cobranza) => {
+//         const fechaFormatoDateOnly = format(
+//           new Date(cobranza.fecha),
+//           "yyyy-MM-dd"
+//         ); // Asegurar formato DATEONLY
+//         const existeCobranza = await Cobranzactacte.findOne({
+//           where: {
+//             cobranzaId: cobranza.id,
+//             sucursal_id: cobranza.sucursal_id,
+//             fecha: fechaFormatoDateOnly,
+//           },
+//         });
+//         return existeCobranza ? null : cobranza;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const cobranzasctasctesParaCrear = cobranzasctasctesFiltradas.filter(
+//       (cobranza) => cobranza !== null
+//     );
+
+//     // Iterar sobre los datos de las cobranzas a cuenta corriente y asignar el id como cobranzaId
+//     const cobranzasConId = cobranzasctasctesParaCrear.map((cobranza) => ({
+//       ...cobranza,
+//       cobranzaId: cobranza.id, // Asignar el valor del id existente como cobranzaId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear las cobranzas a cuenta corriente en la base de datos
+//     const nuevasCobranzasctasctes = await Cobranzactacte.bulkCreate(
+//       cobranzasConId
+//     );
+
+//     // Retornar las nuevas cobranzas a cuenta corriente creadas como respuesta
+//     res.status(201).json(nuevasCobranzasctasctes);
+//   } catch (error) {
+//     console.error("Error al crear las cobranzas a cuenta corriente:", error);
+//     next(error);
+//   }
+// };
+
 const crearCobranzasctasctes = async (req, res, next) => {
   try {
-    // Obtener los datos de las cobranzas a cuenta corriente desde el cuerpo de la solicitud
     const cobranzasctasctesData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const cobranzasctasctesFiltradas = await Promise.all(cobranzasctasctesData.map(async (cobranza) => {
-      const existeCobranza = await Cobranzactacte.findOne({
-        where: {
-          cobranzaId: cobranza.id,
-          sucursal_id: cobranza.sucursal_id
-        }
-      });
-      return existeCobranza ? null : cobranza;
+    const fechasFormateadas = cobranzasctasctesData.map(cobranza => ({
+      ...cobranza,
+      fecha: format(new Date(cobranza.fecha), "yyyy-MM-dd")
     }));
 
-    // Eliminar los elementos nulos del array
-    const cobranzasctasctesParaCrear = cobranzasctasctesFiltradas.filter(cobranza => cobranza !== null);
+    // Obtiene todas las cobranzas que podrían ser duplicadas en una única consulta
+    const posiblesDuplicados = await Cobranzactacte.findAll({
+      where: {
+        [Op.or]: fechasFormateadas.map(cobranza => ({
+          cobranzaId: cobranza.id,
+          sucursal_id: cobranza.sucursal_id,
+          fecha: cobranza.fecha
+        }))
+      }
+    });
 
-    // Iterar sobre los datos de las cobranzas a cuenta corriente y asignar el id como cobranzaId
-    const cobranzasConId = cobranzasctasctesParaCrear.map((cobranza) => ({
+    const duplicadosSet = new Set(posiblesDuplicados.map(cobranza => `${cobranza.cobranzaId}-${cobranza.sucursal_id}-${cobranza.fecha}`));
+
+    const cobranzasctasctesParaCrear = fechasFormateadas.filter(cobranza => {
+      const clave = `${cobranza.id}-${cobranza.sucursal_id}-${cobranza.fecha}`;
+      return !duplicadosSet.has(clave);
+    });
+
+    const cobranzasConId = cobranzasctasctesParaCrear.map(cobranza => ({
       ...cobranza,
       cobranzaId: cobranza.id, // Asignar el valor del id existente como cobranzaId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
     }));
 
     // Crear las cobranzas a cuenta corriente en la base de datos
@@ -817,7 +1253,8 @@ const crearCobranzasctasctes = async (req, res, next) => {
   }
 };
 
-async function obtenerSaldosCuentaCorriente() {
+
+async function obtenerSaldosCuentaCorriente(req, res, next) {
   try {
     const ventas = await Vtactacte.findAll({
       attributes: [
@@ -846,7 +1283,7 @@ async function obtenerSaldosCuentaCorriente() {
         },
       ],
     });
-
+    // console.log("datos", ventas, cobranzas)
     // Calcular el saldo restando las cobranzas de las ventas
     const saldos = ventas.map((venta) => {
       const cobranza = cobranzas.find(
@@ -866,133 +1303,185 @@ async function obtenerSaldosCuentaCorriente() {
       };
     });
 
-    return saldos;
+    res.json(saldos);
   } catch (error) {
     console.error("Error al obtener los saldos de cuenta corriente:", error);
-    throw error;
+    next(error);
   }
 }
 
 const obtenerDetalleDeCajaPorFechaYSucursal = async (req, res, next) => {
   const { fechaDesde, fechaHasta, sucursalId } = req.body;
-  // Convertir las fechas a objetos Date
-  const fechaInicio = new Date(fechaDesde);
-  const fechaFin = new Date(fechaHasta);
 
-  // Incrementar la fecha final en un día para que incluya el rango completo
-  fechaFin.setDate(fechaFin.getDate() + 1);
+  const filters = {
+    fechainicio: {
+      [Op.between]: [fechaDesde, fechaHasta],
+    },
+    ...(sucursalId && { sucursal_id: sucursalId }),
+  };
 
   try {
     const cajas = await Caja.findAll({
-      where: {
-        fechainicio: {
-          [Op.between]: [fechaInicio, fechaFin],
-        },
-        sucursal_id: sucursalId,
-      },
-      include: [
-        Cobranzactacte,
-        Cupon,
-        Gasto,
-        Ingreso,
-        Retiro,
-        Sueldo,
-        Vale,
-        Vtactacte,
-      ],
+      where: filters,
       attributes: [
         "id",
+        "cajaId",
         "cajafinal",
         "cajainicial",
         "fechafin",
         "fechainicio",
         "sucursal_id",
         "usuario_id",
-        [
-          sequelize.literal(
-            '(SELECT SUM("Cobranzactacte"."importe") FROM "Cobranzactacte" WHERE "Cobranzactacte"."caja_id" = "Caja"."id")'
-          ),
-          "totalCobranzas",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Cupon"."importecupon") FROM "Cupon" WHERE "Cupon"."caja_id" = "Caja"."id")'
-          ),
-          "totalCupones",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Gasto"."importe") FROM "Gasto" WHERE "Gasto"."caja_id" = "Caja"."id")'
-          ),
-          "totalGastos",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Ingreso"."importe") FROM "Ingreso" WHERE "Ingreso"."caja_id" = "Caja"."id")'
-          ),
-          "totalIngresos",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Retiro"."importe") FROM "Retiro" WHERE "Retiro"."caja_id" = "Caja"."id")'
-          ),
-          "totalRetiros",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Sueldo"."importe") FROM "Sueldo" WHERE "Sueldo"."caja_id" = "Caja"."id")'
-          ),
-          "totalSueldos",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Vale"."importecupon") FROM "Vale" WHERE "Vale"."caja_id" = "Caja"."id")'
-          ),
-          "totalVales",
-        ],
-        [
-          sequelize.literal(
-            '(SELECT SUM("Vtactacte"."importe") FROM "Vtactacte" WHERE "Vtactacte"."caja_id" = "Caja"."id")'
-          ),
-          "totalVtactactes",
-        ],
-      ],
-      group: [
-        "Caja.id",
-        "Caja.cajafinal",
-        "Caja.cajainicial",
-        "Caja.fechafin",
-        "Caja.fechainicio",
-        "Caja.sucursal_id",
-        "Caja.usuario_id",
-        "Cobranzactacte.id", // Agregar la columna a la cláusula GROUP BY
-        "Cupon.id",
-        "Gasto.id",
-        "Ingreso.id",
-        "Retiro.id",
-        "Sueldo.id",
-        "Vale.id",
-        "Vtactacte.id",
       ],
     });
 
-    res.json(cajas);
+    if (!cajas.length) {
+      return res.json([]);
+    }
+
+    const detalles = await Promise.all(
+      cajas.map(async (caja) => {
+        const cajaId = caja.cajaId;
+        const sucursalId = caja.sucursal_id;
+
+        // Realizar sumas de cada modelo
+        const totalCupones = await Cupon.sum("importecupon", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalCobranzas = await Cobranzactacte.sum("importe", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalGastos = await Gasto.sum("importe", {
+          where: {
+            caja_id: cajaId,
+            sucursal_id: sucursalId,
+            tipodegasto_id: {
+              [Op.ne]: 28, // Excluir los gastos donde tipodegasto_id es igual a 28
+            },
+          },
+        });
+        const totalIngresos = await Ingreso.sum("importe", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalRetiros = await Retiro.sum("importe", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalSueldos = await Sueldo.sum("importe", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalVales = await Vale.sum("importecupon", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+        const totalVtactactes = await Vtactacte.sum("importe", {
+          where: { caja_id: cajaId, sucursal_id: sucursalId },
+        });
+
+        return {
+          caja: caja.dataValues,
+          totalCupones,
+          totalCobranzas,
+          totalGastos,
+          totalIngresos,
+          totalRetiros,
+          totalSueldos,
+          totalVales,
+          totalVtactactes,
+        };
+      })
+    );
+
+    // console.log("detalles", detalles);
+
+    res.json(detalles);
   } catch (error) {
-    console.error(error);
+    console.error("Error al obtener los detalles de la caja:", error);
     next(error);
   }
 };
 
-// Crear un nuevo cierre
+// // Crear un nuevo cierre
+// const crearCierre = async (req, res, next) => {
+//   try {
+//     const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } =
+//       req.body;
+//     const nuevoCierre = await Cierre.create({
+//       fecha,
+//       sucursal_id,
+//       neto,
+//       iva_21,
+//       iva_105,
+//       total,
+//       nro_cierre,
+//     });
+//     res.status(201).json(nuevoCierre);
+//   } catch (error) {
+//     console.error("Error al crear el cierre:", error);
+//     next(error);
+//   }
+// };
+
+// const crearCierre = async (req, res, next) => {
+//   try {
+//     const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
+//     console.log("datos", fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre)
+//     // Verificar si ya existe un cierre con los mismos parámetros
+//     const cierreExistente = await Cierre.findOne({
+//       where: {
+//         fecha,
+//         sucursal_id,
+//         nro_cierre
+//       }
+//     });
+
+//     // Si el cierre ya existe, retornar un mensaje y no crear uno nuevo
+//     if (cierreExistente) {
+//       return res.status(409).json({ message: "El cierre ya existe para la fecha, sucursal y número proporcionados." });
+//     }
+
+//     // Crear el nuevo cierre si no existe uno previo
+//     const nuevoCierre = await Cierre.create({
+//       fecha,
+//       sucursal_id,
+//       neto,
+//       iva_21,
+//       iva_105,
+//       total,
+//       nro_cierre,
+//     });
+
+//     res.status(201).json(nuevoCierre);
+//   } catch (error) {
+//     console.error("Error al crear el cierre:", error);
+//     next(error);
+//   }
+// };
+
 const crearCierre = async (req, res, next) => {
   try {
-    const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
-    const nuevoCierre = await Cierre.create({
-      fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre
-    });
-    res.status(201).json(nuevoCierre);
+    const cierres = req.body; // El array de objetos cierre
+    console.log("datos", cierres);
+
+    const resultados = [];
+
+    for (const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } of cierres) {
+      // Verificar si ya existe un cierre con los mismos parámetros
+      const cierreExistente = await Cierre.findOne({
+        where: { fecha, sucursal_id, nro_cierre }
+      });
+
+      if (cierreExistente) {
+        resultados.push({ error: "El cierre ya existe para la fecha, sucursal y número proporcionados.", fecha, sucursal_id, nro_cierre });
+        continue; // Saltar a la siguiente iteración del bucle
+      }
+
+      // Crear el nuevo cierre si no existe uno previo
+      const nuevoCierre = await Cierre.create({ fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre });
+      resultados.push(nuevoCierre);
+    }
+
+    res.status(201).json(resultados);
   } catch (error) {
-    console.error("Error al crear el cierre:", error);
+    console.error("Error al crear los cierres:", error);
     next(error);
   }
 };
@@ -1033,7 +1522,6 @@ const obtenerCierresFiltrados = async (req, res, next) => {
   }
 };
 
-
 // Obtener un cierre por ID
 const obtenerCierrePorId = async (req, res, next) => {
   try {
@@ -1054,12 +1542,22 @@ const obtenerCierrePorId = async (req, res, next) => {
 const actualizarCierre = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
-    const cierreActualizado = await Cierre.update({
-      fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre
-    }, {
-      where: { id }
-    });
+    const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } =
+      req.body;
+    const cierreActualizado = await Cierre.update(
+      {
+        fecha,
+        sucursal_id,
+        neto,
+        iva_21,
+        iva_105,
+        total,
+        nro_cierre,
+      },
+      {
+        where: { id },
+      }
+    );
     if (cierreActualizado[0] === 0) {
       res.status(404).json({ message: "Cierre no encontrado" });
     } else {
@@ -1076,7 +1574,7 @@ const eliminarCierre = async (req, res, next) => {
   try {
     const { id } = req.params;
     const resultado = await Cierre.destroy({
-      where: { id }
+      where: { id },
     });
     if (resultado === 0) {
       res.status(404).json({ message: "Cierre no encontrado" });
@@ -1089,6 +1587,84 @@ const eliminarCierre = async (req, res, next) => {
   }
 };
 
+const crearAjustectacte = async (req, res, next) => {
+  try {
+    const { descripcion, importe, cliente_id, fecha } = req.body;
+    const nuevoAjuste = await Ajustectacte.create({
+      descripcion,
+      importe,
+      cliente_id,
+      fecha,
+    });
+    res.status(201).json(nuevoAjuste);
+  } catch (error) {
+    console.error("Error al crear el ajuste:", error);
+    next(error);
+  }
+};
+
+const obtenerAjustectacte = async (req, res, next) => {
+  try {
+    const ajustes = await Ajustectacte.findAll();
+    res.status(200).json(ajustes);
+  } catch (error) {
+    console.error("Error al obtener los ajustes:", error);
+    next(error);
+  }
+};
+
+const obtenerAjustectactePorId = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const ajuste = await Ajustectacte.findByPk(id);
+    if (!ajuste) {
+      res.status(404).send("Ajuste no encontrado");
+    } else {
+      res.status(200).json(ajuste);
+    }
+  } catch (error) {
+    console.error("Error al obtener el ajuste:", error);
+    next(error);
+  }
+};
+
+const actualizarAjustectacte = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { descripcion, importe, fecha, cliente_id } = req.body;
+    const actualizado = await Ajustectacte.update(
+      { descripcion, importe, fecha, cliente_id },
+      {
+        where: { id },
+      }
+    );
+    if (actualizado[0] === 0) {
+      res.status(404).send("Ajuste no encontrado");
+    } else {
+      res.status(200).send("Ajuste actualizado correctamente");
+    }
+  } catch (error) {
+    console.error("Error al actualizar el ajuste:", error);
+    next(error);
+  }
+};
+
+const eliminarAjustectacte = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const eliminado = await Ajustectacte.destroy({
+      where: { id },
+    });
+    if (eliminado === 0) {
+      res.status(404).send("Ajuste no encontrado");
+    } else {
+      res.status(200).send("Ajuste eliminado correctamente");
+    }
+  } catch (error) {
+    console.error("Error al eliminar el ajuste:", error);
+    next(error);
+  }
+};
 export {
   obtenerCajas,
   obtenerCajasPorCajaId,
@@ -1133,5 +1709,10 @@ export {
   obtenerCierresFiltrados,
   obtenerCierrePorId,
   actualizarCierre,
-  eliminarCierre
+  eliminarCierre,
+  crearAjustectacte,
+  obtenerAjustectacte,
+  obtenerAjustectactePorId,
+  actualizarAjustectacte,
+  eliminarAjustectacte,
 };

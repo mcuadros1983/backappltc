@@ -15,17 +15,19 @@ const Vtactacte = sequelize.define(
     },
     vtactacteId: {
       type: DataTypes.BIGINT,
+      allowNull: true,
+      // defaultValue:null,
     },
     caja_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     cliente_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
     fecha: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
       allowNull: false,
     },
     importe: {
@@ -38,7 +40,7 @@ const Vtactacte = sequelize.define(
     },
     saldo: {
       type: DataTypes.DECIMAL(12, 3),
-      allowNull: false,
+      allowNull: true,
     },
     sucursal_id: {
       type: DataTypes.INTEGER,
@@ -46,7 +48,7 @@ const Vtactacte = sequelize.define(
     },
     venta_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
   },
   {

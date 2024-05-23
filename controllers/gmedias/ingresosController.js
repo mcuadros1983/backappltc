@@ -8,7 +8,7 @@ import respuesta from "../../utils/respuesta.js";
 import ProductoId from "../../models/gmedias/productoIdModel.js";
 
 const obtenerIngresos = async (req, res, next) => {
-  console.log("buscando ingresos")
+  // console.log("buscando ingresos")
   try {
     const ingresos = await Ingreso.findAll();
     // Si no hay ingresos, devolvemos una respuesta con un array vacío
@@ -41,7 +41,7 @@ const obtenerIngreso = async (req, res, next) => {
 
 const crearIngreso = async (req, res, next) => {
   const { products, cantidad_total, peso_total, categoria } = req.body;
-
+console.log("datos", products, cantidad_total, peso_total, categoria)
   try {
     // Verificar si se recibieron productos
     if (!products || !Array.isArray(products) || products.length === 0) {

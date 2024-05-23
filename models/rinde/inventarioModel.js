@@ -13,7 +13,7 @@ const Inventario = sequelize.define(
       type: DataTypes.INTEGER,
     },
     fecha: {
-      type: DataTypes.DATE,
+      type: DataTypes.DATEONLY,
     },
     mes: {
       type: DataTypes.INTEGER,
