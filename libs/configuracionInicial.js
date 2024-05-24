@@ -17,9 +17,9 @@ export const crearRoles = async () => {
 
     // Crear roles predeterminados
     const values = await Promise.all([
-      Rol.create({ nombre: "usuario" }),
-      Rol.create({ nombre: "moderador" }),
       Rol.create({ nombre: "admin" }),
+      Rol.create({ nombre: "gestion" }),
+      Rol.create({ nombre: "ventas" }),
     ]);
 
     crearAdmin();

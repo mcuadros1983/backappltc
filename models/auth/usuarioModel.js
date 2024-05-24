@@ -11,6 +11,10 @@ const Usuario = sequelize.define("Usuario", {
   password: {
     type: DataTypes.STRING,
   },
+  rol_id: {
+    type: DataTypes.INTEGER,
+    allowNull:true,
+  },
   fecha: {
     type: DataTypes.DATEONLY,
     defaultValue: sequelize.literal('CURRENT_DATE') // Establece la fecha actual por defecto
