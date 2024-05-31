@@ -93,7 +93,12 @@ const crearVentaTotal = async (req, res, next) => {
       const { monto_total, sucursal_id } = venta;
 
       // Convertir la fecha de string a objeto Date
-      const fechaDate = new Date(fecha);
+      let fechaDate = new Date(fecha);
+
+      // Ajustar la fecha al huso horario local
+      fechaDate = new Date(
+        fechaDate.getTime() - fechaDate.getTimezoneOffset() * 60000
+      );
 
       // Verificar si el ID actual es mayor que el último ID en la tabla
       if (id > ultimoId) {
@@ -479,7 +484,7 @@ const obtenerVentasConArticuloFiltradas = async (req, res, next) => {
   }
 };
 
-const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => { 
+const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId, excludedCategories } = req.body;
 
@@ -523,7 +528,12 @@ const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
         ],
       });
       // Si se encuentra el precio del artículo y no está en una categoría excluida, se multiplica la cantidad de venta por el precio
-      if (precioArticulo && !excludedCategories.includes(precioArticulo.Articulotabla.subcategoria_id)) {
+      if (
+        precioArticulo &&
+        !excludedCategories.includes(
+          precioArticulo.Articulotabla.subcategoria_id
+        )
+      ) {
         const cantidad = parseFloat(ventaArticulo.cantidad);
         const precio = parseFloat(precioArticulo.precio);
         montoTotalVenta += cantidad * precio;
@@ -537,7 +547,7 @@ const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
   }
 };
 
-// const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => { 
+// const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
 //   try {
 //     const { fechaDesde, fechaHasta, sucursalId } = req.body;
 //     // Convertir las fechas a objetos Date
@@ -707,8 +717,7 @@ const crearVentasConArticulo = async (req, res, next) => {
         // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
         return null;
       }
-    }
-    );
+    });
 
     // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
