@@ -51,6 +51,7 @@ infoCajaRouter.get('/caja/cobranzasctacte', infoCajaRindeController.obtenerCobra
 infoCajaRouter.post('/caja/cobranzasctacte_filtrados', infoCajaRindeController.obtenerCobranzasctasctesFiltradas);
 infoCajaRouter.post('/caja/cobranzasctacte', infoCajaRindeController.crearCobranzasctasctes);
 infoCajaRouter.get('/caja/saldosctacte', infoCajaRindeController.obtenerSaldosCuentaCorriente);
+infoCajaRouter.post('/caja/saldosctacte_filtrados', infoCajaRindeController.obtenerSaldosCuentaCorrienteFiltrados);
 infoCajaRouter.post('/caja/detalledecaja', infoCajaRindeController.obtenerDetalleDeCajaPorFechaYSucursal);
 
 infoCajaRouter.post("/caja/cierres", infoCajaRindeController.crearCierre);

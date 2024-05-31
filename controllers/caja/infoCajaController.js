@@ -1310,6 +1310,71 @@ async function obtenerSaldosCuentaCorriente(req, res, next) {
   }
 }
 
+async function obtenerSaldosCuentaCorrienteFiltrados(req, res, next) {
+  const { sucursalId } = req.body; // Asumiendo que estos datos se envían en los parámetros de la ruta
+
+  try {
+    const ventas = await Vtactacte.findAll({
+      attributes: [
+        "cliente_id",
+        [sequelize.fn("SUM", sequelize.col("importe")), "ventas"],
+      ],
+      where: {
+        sucursal_id: sucursalId,
+      },
+      group: ["Vtactacte.cliente_id", "Clientetabla.id"],
+      include: [
+        {
+          model: ClienteTabla,
+          attributes: [],
+        },
+      ],
+    });
+
+    const cobranzas = await Cobranzactacte.findAll({
+      attributes: [
+        "cliente_id",
+        [sequelize.fn("SUM", sequelize.col("importe")), "cobranzas"],
+      ],
+      where: {
+        sucursal_id: sucursalId,
+      },
+      group: ["Cobranzactacte.cliente_id", "Clientetabla.id"],
+      include: [
+        {
+          model: ClienteTabla,
+          attributes: [],
+        },
+      ],
+    });
+
+    const saldos = ventas.map((venta) => {
+      const cobranza = cobranzas.find(
+        (cob) => cob.cliente_id === venta.cliente_id
+      );
+      const saldo =
+        parseInt(venta.dataValues.ventas) -
+        parseInt(cobranza ? cobranza.dataValues.cobranzas : 0);
+
+      return {
+        cliente_id: venta.cliente_id,
+        sucursal_id: sucursalId, // Incluido el id de sucursal en la respuesta
+        ventas: parseInt(venta.dataValues.ventas),
+        cobranzas: cobranza
+          ? parseInt(cobranza.dataValues.cobranzas)
+          : 0,
+        saldo: saldo,
+      };
+    });
+
+    res.json(saldos);
+  } catch (error) {
+    console.error("Error al obtener los saldos de cuenta corriente filtrados:", error);
+    next(error);
+  }
+}
+
+
 const obtenerDetalleDeCajaPorFechaYSucursal = async (req, res, next) => {
   const { fechaDesde, fechaHasta, sucursalId } = req.body;
 
@@ -1703,6 +1768,7 @@ export {
   obtenerCobranzasctasctesFiltradas,
   crearCobranzasctasctes,
   obtenerSaldosCuentaCorriente,
+  obtenerSaldosCuentaCorrienteFiltrados,
   obtenerDetalleDeCajaPorFechaYSucursal,
   crearCierre,
   obtenerCierres,
