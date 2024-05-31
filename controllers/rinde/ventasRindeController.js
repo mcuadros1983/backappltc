@@ -69,6 +69,7 @@ const crearVentaTotal = async (req, res, next) => {
   try {
     // Extraer los datos del cuerpo de la solicitud
     const ventasTotales = req.body;
+    console.log("Última venta recibida:", ventasTotales[ventasTotales.length - 1])
 
     // console.log("ventasTotales", ventasTotales)
 
