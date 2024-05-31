@@ -69,7 +69,7 @@ const crearVentaTotal = async (req, res, next) => {
   try {
     // Extraer los datos del cuerpo de la solicitud
     const ventasTotales = req.body;
-    console.log("Última venta recibida:", ventasTotales[ventasTotales.length - 1])
+    // console.log("Última venta recibida:", ventasTotales[ventasTotales.length - 1])
 
     // console.log("ventasTotales", ventasTotales)
 
@@ -94,17 +94,17 @@ const crearVentaTotal = async (req, res, next) => {
       const { monto_total, sucursal_id } = venta;
 
       // Convertir la fecha de string a objeto Date
-      let fechaDate = new Date(fecha);
+      // let fechaDate = new Date(fecha);
 
-      // Ajustar la fecha al huso horario local
-      fechaDate = new Date(
-        fechaDate.getTime() - fechaDate.getTimezoneOffset() * 60000
-      );
+      // // Ajustar la fecha al huso horario local
+      // fechaDate = new Date(
+      //   fechaDate.getTime() - fechaDate.getTimezoneOffset() * 60000
+      // );
 
       // Verificar si el ID actual es mayor que el último ID en la tabla
       if (id > ultimoId) {
         return {
-          fecha: fechaDate,
+          fecha: fecha,
           cierreventa_id: id,
           monto: parseFloat(monto_total),
           sucursal_id: parseInt(sucursal_id),
