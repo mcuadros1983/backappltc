@@ -424,7 +424,6 @@ const crearUsuario = async (req, res, next) => {
   }
 };
 
-
 const crearGrupo = async (req, res, next) => {
   try {
     const datos = req.body;
@@ -713,8 +712,8 @@ const crearClientesTabla = async (req, res, next) => {
     }
 
     // Separar datos de cliente y cliente persona
-    const datosClientes = datos.map((dato) => dato.cliente);
-    const datosClientesPersona = datos;
+    const datosClientesPersona = datos.map((dato) => dato.cliente_persona);
+    const datosClientes = datos;
 
     // Utilizar bulkCreate con la opción updateOnDuplicate para cliente
     await ClienteTabla.bulkCreate(datosClientes, {

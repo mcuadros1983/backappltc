@@ -38,4 +38,5 @@ const ClienteTabla = sequelize.define(
   }
 );
 
+
 export default ClienteTabla;
