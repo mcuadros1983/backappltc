@@ -19,6 +19,7 @@ import UnidadMedidaTabla from "../../models/tablas/unidadMedidaModel.js";
 import TarjetaDeCreditoTabla from "../../models/tablas/tarjetaDeCreditoModel.js";
 import UsuarioTabla from "../../models/tablas/usuarioModel.js";
 import GrupoTabla from "../../models/tablas/grupoModel.js";
+import DomicilioTabla from "../../models/tablas/domicilioModel.js";
 
 const obtenerCategorias = async (req, res, next) => {
   try {
@@ -45,6 +46,16 @@ const obtenerUnidadMedida = async (req, res, next) => {
     res.json(unidadmedida);
   } catch (error) {
     console.error("Error al obtener las unidades de medida:", error);
+    next(error);
+  }
+};
+
+const obtenerDomicilio = async (req, res, next) => {
+  try {
+    const domicilio = await DomicilioTabla.findAll();
+    res.json(domicilio);
+  } catch (error) {
+    console.error("Error al obtener los domicilios:", error);
     next(error);
   }
 };
@@ -377,6 +388,49 @@ const crearUnidadMedida = async (req, res, next) => {
     res.json(resultados);
   } catch (error) {
     console.error("Error al crear las Unidades de Medida:", error);
+    next(error);
+  }
+};
+
+const crearDomicilio = async (req, res, next) => {
+  try {
+    const datos = req.body;
+
+    // Verificar si los datos están en formato de matriz
+    if (!Array.isArray(datos)) {
+      return res
+        .status(400)
+        .json({ error: "Los datos deben estar en formato de matriz." });
+    }
+
+    // Iterar sobre los datos
+    const resultados = [];
+    for (const dato of datos) {
+      // Verificar si la categoría ya existe en la base de datos
+      const domicilioExistente = await DomicilioTabla.findOne({
+        where: { id: dato.id },
+      });
+
+      if (domicilioExistente) {
+        // Si existe, actualizar el dato existente
+        await DomicilioTabla.update(dato, {
+          where: { id: dato.id },
+        });
+        resultados.push({
+          mensaje: `El domicilio con ID ${dato.id} se actualizó.`,
+        });
+      } else {
+        // Si no existe, crear un nuevo domicilio
+        await DomicilioTabla.create(dato);
+        resultados.push({
+          mensaje: `Se creó un nuevo domicilio con ID ${dato.id}.`,
+        });
+      }
+    }
+
+    res.json(resultados);
+  } catch (error) {
+    console.error("Error al crear los domicilios:", error);
     next(error);
   }
 };
@@ -1183,6 +1237,7 @@ export {
   obtenerCategorias,
   obtenerSubcategorias,
   obtenerUnidadMedida,
+  obtenerDomicilio,
   obtenerUsuario,
   obtenerGrupo,
   obtenerTarjetaDeCredito,
@@ -1200,6 +1255,7 @@ export {
   crearCategorias,
   crearSubcategorias,
   crearUnidadMedida,
+  crearDomicilio,
   crearUsuario,
   crearGrupo,
   crearTarjetaDeCredito,

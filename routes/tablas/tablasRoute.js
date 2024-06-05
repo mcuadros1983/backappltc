@@ -23,6 +23,10 @@ tablasRouter.post("/crearsubcategorias", tablasController.crearSubcategorias);
 tablasRouter.get("/obtenerunidadmedida", tablasController.obtenerUnidadMedida);
 tablasRouter.post("/crearunidadmedida", tablasController.crearUnidadMedida);
 
+// Rutas para obtener los domicilios
+tablasRouter.get("/obtenerdomicilio", tablasController.obtenerDomicilio);
+tablasRouter.post("/creardomicilio", tablasController.crearDomicilio);
+
 // Rutas para obtener las categorías
 tablasRouter.get("/obtenerusuario", tablasController.obtenerUsuario);
 tablasRouter.post("/crearusuario", tablasController.crearUsuario);
