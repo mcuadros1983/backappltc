@@ -31,6 +31,9 @@ const EmpleadoTabla = sequelize.define('Empleadotabla', {
   numero: {
     type: DataTypes.STRING(255),
     allowNull: true
+  },
+  fechabaja: {
+    type: DataTypes.DATEONLY
   }
 }, {
   timestamps: false,

@@ -696,12 +696,46 @@ const crearArticulos = async (req, res, next) => {
 const crearArticulosPrecios = async (req, res, next) => {
   try {
     const datos = req.body;
-    const resultado = await ArticuloPrecioTabla.bulkCreate(datos);
-    res.json(resultado);
+
+    // Verificar si los datos están en formato de matriz
+    if (!Array.isArray(datos)) {
+      return res
+        .status(400)
+        .json({ error: "Los datos deben estar en formato de matriz." });
+    }
+
+    // Iterar sobre los datos
+    const resultados = [];
+    for (const dato of datos) {
+      // Verificar si el artículo ya existe en la base de datos
+      const articuloPrecioExistente = await ArticuloPrecioTabla.findOne({
+        where: { id: dato.id },
+      });
+
+      if (articuloPrecioExistente) {
+        // Si existe, actualizar el artículo existente
+        await ArticuloPrecioTabla.update(dato, {
+          where: { id: dato.id },
+        });
+        resultados.push({
+          mensaje: `El precio de articulo con ID ${dato.id} se actualizó.`,
+        });
+      } else {
+        // Si no existe, crear un nuevo artículo
+        await ArticuloPrecioTabla.create(dato);
+        resultados.push({
+          mensaje: `Se creó un nuevo precio de artículo con ID ${dato.id}.`,
+        });
+      }
+    }
+
+    res.json(resultados);
   } catch (error) {
-    console.error("Error al crear los precios de los articulos:", error);
+    console.error("Error al crear los precios de los artículos:", error);
     next(error);
   }
+
+
 };
 
 const actualizarPreciosDesdeExcel = async (req, res, next) => {
