@@ -62,6 +62,7 @@ const obtenerVentasFiltradas = async (req, res, next) => {
 
     // Realiza la consulta a la base de datos para obtener las ventas totales
     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
+    console.log("ventasfiltradas", ventasFiltradas)
 
     // Define los filtros para la consulta de VentaArticulo
     const articuloFilters = {
@@ -72,32 +73,37 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     };
 
     // Realiza la consulta a la base de datos para obtener los artículos específicos
-    const ventasConArticulos = await VentasArticulo.findAll({ where: articuloFilters });
+    const ventasConArticulos = await VentasArticulo.findAll({
+      where: articuloFilters,
+    });
+    console.log("ventasConArticulos", ventasConArticulos);
 
     // Prepara un mapa para mantener los montos a restar por fecha
     const montosARestarPorFecha = {};
 
     // Calcula el monto a restar por fecha
-    ventasConArticulos.forEach(venta => {
+    ventasConArticulos.forEach((venta) => {
       if (!montosARestarPorFecha[venta.fecha]) {
         montosARestarPorFecha[venta.fecha] = 0;
       }
       montosARestarPorFecha[venta.fecha] += venta.cantidad * venta.monto_lista;
     });
+    console.log("montosARestarPorFecha", montosARestarPorFecha);
 
     // Resta el monto calculado de las ventas totales filtradas por la fecha correspondiente
-    ventasFiltradas.forEach(venta => {
+    ventasFiltradas.forEach((venta) => {
       if (montosARestarPorFecha[venta.fecha]) {
         venta.dataValues.monto_total -= montosARestarPorFecha[venta.fecha];
       }
     });
+
+    console.log("ventasfiltradas2", ventasFiltradas)
 
     res.json(ventasFiltradas);
   } catch (error) {
     next(error);
   }
 };
-
 
 const obtenerUltimoIdTablaPorSucursal = async (
   nombreTabla,
@@ -696,7 +702,7 @@ const crearVentasConArticulo = async (req, res, next) => {
       }
     });
 
-    console.log("ventasbul", nuevasVentasConArticuloBulk)
+    console.log("ventasbul", nuevasVentasConArticuloBulk);
 
     // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
