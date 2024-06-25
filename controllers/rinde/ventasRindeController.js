@@ -47,6 +47,7 @@ const obtenerVentasTotales = async (req, res, next) => {
 const obtenerVentasFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
     // Define los filtros para la consulta de ventas totales
     const filters = {
       fecha: {
@@ -62,8 +63,6 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     // Realiza la consulta a la base de datos para obtener las ventas totales
     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
 
-    console.log("ventasfiltradas", ventasFiltradas)
-
     // Define los filtros para la consulta de VentaArticulo
     const articuloFilters = {
       ...filters,
@@ -72,32 +71,32 @@ const obtenerVentasFiltradas = async (req, res, next) => {
       },
     };
 
-    console.log("filtros", articuloFilters)
-
     // Realiza la consulta a la base de datos para obtener los artículos específicos
     const ventasConArticulos = await VentasArticulo.findAll({ where: articuloFilters });
 
-    console.log("ventas a filtrar", ventasConArticulos)
+    // Prepara un mapa para mantener los montos a restar por fecha
+    const montosARestarPorFecha = {};
 
-    // Calcula el monto a restar
-    let montoARestar = 0;
+    // Calcula el monto a restar por fecha
     ventasConArticulos.forEach(venta => {
-      montoARestar += venta.cantidad * venta.monto_lista;
+      if (!montosARestarPorFecha[venta.fecha]) {
+        montosARestarPorFecha[venta.fecha] = 0;
+      }
+      montosARestarPorFecha[venta.fecha] += venta.cantidad * venta.monto_lista;
     });
 
-    // Resta el monto calculado de las ventas totales filtradas
+    // Resta el monto calculado de las ventas totales filtradas por la fecha correspondiente
     ventasFiltradas.forEach(venta => {
-      venta.dataValues.monto_total -= montoARestar;
+      if (montosARestarPorFecha[venta.fecha]) {
+        venta.dataValues.monto_total -= montosARestarPorFecha[venta.fecha];
+      }
     });
 
-    console.log("ventasfiltradas", ventasFiltradas)
     res.json(ventasFiltradas);
   } catch (error) {
     next(error);
   }
 };
-
-export default obtenerVentasFiltradas;
 
 
 const obtenerUltimoIdTablaPorSucursal = async (
