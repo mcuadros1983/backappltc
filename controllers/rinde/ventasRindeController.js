@@ -62,16 +62,22 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     // Realiza la consulta a la base de datos para obtener las ventas totales
     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
 
+    console.log("ventasfiltradas", ventasFiltradas)
+
     // Define los filtros para la consulta de VentaArticulo
     const articuloFilters = {
       ...filters,
       articuloCodigo: {
-        [Op.in]: [1005, 1012, 1011],
+        [Op.in]: ["1005", "1012", "1011"],
       },
     };
 
+    console.log("filtros", articuloFilters)
+
     // Realiza la consulta a la base de datos para obtener los artículos específicos
     const ventasConArticulos = await VentasArticulo.findAll({ where: articuloFilters });
+
+    console.log("ventas a filtrar", ventasConArticulos)
 
     // Calcula el monto a restar
     let montoARestar = 0;
@@ -84,6 +90,7 @@ const obtenerVentasFiltradas = async (req, res, next) => {
       venta.dataValues.monto_total -= montoARestar;
     });
 
+    console.log("ventasfiltradas", ventasFiltradas)
     res.json(ventasFiltradas);
   } catch (error) {
     next(error);
