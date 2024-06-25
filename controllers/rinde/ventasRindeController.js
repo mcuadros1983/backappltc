@@ -93,7 +93,7 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     // Resta el monto calculado de las ventas totales filtradas por la fecha correspondiente
     ventasFiltradas.forEach((venta) => {
       if (montosARestarPorFecha[venta.fecha]) {
-        venta.dataValues.monto_total -= montosARestarPorFecha[venta.fecha];
+        venta.dataValues.monto -= montosARestarPorFecha[venta.fecha];
       }
     });
 
