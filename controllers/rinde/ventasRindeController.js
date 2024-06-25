@@ -18,10 +18,36 @@ const obtenerVentasTotales = async (req, res, next) => {
   }
 };
 
+// const obtenerVentasFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+//     // Define los filtros para la consulta
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+//     // Realiza la consulta a la base de datos
+//     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
+//     res.json(ventasFiltradas);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// import { Op } from 'sequelize';
+// import VentaTotal from '../models/VentaTotal';
+// import VentaArticulo from '../models/VentaArticulo';
+
 const obtenerVentasFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-    // Define los filtros para la consulta
+    // Define los filtros para la consulta de ventas totales
     const filters = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],
@@ -32,13 +58,40 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     if (sucursalId) {
       filters.sucursal_id = sucursalId;
     }
-    // Realiza la consulta a la base de datos
+
+    // Realiza la consulta a la base de datos para obtener las ventas totales
     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
+
+    // Define los filtros para la consulta de VentaArticulo
+    const articuloFilters = {
+      ...filters,
+      articuloCodigo: {
+        [Op.in]: [1005, 1012, 1011],
+      },
+    };
+
+    // Realiza la consulta a la base de datos para obtener los artículos específicos
+    const ventasConArticulos = await VentasArticulo.findAll({ where: articuloFilters });
+
+    // Calcula el monto a restar
+    let montoARestar = 0;
+    ventasConArticulos.forEach(venta => {
+      montoARestar += venta.cantidad * venta.monto_lista;
+    });
+
+    // Resta el monto calculado de las ventas totales filtradas
+    ventasFiltradas.forEach(venta => {
+      venta.dataValues.monto_total -= montoARestar;
+    });
+
     res.json(ventasFiltradas);
   } catch (error) {
     next(error);
   }
 };
+
+export default obtenerVentasFiltradas;
+
 
 const obtenerUltimoIdTablaPorSucursal = async (
   nombreTabla,
@@ -69,10 +122,6 @@ const crearVentaTotal = async (req, res, next) => {
   try {
     // Extraer los datos del cuerpo de la solicitud
     const ventasTotales = req.body;
-    // console.log("Última venta recibida:", ventasTotales[ventasTotales.length - 1])
-
-    // console.log("ventasTotales", ventasTotales)
-
     // Validar si se recibieron datos
     if (!Array.isArray(ventasTotales)) {
       return res
@@ -92,14 +141,6 @@ const crearVentaTotal = async (req, res, next) => {
     const nuevasVentasTotalesBulk = ventasTotales.map((venta) => {
       const { id, fecha } = venta.data;
       const { monto_total, sucursal_id } = venta;
-
-      // Convertir la fecha de string a objeto Date
-      // let fechaDate = new Date(fecha);
-
-      // // Ajustar la fecha al huso horario local
-      // fechaDate = new Date(
-      //   fechaDate.getTime() - fechaDate.getTimezoneOffset() * 60000
-      // );
 
       // Verificar si el ID actual es mayor que el último ID en la tabla
       if (id > ultimoId) {
@@ -189,7 +230,6 @@ const crearVentasAnuladas = async (req, res, next) => {
       "ventaanuladoId",
       ventasAnuladas[0].sucursal_id
     );
-    // console.log("ultimo", ultimoId);
 
     // Iterar sobre las ventas anuladas y asignar el id existente como ventaanuladoId
     const ventasAnuladasConId = ventasAnuladas.map((venta) => ({
@@ -253,7 +293,7 @@ const obtenerVentasConDescuento = async (req, res, next) => {
 const obtenerVentasConDescuentoFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-    // console.log("reqbody--", fechaDesde, fechaHasta, sucursalId);
+
     // Define los filtros para la consulta
     const filters = {
       fecha: {
@@ -266,8 +306,6 @@ const obtenerVentasConDescuentoFiltradas = async (req, res, next) => {
       filters.sucursal_id = sucursalId;
     }
 
-    // const ventas  = await VentasAnuladas.findAll()
-    // console.log("ventas----", ventas)
     // Realiza la consulta a la base de datos
     const ventasConDescuentoFiltradas = await VentasDescuento.findAll({
       where: filters,
@@ -356,7 +394,7 @@ const obtenerVentasPorCliente = async (req, res, next) => {
 const obtenerVentasPorClienteFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-    // console.log("reqbody--", fechaDesde, fechaHasta, sucursalId);
+
     // Define los filtros para la consulta
     const filters = {
       fecha: {
@@ -410,7 +448,6 @@ const crearVentasPorCliente = async (req, res, next) => {
       "cierreventas_id",
       ventasPorClienteData[0].sucursal_id
     );
-    // console.log("ultimo", ultimoId);
 
     // Mapear los datos para prepararlos para la inserción
     const ventasPorClienteBulk = ventasPorClienteData
@@ -430,12 +467,6 @@ const crearVentasPorCliente = async (req, res, next) => {
         }
       })
       .filter((venta) => venta !== null);
-
-    // cierreventas_id: venta.cierreventas_id,
-    // cliente: venta.cliente,
-    // fecha: venta.fecha,
-    // monto: parseFloat(venta.total_monto),
-    // sucursal_id: venta.sucursal_id,
 
     // Realizar la inserción en lotes (batch)
     const nuevasVentasPorCliente = await VentasCliente.bulkCreate(
@@ -548,67 +579,6 @@ const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
   }
 };
 
-// const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-//     // Convertir las fechas a objetos Date
-//     const fechaInicio = new Date(fechaDesde);
-//     const fechaFin = new Date(fechaHasta);
-
-//     // Incrementar la fecha final en un día para que incluya el rango completo
-//     fechaFin.setDate(fechaFin.getDate() + 1);
-
-//     // Define los filtros para la consulta de VentasArticulo
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaInicio, fechaFin],
-//       },
-//     };
-
-//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     // Realiza la consulta a la base de datos para obtener las ventas de artículos
-//     const ventasMontoConArticulo = await VentasArticulo.findAll({
-//       where: filters,
-//     });
-//     // Inicializa el monto total de la venta
-//     let montoTotalVenta = 0;
-//     const cantidades = [];
-
-//     // Recorre las ventas de artículos para calcular el monto total
-//     for (const ventaArticulo of ventasMontoConArticulo) {
-//       // Convertir ventaArticulo.articuloCodigo a string
-//       const articuloCodigoString = ventaArticulo.articuloCodigo.toString();
-
-//       // Busca el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
-//       const precioArticulo = await ArticuloPrecioTabla.findOne({
-//         include: [
-//           {
-//             model: ArticuloTabla,
-//             where: {
-//               codigobarra: articuloCodigoString, // Utiliza el valor convertido a string
-//             },
-//           },
-//         ],
-//       });
-//       // Si se encuentra el precio del artículo, se multiplica la cantidad de venta por el precio
-//       if (precioArticulo) {
-//         const cantidad = parseFloat(ventaArticulo.cantidad);
-//         const precio = parseFloat(precioArticulo.precio);
-//         montoTotalVenta += cantidad * precio;
-//         cantidades.push(cantidad); // Agregar la cantidad al array
-//       }
-//     }
-//     // Retorna el monto total de la venta
-//     res.json({ montoTotalVenta });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 const obtenerCantidadPorArticulo = async (
   fechaDesde,
   fechaHasta,
@@ -712,13 +682,15 @@ const crearVentasConArticulo = async (req, res, next) => {
           articuloCodigo: venta.codigo,
           articuloDescripcion: venta.descripcion,
           cantidad: parseFloat(venta.cantidad.toFixed(3)),
-          monto_lista: 0,
+          monto_lista: venta.preciolista,
         };
       } else {
         // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
         return null;
       }
     });
+
+    console.log("ventasbul", nuevasVentasConArticuloBulk)
 
     // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(

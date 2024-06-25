@@ -4,9 +4,9 @@ import * as ventasRindeController from '../../controllers/rinde/ventasRindeContr
 const ventasRindeRouter = Router();
 
 // Rutas para ventas
-ventasRindeRouter.get('/ventas/totales', ventasRindeController.obtenerVentasTotales);
+ventasRindeRouter.get('/ventas/totales', ventasRindeController.obtenerVentasTotales); 
 ventasRindeRouter.post('/ventas/filtradas', ventasRindeController.obtenerVentasFiltradas);
-ventasRindeRouter.post('/ventas/totales', ventasRindeController.crearVentaTotal);
+ventasRindeRouter.post('/ventas/totales', ventasRindeController.crearVentaTotal); // ruta crear VentasTotales
 ventasRindeRouter.get('/ventas/anuladas', ventasRindeController.obtenerVentasAnuladas);
 ventasRindeRouter.post('/ventas/anuladasfiltradas', ventasRindeController.obtenerVentasAnuladasFiltradas);
 ventasRindeRouter.post('/ventas/anuladas', ventasRindeController.crearVentasAnuladas);
@@ -18,7 +18,8 @@ ventasRindeRouter.post('/ventas/por_cliente_filtradas', ventasRindeController.ob
 ventasRindeRouter.post('/ventas/por_cliente', ventasRindeController.crearVentasPorCliente);
 ventasRindeRouter.get('/ventas/con_articulo', ventasRindeController.obtenerVentasConArticulo);
 ventasRindeRouter.post('/ventas/con_articulo_filtradas', ventasRindeController.obtenerVentasConArticuloFiltradas);
-ventasRindeRouter.post('/ventas/monto_con_articulo_filtradas', ventasRindeController.obtenerMontoVentasConArticuloFiltradas); 
+ventasRindeRouter.post('/ventas/monto_con_articulo_filtradas', ventasRindeController.obtenerMontoVentasConArticuloFiltradas); // `${apiUrl}/ventas/monto_con_articulo_filtradas`, ventas para rinde
 ventasRindeRouter.post('/ventas/con_articulo', ventasRindeController.crearVentasConArticulo);
 
 export default ventasRindeRouter;
+
