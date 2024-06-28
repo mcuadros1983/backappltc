@@ -21,5 +21,7 @@ ventasRindeRouter.post('/ventas/con_articulo_filtradas', ventasRindeController.o
 ventasRindeRouter.post('/ventas/monto_con_articulo_filtradas', ventasRindeController.obtenerMontoVentasConArticuloFiltradas); // `${apiUrl}/ventas/monto_con_articulo_filtradas`, ventas para rinde
 ventasRindeRouter.post('/ventas/con_articulo', ventasRindeController.crearVentasConArticulo);
 
+// ventas/monto_con_articulo_filtradas
+
 export default ventasRindeRouter;
 
