@@ -8,9 +8,9 @@ import Producto from "../../models/gmedias/productoModel.js";
 import Cobranza from "../../models/gmedias/cobranzaModel.js";
 import DetalleCuentaCorriente from "../../models/gmedias/detalleCuentaCorrienteModel.js";
 
-const obtenerClientes = async (req, res, next) => { 
+const obtenerClientes = async (req, res, next) => {
   try {
-    console.log("obteniendo clientes...")
+    console.log("Obteniendo clientes...");
     const clientes = await Cliente.findAll({
       include: [
         {
@@ -18,19 +18,20 @@ const obtenerClientes = async (req, res, next) => {
           as: "cuentaCorriente",
           include: [
             {
-              model: Cobranza, // Agrega la relación con Cobranza
-              as: "cobranzas", // Alias para Cobranza
+              model: Cobranza,
+              as: "cobranzas",
             },
           ],
         },
       ],
     });
+    console.log("Clientes obtenidos:", clientes);
     res.json(clientes);
   } catch (error) {
+    console.error("Error al obtener los clientes:", error);
     next(error);
   }
 };
-
 const obtenerClientePorId = async (req, res, next) => {
   const clienteId = req.params.clienteId;
 

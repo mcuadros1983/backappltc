@@ -1,30 +1,68 @@
+// import jwt from "jsonwebtoken";
+
+// const JWTAuth = (req, res, next) => {
+
+//   const token = req.cookies.jwtToken;
+//   try {
+//     if (!token) {
+//       res.clearCookie("jwtToken", {
+//         httpOnly: true,
+//         domain: "localhost",
+//         path: "/",
+//       });
+//       res.status(302).json({ message:"Usuario no autorizado" });
+//     } else {
+
+//       const user = jwt.verify(token, process.env.JWT_SECRET_TOKEN);
+
+//       req.user = user;
+//       next();
+//     }
+//   } catch (err) {
+//     res.clearCookie("jwtToken", {
+//       httpOnly: true,
+//       domain: "localhost",
+//       path: "/",
+//     });
+//     res.status(302).json({ redirect: "/" });
+//   }
+// };
+
+// export default JWTAuth;
+
+// jwtMiddleware.js
+
+// jwtMiddleware.js
 import jwt from "jsonwebtoken";
 
 const JWTAuth = (req, res, next) => {
-
   const token = req.cookies.jwtToken;
-  try {
-    if (!token) {
-      res.clearCookie("jwtToken", {
-        httpOnly: true,
-        domain: "localhost",
-        path: "/",
-      });
-      res.status(302).json({ message:"Usuario no autorizado" });
-    } else {
 
-      const user = jwt.verify(token, process.env.JWT_SECRET_TOKEN);
+  console.log(`Token recibido: ${token}`);
 
-      req.user = user;
-      next();
-    }
-  } catch (err) {
+  if (!token) {
+    console.log("No token provided");
     res.clearCookie("jwtToken", {
       httpOnly: true,
       domain: "localhost",
       path: "/",
     });
-    res.status(302).json({ redirect: "/" });
+    return res.status(401).json({ message: "Usuario no autorizado" });
+  }
+
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET_TOKEN);
+    console.log("Usuario autenticado:", user);
+    req.user = user;
+    next();
+  } catch (err) {
+    console.log("Error en la verificación del token:", err);
+    res.clearCookie("jwtToken", {
+      httpOnly: true,
+      domain: "localhost",
+      path: "/",
+    });
+    return res.status(401).json({ message: "Fallo en la autenticación del token" });
   }
 };
 
