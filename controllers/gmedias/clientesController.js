@@ -82,13 +82,25 @@ const obtenerCuentaCorrienteDeCliente = async (req, res, next) => {
   }
 };
 
-const crearCliente = async (req, res, next) => {
-  const { nombre, margen } = req.body;
+// const crearCliente = async (req, res, next) => {
+//   const { nombre, margen } = req.body;
 
+//   try {
+//     const nuevoCliente = margen
+//       ? await Cliente.create({ nombre, margen })
+//       : await Cliente.create({ nombre });
+//     res.json(nuevoCliente);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+const crearCliente = async (req, res, next) => {
   try {
-    const nuevoCliente = margen
-      ? await Cliente.create({ nombre, margen })
-      : await Cliente.create({ nombre });
+    // Crear el nuevo cliente utilizando los datos del cuerpo de la solicitud
+    const nuevoCliente = await Cliente.create(req.body);
+
+    // Enviar la respuesta con el nuevo cliente creado
     res.json(nuevoCliente);
   } catch (error) {
     next(error);
@@ -142,7 +154,7 @@ const eliminarCliente = async (req, res, next) => {
       where: { cliente_id: clienteId },
     });
 
-     if (cuentaCorriente) {
+    if (cuentaCorriente) {
       return respuesta.error(
         res,
         "No se puede eliminar el cliente. Hay operaciones asociadas al cliente.",

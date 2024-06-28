@@ -11,6 +11,7 @@ const Cliente = sequelize.define('Cliente', {
   },
   margen: {
     type: DataTypes.FLOAT,
+    defaultValue: 0, // Valor predeterminado para margen
   },
   // Otros campos del cliente
 },
