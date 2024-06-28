@@ -9,7 +9,7 @@ const clientesRouter = Router()
 // Rutas para clientes
 clientesRouter.get('/clientes', clientesController.obtenerClientes);
 clientesRouter.get('/clientes/:clienteId', clientesController.obtenerClientePorId);
-clientesRouter.post('/clientes', clientesController.crearCliente);
+clientesRouter.post('/clientes-new', clientesController.crearCliente);
 clientesRouter.put('/clientes/:clienteId', clientesController.actualizarCliente);
 clientesRouter.delete('/clientes/:clienteId', clientesController.eliminarCliente);
 
