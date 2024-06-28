@@ -96,6 +96,7 @@ const obtenerCuentaCorrienteDeCliente = async (req, res, next) => {
 // };
 
 const crearCliente = async (req, res, next) => {
+  console.log("creando clientes", req.body)
   try {
     // Crear el nuevo cliente utilizando los datos del cuerpo de la solicitud
     const nuevoCliente = await Cliente.create(req.body);
@@ -107,18 +108,42 @@ const crearCliente = async (req, res, next) => {
   }
 };
 
+// const actualizarCliente = async (req, res, next) => {
+//   const clienteId = req.params.clienteId;
+//   const { nombre } = req.body;
+
+//   try {
+//     const cliente = await Cliente.findByPk(clienteId);
+
+//     if (!cliente) {
+//       return respuesta.error(res, "Cliente no encontrado", 404);
+//     }
+
+//     cliente.nombre = nombre;
+//     await cliente.save();
+
+//     res.json(cliente);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const actualizarCliente = async (req, res, next) => {
   const clienteId = req.params.clienteId;
-  const { nombre } = req.body;
+  const { nombre, margen } = req.body;
 
   try {
     const cliente = await Cliente.findByPk(clienteId);
 
     if (!cliente) {
-      return respuesta.error(res, "Cliente no encontrado", 404);
+      return res.status(404).json({ error: "Cliente no encontrado" });
     }
 
     cliente.nombre = nombre;
+    if (margen !== undefined) {
+      cliente.margen = margen;
+    }
+
     await cliente.save();
 
     res.json(cliente);
