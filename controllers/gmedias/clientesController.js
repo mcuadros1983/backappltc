@@ -8,8 +8,9 @@ import Producto from "../../models/gmedias/productoModel.js";
 import Cobranza from "../../models/gmedias/cobranzaModel.js";
 import DetalleCuentaCorriente from "../../models/gmedias/detalleCuentaCorrienteModel.js";
 
-const obtenerClientes = async (req, res, next) => {
+const obtenerClientes = async (req, res, next) => { 
   try {
+    console.log("obteniendo clientes...")
     const clientes = await Cliente.findAll({
       include: [
         {
@@ -96,11 +97,11 @@ const obtenerCuentaCorrienteDeCliente = async (req, res, next) => {
 // };
 
 const crearCliente = async (req, res, next) => {
-  console.log("creando clientes", req.body)
   try {
+    console.log("creando clientes backend", req.body)
     // Crear el nuevo cliente utilizando los datos del cuerpo de la solicitud
     const nuevoCliente = await Cliente.create(req.body);
-
+    console.log("nuevoCliente backend",nuevoCliente)
     // Enviar la respuesta con el nuevo cliente creado
     res.json(nuevoCliente);
   } catch (error) {
