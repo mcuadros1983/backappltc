@@ -43,9 +43,14 @@ const JWTAuth = (req, res, next) => {
   if (!token) {
     console.log("No token provided");
     res.clearCookie("jwtToken", {
+      // httpOnly: true,
+      // domain: "localhost",
+      // path: "/",
       httpOnly: true,
-      domain: "localhost",
-      path: "/",
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      domain: process.env.NODE_ENV === 'production' ? process.env.REACT_APP_API : 'localhost',
+      path: '/',
     });
     return res.status(401).json({ message: "Usuario no autorizado" });
   }
@@ -58,9 +63,14 @@ const JWTAuth = (req, res, next) => {
   } catch (err) {
     console.log("Error en la verificación del token:", err);
     res.clearCookie("jwtToken", {
+      // httpOnly: true,
+      // domain: "localhost",
+      // path: "/",
       httpOnly: true,
-      domain: "localhost",
-      path: "/",
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      domain: process.env.NODE_ENV === 'production' ? process.env.REACT_APP_API : 'localhost',
+      path: '/',
     });
     return res.status(401).json({ message: "Fallo en la autenticación del token" });
   }

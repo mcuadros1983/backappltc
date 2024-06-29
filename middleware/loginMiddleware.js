@@ -52,9 +52,14 @@ const loginMiddleware = (req, res, next) => {
 
           // Configuración de la cookie con el token JWT
           res.cookie("jwtToken", token, {
+            // httpOnly: true,
+            // domain: "localhost",
+            // path: "/",
             httpOnly: true,
-            domain: "localhost",
-            path: "/",
+            secure: process.env.NODE_ENV === 'production', // Usa 'secure' en producción
+            sameSite: 'strict', // Configura el mismo sitio según tus necesidades
+            domain: process.env.NODE_ENV === 'production' ? process.env.REACT_APP_API : 'localhost',
+            path: '/',
 
           });
           res.json({ success: true, user: userWithToken });
