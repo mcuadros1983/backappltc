@@ -607,6 +607,46 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
 //   }
 // };
 
+// const crearCupones = async (req, res, next) => {
+//   try {
+//     const cuponesData = req.body;
+//     const fechasFormateadas = cuponesData.map(cupon => ({
+//       ...cupon,
+//       fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
+//     }));
+
+//     // Obtiene todos los cupones que podrían ser duplicados en una única consulta
+//     const posiblesDuplicados = await Cupon.findAll({
+//       where: {
+//         [Op.or]: fechasFormateadas.map(cupon => ({
+//           cuponId: cupon.id,
+//           sucursal_id: cupon.sucursal_id,
+//           fecha: cupon.fecha
+//         }))
+//       }
+//     });
+
+//     const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
+
+//     const cuponesParaCrear = fechasFormateadas.filter(cupon => {
+//       const clave = `${cupon.id}-${cupon.sucursal_id}-${cupon.fecha}`;
+//       return !duplicadosSet.has(clave);
+//     });
+
+//     const nuevosCupones = await Cupon.bulkCreate(cuponesParaCrear.map(cupon => ({
+//       ...cupon,
+//       cuponId: cupon.id,
+//       id: undefined
+//     })));
+
+//     res.status(201).json(nuevosCupones);
+//   } catch (error) {
+//     console.error("Error al crear los cupones:", error);
+//     next(error);
+//   }
+// };
+
+
 const crearCupones = async (req, res, next) => {
   try {
     const cuponesData = req.body;
@@ -615,16 +655,26 @@ const crearCupones = async (req, res, next) => {
       fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
     }));
 
-    // Obtiene todos los cupones que podrían ser duplicados en una única consulta
-    const posiblesDuplicados = await Cupon.findAll({
-      where: {
-        [Op.or]: fechasFormateadas.map(cupon => ({
-          cuponId: cupon.id,
-          sucursal_id: cupon.sucursal_id,
-          fecha: cupon.fecha
-        }))
-      }
-    });
+    // Crear un array de claves únicas para buscar posibles duplicados
+    const clavesUnicas = fechasFormateadas.map(cupon => ({
+      cuponId: cupon.id,
+      sucursal_id: cupon.sucursal_id,
+      fecha: cupon.fecha
+    }));
+
+    // Dividir las claves en lotes pequeños para reducir la carga de la consulta
+    const loteSize = 1000;
+    let posiblesDuplicados = [];
+
+    for (let i = 0; i < clavesUnicas.length; i += loteSize) {
+      const lote = clavesUnicas.slice(i, i + loteSize);
+      const duplicadosLote = await Cupon.findAll({
+        where: {
+          [Op.or]: lote
+        }
+      });
+      posiblesDuplicados = posiblesDuplicados.concat(duplicadosLote);
+    }
 
     const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
 
@@ -645,6 +695,7 @@ const crearCupones = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 // Controlador para obtener todos los sueldos

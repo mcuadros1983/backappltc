@@ -676,31 +676,27 @@ const crearVentasConArticulo = async (req, res, next) => {
       "ventaarticuloId",
       ventas[0].sucursal_id
     );
-    // console.log("ultimo", ultimoId);
+    console.log("ultimo------------------", ultimoId);
+
     const ventasConId = ventas.map((venta) => ({
       ...venta,
       ventaarticuloId: venta.id, // Asignamos el valor del id existente como cajaId
       id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
     }));
 
-    // Mapear los datos para prepararlos para la inserción
-    const nuevasVentasConArticuloBulk = ventasConId.map((venta) => {
-      if (venta.ventaarticuloId > ultimoId) {
-        return {
-          id: venta.id,
-          ventaarticuloId: venta.ventaarticuloId,
-          fecha: venta.fecha,
-          sucursal_id: venta.sucursal_id,
-          articuloCodigo: venta.codigo,
-          articuloDescripcion: venta.descripcion,
-          cantidad: parseFloat(venta.cantidad.toFixed(3)),
-          monto_lista: venta.preciolista,
-        };
-      } else {
-        // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
-        return null;
-      }
-    });
+    // Filtrar los datos para excluir aquellos con ventaarticuloId menor o igual a ultimoId
+    const nuevasVentasConArticuloBulk = ventasConId
+      .filter(venta => venta.ventaarticuloId > ultimoId)
+      .map((venta) => ({
+        id: venta.id,
+        ventaarticuloId: venta.ventaarticuloId,
+        fecha: venta.fecha,
+        sucursal_id: venta.sucursal_id,
+        articuloCodigo: venta.codigo,
+        articuloDescripcion: venta.descripcion,
+        cantidad: parseFloat(venta.cantidad.toFixed(3)),
+        monto_lista: venta.preciolista,
+      }));
 
     console.log("ventasbul", nuevasVentasConArticuloBulk);
 
