@@ -44,6 +44,85 @@ const obtenerVentasTotales = async (req, res, next) => {
 // import VentaTotal from '../models/VentaTotal';
 // import VentaArticulo from '../models/VentaArticulo';
 
+// const obtenerVentasFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     // Define los filtros para la consulta de ventas totales
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     // Realiza la consulta a la base de datos para obtener las ventas totales
+//     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
+//     console.log("ventasfiltradas----------------", ventasFiltradas);
+
+//     // Agrupa y suma las ventas por fecha y sucursal
+//     const ventasAgrupadas = {};
+//     ventasFiltradas.forEach((venta) => {
+//       const key = `${venta.fecha}-${venta.sucursal_id}`;
+//       if (!ventasAgrupadas[key]) {
+//         ventasAgrupadas[key] = {
+//           ...venta.dataValues,
+//           monto: parseFloat(venta.dataValues.monto),
+//         };
+//       } else {
+//         ventasAgrupadas[key].monto += parseFloat(venta.dataValues.monto);
+//       }
+//     });
+
+//     // Convierte el objeto de ventas agrupadas a un array
+//     const ventasAgrupadasArray = Object.values(ventasAgrupadas);
+//     console.log("ventasAgrupadasArray", ventasAgrupadasArray);
+
+//     // Define los filtros para la consulta de VentaArticulo
+//     const articuloFilters = {
+//       ...filters,
+//       articuloCodigo: {
+//         [Op.in]: ["1005", "1012", "1011"],
+//       },
+//     };
+
+//     // Realiza la consulta a la base de datos para obtener los artículos específicos
+//     const ventasConArticulos = await VentasArticulo.findAll({
+//       where: articuloFilters,
+//     });
+//     console.log("ventasConArticulos", ventasConArticulos);
+
+//     // Prepara un mapa para mantener los montos a restar por fecha
+//     const montosARestarPorFecha = {};
+
+//     // Calcula el monto a restar por fecha
+//     ventasConArticulos.forEach((venta) => {
+//       if (!montosARestarPorFecha[venta.fecha]) {
+//         montosARestarPorFecha[venta.fecha] = 0;
+//       }
+//       montosARestarPorFecha[venta.fecha] += venta.cantidad * venta.monto_lista;
+//     });
+//     console.log("montosARestarPorFecha", montosARestarPorFecha);
+
+//     // Resta el monto calculado de las ventas totales agrupadas por la fecha correspondiente
+//     ventasAgrupadasArray.forEach((venta) => {
+//       if (montosARestarPorFecha[venta.fecha]) {
+//         venta.monto -= montosARestarPorFecha[venta.fecha];
+//       }
+//     });
+
+//     console.log("ventasFiltradasFinal", ventasAgrupadasArray);
+
+//     res.json(ventasAgrupadasArray);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const obtenerVentasFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -62,7 +141,25 @@ const obtenerVentasFiltradas = async (req, res, next) => {
 
     // Realiza la consulta a la base de datos para obtener las ventas totales
     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
-    console.log("ventasfiltradas", ventasFiltradas)
+    // console.log("ventasfiltradas----------------", ventasFiltradas);
+
+    // Agrupa y suma las ventas por fecha y sucursal
+    const ventasAgrupadas = {};
+    ventasFiltradas.forEach((venta) => {
+      const key = `${venta.fecha}-${venta.sucursal_id}`;
+      if (!ventasAgrupadas[key]) {
+        ventasAgrupadas[key] = {
+          ...venta.dataValues,
+          monto: parseFloat(venta.dataValues.monto),
+        };
+      } else {
+        ventasAgrupadas[key].monto += parseFloat(venta.dataValues.monto);
+      }
+    });
+
+    // Convierte el objeto de ventas agrupadas a un array
+    const ventasAgrupadasArray = Object.values(ventasAgrupadas);
+    // console.log("ventasAgrupadasArray", ventasAgrupadasArray);
 
     // Define los filtros para la consulta de VentaArticulo
     const articuloFilters = {
@@ -76,30 +173,32 @@ const obtenerVentasFiltradas = async (req, res, next) => {
     const ventasConArticulos = await VentasArticulo.findAll({
       where: articuloFilters,
     });
-    console.log("ventasConArticulos", ventasConArticulos);
+    // console.log("ventasConArticulos", ventasConArticulos);
 
-    // Prepara un mapa para mantener los montos a restar por fecha
-    const montosARestarPorFecha = {};
+    // Prepara un mapa para mantener los montos a restar por fecha y sucursal
+    const montosARestarPorFechaYSucursal = {};
 
-    // Calcula el monto a restar por fecha
+    // Calcula el monto a restar por fecha y sucursal
     ventasConArticulos.forEach((venta) => {
-      if (!montosARestarPorFecha[venta.fecha]) {
-        montosARestarPorFecha[venta.fecha] = 0;
+      const key = `${venta.fecha}-${venta.sucursal_id}`;
+      if (!montosARestarPorFechaYSucursal[key]) {
+        montosARestarPorFechaYSucursal[key] = 0;
       }
-      montosARestarPorFecha[venta.fecha] += venta.cantidad * venta.monto_lista;
+      montosARestarPorFechaYSucursal[key] += venta.cantidad * venta.monto_lista;
     });
-    console.log("montosARestarPorFecha", montosARestarPorFecha);
+    // console.log("montosARestarPorFechaYSucursal", montosARestarPorFechaYSucursal);
 
-    // Resta el monto calculado de las ventas totales filtradas por la fecha correspondiente
-    ventasFiltradas.forEach((venta) => {
-      if (montosARestarPorFecha[venta.fecha]) {
-        venta.dataValues.monto -= montosARestarPorFecha[venta.fecha];
+    // Resta el monto calculado de las ventas totales agrupadas por la fecha y sucursal correspondiente
+    ventasAgrupadasArray.forEach((venta) => {
+      const key = `${venta.fecha}-${venta.sucursal_id}`;
+      if (montosARestarPorFechaYSucursal[key]) {
+        venta.monto -= montosARestarPorFechaYSucursal[key];
       }
     });
 
-    console.log("ventasfiltradas2", ventasFiltradas)
+    // console.log("ventasFiltradasFinal", ventasAgrupadasArray);
 
-    res.json(ventasFiltradas);
+    res.json(ventasAgrupadasArray);
   } catch (error) {
     next(error);
   }
