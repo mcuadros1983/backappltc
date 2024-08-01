@@ -10,6 +10,7 @@ import ArticuloTabla from "../../models/tablas/articuloModel.js";
 import { sequelize } from "../../config/database.js"; // Importa la conexión a la base de datos
 import VentasPorUsuario from "../../models/rinde/ventasPorUsuarioModel.js";
 import VentasArticulosKgPorUsuario from "../../models/rinde/ventasArticulosKgUsuarioModel.js";
+import CantidadTicketPorUsuario from "../../models/rinde/cantidadTicketPorUsuarioModel.js";
 
 const obtenerVentasTotales = async (req, res, next) => {
   try {
@@ -1011,6 +1012,90 @@ const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
   }
 };
 
+const crearCantidadTicketPorUsuario = async (req,res,next) => {
+  try {
+
+    const cantidadPorUsuario = req.body;
+    console.log("cantidadporusuario", req.body)
+
+    // Validar los datos recibidos
+    if (!Array.isArray(cantidadPorUsuario)) {
+      throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
+    }
+
+    // Obtener la sucursal_id de los datos
+    const sucursalId = cantidadPorUsuario[0].sucursal_id;
+
+  
+    const ultimoRegistro = await CantidadTicketPorUsuario.findOne({
+      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
+      where: { sucursal_id: sucursalId }
+    });
+
+    console.log("ultimoregistro", ultimoRegistro)
+
+    const ultimaFecha = ultimoRegistro.dataValues.ultimaFecha
+
+    console.log("ultimafecha", ultimaFecha)
+
+    // console.log("cantidad por s", cantidadPorUsuario)
+
+
+    // Obtener la fecha del último registro para la sucursal específica
+    // const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursal(sucursalId);
+
+    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
+    const nuevasVentasPorUsuario = cantidadPorUsuario.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+    console.log("nuevasventas", nuevasVentasPorUsuario)
+    // Mapear los datos para prepararlos para la inserción
+    const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
+      fecha: venta.fecha,
+      sucursal_id: venta.sucursal_id,
+      total_monto: parseFloat(venta.monto_total),
+      usuario_id: venta.usuario_id,
+      cantidad: venta.cantidad,
+    }));
+
+    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+    const nuevasCantidadPorUsuario = await CantidadTicketPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+
+    console.log("Registros de CantidadTicketPorUsuario creados exitosamente.");
+    res.status(201).json(nuevasCantidadPorUsuario);
+  } catch (error) {
+    console.error("Error al crear los registros de CantidadTicketPorUsuario:", error);
+    throw error;
+  }
+};
+
+const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId, usuarioId } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    if (usuarioId) {
+      filters.usuario_id = usuarioId;
+    }
+
+    const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll({ where: filters });
+    // const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll();
+    console.log("cantidades", cantidadesTicketFiltrados)
+    
+    res.json(cantidadesTicketFiltrados);
+  } catch (error) {
+    console.error("Error al obtener la cantidad de ticket por usuario filtradas:", error);
+    next(error);
+  }
+};
+
 export {
   obtenerVentasTotales,
   obtenerVentasFiltradas,
@@ -1036,4 +1121,6 @@ export {
   obtenerVentasPorUsuarioFiltradas,
   obtenerKgPorUsuarioFiltradas,
   obtenerKgPorSucursalFiltradas,
+  crearCantidadTicketPorUsuario,
+  obtenerCantidadTicketPorUsuario
 };

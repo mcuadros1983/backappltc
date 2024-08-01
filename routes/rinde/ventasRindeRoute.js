@@ -22,9 +22,11 @@ ventasRindeRouter.post('/ventas/monto_con_articulo_filtradas', ventasRindeContro
 ventasRindeRouter.post('/ventas/con_articulo', ventasRindeController.crearVentasConArticulo);
 ventasRindeRouter.post('/ventas/con_articulo_por_usuario', ventasRindeController.crearVentasPorUsuario);
 ventasRindeRouter.post('/ventas/con_articulo_kg_por_usuario', ventasRindeController.crearVentasArticulosKgPorUsuario);
+ventasRindeRouter.post('/ventas/con_cantidad-ticket-usuario', ventasRindeController.crearCantidadTicketPorUsuario);
 ventasRindeRouter.post('/ventas/por_usuario_filtradas', ventasRindeController.obtenerVentasPorUsuarioFiltradas);
 ventasRindeRouter.post('/ventas/kg_por_usuario_filtradas', ventasRindeController.obtenerKgPorUsuarioFiltradas);
 ventasRindeRouter.post('/ventas/kg_por_sucursal_filtradas', ventasRindeController.obtenerKgPorSucursalFiltradas);
+ventasRindeRouter.post('/ventas/cantidad_ticket_por_usuario', ventasRindeController.obtenerCantidadTicketPorUsuario);
 
 // ventas/monto_con_articulo_filtradas
 
