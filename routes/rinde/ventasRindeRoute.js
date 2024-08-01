@@ -20,6 +20,11 @@ ventasRindeRouter.get('/ventas/con_articulo', ventasRindeController.obtenerVenta
 ventasRindeRouter.post('/ventas/con_articulo_filtradas', ventasRindeController.obtenerVentasConArticuloFiltradas);
 ventasRindeRouter.post('/ventas/monto_con_articulo_filtradas', ventasRindeController.obtenerMontoVentasConArticuloFiltradas); // `${apiUrl}/ventas/monto_con_articulo_filtradas`, ventas para rinde
 ventasRindeRouter.post('/ventas/con_articulo', ventasRindeController.crearVentasConArticulo);
+ventasRindeRouter.post('/ventas/con_articulo_por_usuario', ventasRindeController.crearVentasPorUsuario);
+ventasRindeRouter.post('/ventas/con_articulo_kg_por_usuario', ventasRindeController.crearVentasArticulosKgPorUsuario);
+ventasRindeRouter.post('/ventas/por_usuario_filtradas', ventasRindeController.obtenerVentasPorUsuarioFiltradas);
+ventasRindeRouter.post('/ventas/kg_por_usuario_filtradas', ventasRindeController.obtenerKgPorUsuarioFiltradas);
+ventasRindeRouter.post('/ventas/kg_por_sucursal_filtradas', ventasRindeController.obtenerKgPorSucursalFiltradas);
 
 // ventas/monto_con_articulo_filtradas
 

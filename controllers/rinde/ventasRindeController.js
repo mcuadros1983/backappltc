@@ -8,6 +8,8 @@ import { Op } from "sequelize";
 import ArticuloPrecioTabla from "../../models/tablas/articuloPrecioModel.js";
 import ArticuloTabla from "../../models/tablas/articuloModel.js";
 import { sequelize } from "../../config/database.js"; // Importa la conexión a la base de datos
+import VentasPorUsuario from "../../models/rinde/ventasPorUsuarioModel.js";
+import VentasArticulosKgPorUsuario from "../../models/rinde/ventasArticulosKgUsuarioModel.js";
 
 const obtenerVentasTotales = async (req, res, next) => {
   try {
@@ -17,111 +19,6 @@ const obtenerVentasTotales = async (req, res, next) => {
     next(error);
   }
 };
-
-// const obtenerVentasFiltradas = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-//     // Define los filtros para la consulta
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//     };
-
-//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-//     // Realiza la consulta a la base de datos
-//     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
-//     res.json(ventasFiltradas);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// import { Op } from 'sequelize';
-// import VentaTotal from '../models/VentaTotal';
-// import VentaArticulo from '../models/VentaArticulo';
-
-// const obtenerVentasFiltradas = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     // Define los filtros para la consulta de ventas totales
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//     };
-
-//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     // Realiza la consulta a la base de datos para obtener las ventas totales
-//     const ventasFiltradas = await VentaTotal.findAll({ where: filters });
-//     console.log("ventasfiltradas----------------", ventasFiltradas);
-
-//     // Agrupa y suma las ventas por fecha y sucursal
-//     const ventasAgrupadas = {};
-//     ventasFiltradas.forEach((venta) => {
-//       const key = `${venta.fecha}-${venta.sucursal_id}`;
-//       if (!ventasAgrupadas[key]) {
-//         ventasAgrupadas[key] = {
-//           ...venta.dataValues,
-//           monto: parseFloat(venta.dataValues.monto),
-//         };
-//       } else {
-//         ventasAgrupadas[key].monto += parseFloat(venta.dataValues.monto);
-//       }
-//     });
-
-//     // Convierte el objeto de ventas agrupadas a un array
-//     const ventasAgrupadasArray = Object.values(ventasAgrupadas);
-//     console.log("ventasAgrupadasArray", ventasAgrupadasArray);
-
-//     // Define los filtros para la consulta de VentaArticulo
-//     const articuloFilters = {
-//       ...filters,
-//       articuloCodigo: {
-//         [Op.in]: ["1005", "1012", "1011"],
-//       },
-//     };
-
-//     // Realiza la consulta a la base de datos para obtener los artículos específicos
-//     const ventasConArticulos = await VentasArticulo.findAll({
-//       where: articuloFilters,
-//     });
-//     console.log("ventasConArticulos", ventasConArticulos);
-
-//     // Prepara un mapa para mantener los montos a restar por fecha
-//     const montosARestarPorFecha = {};
-
-//     // Calcula el monto a restar por fecha
-//     ventasConArticulos.forEach((venta) => {
-//       if (!montosARestarPorFecha[venta.fecha]) {
-//         montosARestarPorFecha[venta.fecha] = 0;
-//       }
-//       montosARestarPorFecha[venta.fecha] += venta.cantidad * venta.monto_lista;
-//     });
-//     console.log("montosARestarPorFecha", montosARestarPorFecha);
-
-//     // Resta el monto calculado de las ventas totales agrupadas por la fecha correspondiente
-//     ventasAgrupadasArray.forEach((venta) => {
-//       if (montosARestarPorFecha[venta.fecha]) {
-//         venta.monto -= montosARestarPorFecha[venta.fecha];
-//       }
-//     });
-
-//     console.log("ventasFiltradasFinal", ventasAgrupadasArray);
-
-//     res.json(ventasAgrupadasArray);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
 
 const obtenerVentasFiltradas = async (req, res, next) => {
   try {
@@ -813,6 +710,307 @@ const crearVentasConArticulo = async (req, res, next) => {
   }
 };
 
+// Función para obtener la fecha del último registro para una sucursal específica
+const obtenerUltimaFechaRegistroPorSucursal = async (sucursalId) => {
+  try {
+    const ultimoRegistro = await VentasPorUsuario.findOne({
+      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
+      where: { sucursal_id: sucursalId }
+    });
+
+    return ultimoRegistro ? ultimoRegistro.dataValues.ultimaFecha : null;
+  } catch (error) {
+    console.error("Error al obtener la fecha del último registro por sucursal:", error);
+    throw error;
+  }
+};
+
+const crearVentasPorUsuario = async (req, res, next) => {
+  try {
+    const ventasPorUsuarioData = req.body;
+
+    // Validar los datos recibidos
+    if (!Array.isArray(ventasPorUsuarioData)) {
+      throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
+    }
+
+    // Obtener la sucursal_id de los datos
+    const sucursalId = ventasPorUsuarioData[0].sucursal_id;
+
+    // Obtener la fecha del último registro para la sucursal específica
+    const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursal(sucursalId);
+
+    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
+    const nuevasVentasPorUsuario = ventasPorUsuarioData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+
+    // Mapear los datos para prepararlos para la inserción
+    const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
+      fecha: venta.fecha,
+      sucursal_id: venta.sucursal_id,
+      total_monto: parseFloat(venta.total_monto),
+      usuario_id: venta.usuario_id,
+    }));
+
+    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+    const nuevasVentasPorUsuarioCreadas = await VentasPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+
+    console.log("Registros de VentasPorUsuario creados exitosamente.");
+    res.status(201).json(nuevasVentasPorUsuarioCreadas);
+  } catch (error) {
+    console.error("Error al crear los registros de VentasPorUsuario:", error);
+    res.status(400).json({ error: error.message });
+    next(error);
+  }
+};
+
+// Función para obtener la fecha del último registro para una sucursal específica
+const obtenerUltimaFechaRegistroPorSucursalPorUsuario = async (sucursalId) => {
+  try {
+    const ultimoRegistro = await VentasArticulosKgPorUsuario.findOne({
+      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
+      where: { sucursal_id: sucursalId }
+    });
+
+    return ultimoRegistro ? ultimoRegistro.dataValues.ultimaFecha : null;
+  } catch (error) {
+    console.error("Error al obtener la fecha del último registro por sucursal:", error);
+    throw error;
+  }
+};
+
+const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
+  try {
+    const ventasArticulosData = req.body;
+
+    // Validar los datos recibidos
+    if (!Array.isArray(ventasArticulosData)) {
+      throw new Error("Los datos de ventas de artículos por usuario deben ser proporcionados en forma de array.");
+    }
+
+    // Obtener la sucursal_id de los datos
+    const sucursalId = ventasArticulosData[0].sucursal_id;
+
+    // Obtener la fecha del último registro para la sucursal específica
+    const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursalPorUsuario(sucursalId);
+
+    // console.log("ventasArticulosData", ventasArticulosData)
+
+    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
+    const nuevasVentasArticulos = ventasArticulosData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+
+    // console.log("nuevasventas", nuevasVentasArticulos)
+
+    // Agrupar los artículos por articulocodigo y sumar total_cantidadpeso
+    const articulosAgrupados = {};
+
+    nuevasVentasArticulos.forEach((venta) => {
+      const fecha = venta.fecha;
+      const sucursal_id = venta.sucursal_id;
+      const usuario_id = venta.usuario_id;
+
+      venta.articulos.forEach((articulo) => {
+        const key = `${fecha}-${sucursal_id}-${usuario_id}-${articulo.articulocodigo}`;
+
+        if (!articulosAgrupados[key]) {
+          articulosAgrupados[key] = {
+            articulocodigo: articulo.articulocodigo,
+            total_cantidadpeso: 0,
+            fecha,
+            sucursal_id,
+            usuario_id,
+          };
+        }
+
+        articulosAgrupados[key].total_cantidadpeso += parseFloat(articulo.total_cantidadpeso);
+      });
+    });
+
+    // Convertir el objeto de artículos agrupados a un array
+    const ventasArticulosBulk = Object.values(articulosAgrupados);
+    // console.log("ventasarticulos", ventasArticulosBulk)
+    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+    const nuevasVentasArticulosCreadas = await VentasArticulosKgPorUsuario.bulkCreate(ventasArticulosBulk);
+
+    console.log("Registros de VentasArticulosKgPorUsuario creados exitosamente.");
+    res.status(201).json(nuevasVentasArticulosCreadas);
+  } catch (error) {
+    console.error("Error al crear los registros de VentasArticulosKgPorUsuario:", error);
+    res.status(400).json({ error: error.message });
+    next(error);
+  }
+};
+
+const obtenerVentasPorUsuarioFiltradas = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    const ventasFiltradas = await VentasPorUsuario.findAll({ where: filters });
+    
+    res.json(ventasFiltradas);
+  } catch (error) {
+    console.error("Error al obtener las ventas por usuario filtradas:", error);
+    next(error);
+  }
+};
+
+// const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//       articulocodigo: {
+//         [Op.notIn]: ["1005", "1012", "1011"],
+//       },
+//     };
+
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({ where: filters });
+
+//     res.json(ventasFiltradas);
+//   } catch (error) {
+//     console.error("Error al obtener las ventas en kg por usuario filtradas:", error);
+//     next(error);
+//   }
+// };
+
+const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+      articulocodigo: {
+        [Op.notIn]: ["1005", "1012", "1011"],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({ where: filters });
+
+    // Agrupar los datos por fecha, usuario y sucursal
+    const agrupados = ventasFiltradas.reduce((acc, venta) => {
+      const key = `${venta.fecha}-${venta.usuario_id}-${venta.sucursal_id}`;
+      if (!acc[key]) {
+        acc[key] = {
+          fecha: venta.fecha,
+          usuario_id: venta.usuario_id,
+          sucursal_id: venta.sucursal_id,
+          total_kg: 0,
+        };
+      }
+      acc[key].total_kg += parseFloat(venta.total_cantidadpeso);
+      return acc;
+    }, {});
+
+    const ventasAgrupadas = Object.values(agrupados);
+
+    res.json({ ventasFiltradas, ventasAgrupadas });
+  } catch (error) {
+    console.error("Error al obtener las ventas en kg por usuario filtradas:", error);
+    next(error);
+  }
+};
+
+
+// const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta } = req.body;
+
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//       articulocodigo: {
+//         [Op.notIn]: ["1005", "1012", "1011"],
+//       },
+//     };
+
+//     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
+//       where: filters,
+//       attributes: [
+//         'fecha',
+//         'sucursal_id',
+//         'articulocodigo',
+//         [sequelize.fn('SUM', sequelize.col('total_cantidadpeso')), 'total_cantidadpeso']
+//       ],
+//       group: ['fecha', 'sucursal_id', 'articulocodigo']
+//     });
+
+//     res.json(ventasFiltradas);
+//   } catch (error) {
+//     console.error("Error al obtener las ventas en kg por sucursal filtradas:", error);
+//     next(error);
+//   }
+// };
+
+const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+      articulocodigo: {
+        [Op.notIn]: ["1005", "1012", "1011"],
+      },
+    };
+
+    const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
+      where: filters,
+      attributes: [
+        'fecha',
+        'sucursal_id',
+        'articulocodigo',
+        [sequelize.fn('SUM', sequelize.col('total_cantidadpeso')), 'total_cantidadpeso']
+      ],
+      group: ['fecha', 'sucursal_id', 'articulocodigo']
+    });
+
+    // Agrupar los datos por fecha y sucursal
+    const agrupados = ventasFiltradas.reduce((acc, venta) => {
+      const key = `${venta.fecha}-${venta.sucursal_id}`;
+      if (!acc[key]) {
+        acc[key] = {
+          fecha: venta.fecha,
+          sucursal_id: venta.sucursal_id,
+          total_kg: 0,
+        };
+      }
+      acc[key].total_kg += parseFloat(venta.total_cantidadpeso);
+      return acc;
+    }, {});
+
+    const ventasAgrupadas = Object.values(agrupados);
+
+    res.json({ ventasFiltradas, ventasAgrupadas });
+  } catch (error) {
+    console.error("Error al obtener las ventas en kg por sucursal filtradas:", error);
+    next(error);
+  }
+};
+
 export {
   obtenerVentasTotales,
   obtenerVentasFiltradas,
@@ -831,4 +1029,11 @@ export {
   obtenerVentasConArticuloFiltradas,
   obtenerMontoVentasConArticuloFiltradas,
   crearVentasConArticulo,
+  obtenerUltimaFechaRegistroPorSucursal,
+  crearVentasPorUsuario,
+  obtenerUltimaFechaRegistroPorSucursalPorUsuario,
+  crearVentasArticulosKgPorUsuario,
+  obtenerVentasPorUsuarioFiltradas,
+  obtenerKgPorUsuarioFiltradas,
+  obtenerKgPorSucursalFiltradas,
 };
