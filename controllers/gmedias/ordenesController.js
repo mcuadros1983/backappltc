@@ -40,13 +40,6 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
     const { fechaDesde, fechaHasta, sucursalId, categoria, subcategoria } =
       req.body;
 
-    // Convertir las fechas a objetos Date
-    // const fechaInicio = new Date(fechaDesde);
-    // const fechaFin = new Date(fechaHasta);
-
-    // Incrementar la fecha final en un día para que incluya el rango completo
-    // fechaFin.setDate(fechaFin.getDate() + 1);
-
     // Define los filtros para la consulta
     const filters = {
       fecha: {
@@ -63,8 +56,6 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
       filters.categoria = categoria;
     }
 
-    // Si se proporciona la subcategoría, agrega el filtro por subcategoría de producto
-    // console.log("sub", subcategoria);
     if (subcategoria) {
       filters["$Productos.subcategoria$"] = subcategoria;
     }

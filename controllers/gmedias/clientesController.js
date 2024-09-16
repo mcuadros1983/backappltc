@@ -10,7 +10,7 @@ import DetalleCuentaCorriente from "../../models/gmedias/detalleCuentaCorrienteM
 
 const obtenerClientes = async (req, res, next) => {
   try {
-    console.log("Obteniendo clientes...");
+    // console.log("Obteniendo clientes...");
     const clientes = await Cliente.findAll({
       include: [
         {
@@ -25,7 +25,7 @@ const obtenerClientes = async (req, res, next) => {
         },
       ],
     });
-    console.log("Clientes obtenidos:", clientes);
+    // console.log("Clientes obtenidos:", clientes);
     res.json(clientes);
   } catch (error) {
     console.error("Error al obtener los clientes:", error);
@@ -84,51 +84,16 @@ const obtenerCuentaCorrienteDeCliente = async (req, res, next) => {
   }
 };
 
-// const crearCliente = async (req, res, next) => {
-//   const { nombre, margen } = req.body;
-
-//   try {
-//     const nuevoCliente = margen
-//       ? await Cliente.create({ nombre, margen })
-//       : await Cliente.create({ nombre });
-//     res.json(nuevoCliente);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 const crearCliente = async (req, res, next) => {
   try {
-    console.log("creando clientes backend", req.body)
-    // Crear el nuevo cliente utilizando los datos del cuerpo de la solicitud
+
     const nuevoCliente = await Cliente.create(req.body);
-    console.log("nuevoCliente backend",nuevoCliente)
-    // Enviar la respuesta con el nuevo cliente creado
+
     res.json(nuevoCliente);
   } catch (error) {
     next(error);
   }
 };
-
-// const actualizarCliente = async (req, res, next) => {
-//   const clienteId = req.params.clienteId;
-//   const { nombre } = req.body;
-
-//   try {
-//     const cliente = await Cliente.findByPk(clienteId);
-
-//     if (!cliente) {
-//       return respuesta.error(res, "Cliente no encontrado", 404);
-//     }
-
-//     cliente.nombre = nombre;
-//     await cliente.save();
-
-//     res.json(cliente);
-//   } catch (error) {
-//     next(error);
-//   }
-// };
 
 const actualizarCliente = async (req, res, next) => {
   const clienteId = req.params.clienteId;

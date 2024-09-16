@@ -102,11 +102,7 @@ const obtenerCuentaCorrientePorIdCliente = async (cliente_id) => {
     const cuentaCorriente = await CuentaCorriente.findOne({
       where: { cliente_id },
     });
-    // const cuentaCorriente = await CuentaCorriente.findByPk(cuentaCorrienteId, {
-    //   include: [Cliente, DetalleCuenta],
-    // });
-
-    if (!cuentaCorriente) {
+      if (!cuentaCorriente) {
       return;
     }
 

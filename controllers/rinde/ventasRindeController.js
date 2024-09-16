@@ -673,7 +673,7 @@ const crearVentasConArticulo = async (req, res, next) => {
       "ventaarticuloId",
       ventas[0].sucursal_id
     );
-    console.log("ultimo------------------", ultimoId);
+    // console.log("ultimo------------------", ultimoId);
 
     const ventasConId = ventas.map((venta) => ({
       ...venta,
@@ -695,7 +695,7 @@ const crearVentasConArticulo = async (req, res, next) => {
         monto_lista: venta.preciolista,
       }));
 
-    console.log("ventasbul", nuevasVentasConArticuloBulk);
+    // console.log("ventasbul", nuevasVentasConArticuloBulk);
 
     // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
@@ -864,32 +864,6 @@ const obtenerVentasPorUsuarioFiltradas = async (req, res, next) => {
   }
 };
 
-// const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//       articulocodigo: {
-//         [Op.notIn]: ["1005", "1012", "1011"],
-//       },
-//     };
-
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({ where: filters });
-
-//     res.json(ventasFiltradas);
-//   } catch (error) {
-//     console.error("Error al obtener las ventas en kg por usuario filtradas:", error);
-//     next(error);
-//   }
-// };
-
 const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -932,38 +906,6 @@ const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
     next(error);
   }
 };
-
-
-// const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta } = req.body;
-
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//       articulocodigo: {
-//         [Op.notIn]: ["1005", "1012", "1011"],
-//       },
-//     };
-
-//     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
-//       where: filters,
-//       attributes: [
-//         'fecha',
-//         'sucursal_id',
-//         'articulocodigo',
-//         [sequelize.fn('SUM', sequelize.col('total_cantidadpeso')), 'total_cantidadpeso']
-//       ],
-//       group: ['fecha', 'sucursal_id', 'articulocodigo']
-//     });
-
-//     res.json(ventasFiltradas);
-//   } catch (error) {
-//     console.error("Error al obtener las ventas en kg por sucursal filtradas:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
   try {
@@ -1016,7 +958,7 @@ const crearCantidadTicketPorUsuario = async (req,res,next) => {
   try {
 
     const cantidadPorUsuario = req.body;
-    console.log("cantidadporusuario", req.body)
+    // console.log("cantidadporusuario", req.body)
 
     // Validar los datos recibidos
     if (!Array.isArray(cantidadPorUsuario)) {
@@ -1032,21 +974,11 @@ const crearCantidadTicketPorUsuario = async (req,res,next) => {
       where: { sucursal_id: sucursalId }
     });
 
-    console.log("ultimoregistro", ultimoRegistro)
+    // console.log("ultimoregistro", ultimoRegistro)
 
     const ultimaFecha = ultimoRegistro.dataValues.ultimaFecha
-
-    console.log("ultimafecha", ultimaFecha)
-
-    // console.log("cantidad por s", cantidadPorUsuario)
-
-
-    // Obtener la fecha del último registro para la sucursal específica
-    // const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursal(sucursalId);
-
-    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
     const nuevasVentasPorUsuario = cantidadPorUsuario.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
-    console.log("nuevasventas", nuevasVentasPorUsuario)
+    // console.log("nuevasventas", nuevasVentasPorUsuario)
     // Mapear los datos para prepararlos para la inserción
     const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
       fecha: venta.fecha,
@@ -1087,7 +1019,7 @@ const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
 
     const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll({ where: filters });
     // const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll();
-    console.log("cantidades", cantidadesTicketFiltrados)
+    // console.log("cantidades", cantidadesTicketFiltrados)
     
     res.json(cantidadesTicketFiltrados);
   } catch (error) {

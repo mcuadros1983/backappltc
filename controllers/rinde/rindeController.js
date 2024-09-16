@@ -342,12 +342,6 @@ const obtenerInventariosFiltrados = async (req, res, next) => {
 
     // Si se proporciona la fecha de inicio y la fecha de fin, agrega el filtro por fecha
     if (fechaDesde && fechaHasta) {
-      // Convertir las fechas a objetos Date
-      // const fechaInicio = new Date(fechaDesde);
-      // const fechaFin = new Date(fechaHasta);
-
-      // Incrementar la fecha final en un día para que incluya el rango completo
-      // fechaFin.setDate(fechaFin.getDate() + 1);
 
       // Agregar el filtro de fecha al objeto de filtros
       filters.fecha = {
@@ -391,13 +385,6 @@ const obtenerMontoInventariosFiltrados = async (req, res, next) => {
 
     // Si se proporciona la fecha de inicio y la fecha de fin, agrega el filtro por fecha
     if (fechaDesde && fechaHasta) {
-      // Convertir las fechas a objetos Date
-      // const fechaInicio = new Date(fechaDesde);
-      // const fechaFin = new Date(fechaHasta);
-
-      // Incrementar la fecha final en un día para que incluya el rango completo
-      // fechaFin.setDate(fechaFin.getDate() + 1);
-
       // Agregar el filtro de fecha al objeto de filtros
       filters.fecha = {
         [Op.between]: [fechaDesde, fechaHasta],
@@ -444,70 +431,6 @@ const obtenerMontoInventariosFiltrados = async (req, res, next) => {
   }
 };
 
-// const obtenerMontoInventariosFiltrados = async (req, res, next) => {
-//   try {
-//     let { sucursalId } = req.body;
-//     let { fechaDesde, fechaHasta } = req.body;
-//     const subcategoriasExcluidas = [9, 13, 16, 17];
-
-//     let filters = {};
-
-//     // Filtros por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     // Filtros por fecha
-//     if (fechaDesde && fechaHasta) {
-//       const fechaInicio = new Date(fechaDesde);
-//       const fechaFin = new Date(fechaHasta);
-//       fechaFin.setDate(fechaFin.getDate() + 1);
-//       filters.fecha = {
-//         [Op.between]: [fechaInicio, fechaFin],
-//       };
-//     }
-
-//     // Consultar todos los inventarios con los filtros definidos
-//     const inventarios = await Inventario.findAll({
-//       where: filters,
-//       include: [{
-//         model: InventarioArticulo,
-//         through: {
-//           model: InventarioInventarioArticulo,
-//           attributes: []
-//         }
-//       }]
-//     });
-
-//     // Calcular el monto total de cada inventario, excluyendo ciertas subcategorías
-//     for (const inventario of inventarios) {
-//       let montoTotalInventario = 0;
-//       for (const inventarioArticulo of inventario.Inventario_articulos) {
-//         // Obtener detalles del artículo usando la API
-//         const response = await fetch(`http://localhost:4000/obtenerarticulos/${inventarioArticulo.articulocodigo}`);
-//         const articulo = await response.json();
-
-//         // Continuar si el artículo está en una subcategoría excluida
-//         if (subcategoriasExcluidas.includes(articulo.subcategoria_id)) {
-//           continue;
-//         }
-
-//         // Sumar el precio * cantidad si el artículo no está excluido
-//         if (articulo.precio !== null) {
-//           montoTotalInventario += articulo.precio * inventarioArticulo.cantidadpeso;
-//         }
-//       }
-//       // Agregar el monto total al objeto del inventario
-//       inventario.total = montoTotalInventario;
-//     }
-
-//     // Enviar la respuesta con los inventarios
-//     res.status(200).json(inventarios);
-//   } catch (error) {
-//     console.error("Error al listar los inventarios filtrados:", error);
-//     next(error);
-//   }
-// };
 
 const listarInventariosArticulos = async (req, res, next) => {
   try {
@@ -570,82 +493,6 @@ const eliminarInventario = async (req, res, next) => {
     next(error);
   }
 };
-
-// const crearRinde = async (req, res, next) => {
-//   try {
-//     // Extraer los datos del cuerpo de la solicitud
-//     const {
-//       fechaDesde,
-//       fechaHasta,
-//       mes,
-//       anio,
-//       sucursal_id,
-//       totalVentas,
-//       totalMovimientos,
-//       totalInventarioInicial,
-//       totalInventarioFinal,
-//       ingresoEsperadoNovillo,
-//       ingresoEsperadoVaca,
-//       ingresoEsperadoCerdo,
-//       totalKgNovillo,
-//       totalKgVaca,
-//       totalKgCerdo,
-//       rinde,
-//       datosAjuste,
-//     } = req.body;
-
-//     // Función para formatear un valor numérico a dos decimales
-//     const formatToTwoDecimals = (value) => {
-//       if (value && !isNaN(value)) {
-//         return parseFloat(value).toFixed(2);
-//       }
-//       return 0; // Si el valor no existe o no es un número, retornar null
-//     };
-
-//     // Formatear los campos numéricos para que tengan solo dos decimales
-//     const formattedTotalVentas = formatToTwoDecimals(totalVentas);
-//     const formattedTotalMovimientos = formatToTwoDecimals(totalMovimientos);
-//     const formattedTotalInventarioInicial = formatToTwoDecimals(
-//       totalInventarioInicial
-//     );
-//     const formattedTotalInventarioFinal =
-//       formatToTwoDecimals(totalInventarioFinal);
-//     const formattedRinde = formatToTwoDecimals(rinde);
-
-//     // Crear el registro de Rinde en la base de datos
-//     const nuevoRinde = await Rinde.create({
-//       fechaDesde,
-//       fechaHasta,
-//       mes,
-//       anio,
-//       sucursal_id,
-//       totalVentas: formattedTotalVentas,
-//       totalMovimientos: formattedTotalMovimientos,
-//       totalInventarioInicial: formattedTotalInventarioInicial,
-//       totalInventarioFinal: formattedTotalInventarioFinal,
-//       ingresoEsperadoNovillo,
-//       ingresoEsperadoVaca,
-//       ingresoEsperadoCerdo,
-//       totalKgNovillo,
-//       totalKgVaca,
-//       totalKgCerdo,
-//       rinde: formattedRinde,
-//     });
-
-//     if (datosAjuste) {
-//       const AjusteRinde = await AjusteRinde.create(datosAjuste);
-//     }
-
-//     // Responder con el nuevo registro creado
-//     res
-//       .status(201)
-//       .json({ mensaje: "Rinde creado satisfactoriamente", rinde: nuevoRinde });
-//   } catch (error) {
-//     // Manejar los errores y responder con un mensaje de error
-//     console.error("Error al crear el registro de Rinde:", error);
-//     next(error);
-//   }
-// };
 
 const crearRinde = async (req, res, next) => {
   try {
@@ -971,14 +818,6 @@ const obtenerSumaKgMediasPorSubcategoria = async (
   sucursalId
 ) => {
   try {
-    // Convertir las fechas a objetos Date
-    // const fechaInicio = new Date(fechaDesde);
-    // const fechaFin = new Date(fechaHasta);
-
-    // Incrementar la fecha final en un día para que incluya el rango completo
-    // fechaFin.setDate(fechaFin.getDate() + 1);
-
-    // Define los filtros para la consulta
     const filters = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],
@@ -1173,14 +1012,7 @@ const obtenerKgPorProductoMovimientosFiltrados = async (
   sucursalId
 ) => {
   try {
-    // Convertir las fechas a objetos Date
-    // const fechaInicio = new Date(fechaDesde);
-    // const fechaFin = new Date(fechaHasta);
 
-    // Incrementar la fecha final en un día para que incluya el rango completo
-    // fechaFin.setDate(fechaFin.getDate() + 1);
-
-    // Define los filtros para la consulta
     const filters = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],

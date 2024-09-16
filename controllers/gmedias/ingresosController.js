@@ -41,7 +41,7 @@ const obtenerIngreso = async (req, res, next) => {
 
 const crearIngreso = async (req, res, next) => {
   const { products, cantidad_total, peso_total, categoria } = req.body;
-console.log("datos", products, cantidad_total, peso_total, categoria)
+// console.log("datos", products, cantidad_total, peso_total, categoria)
   try {
     // Verificar si se recibieron productos
     if (!products || !Array.isArray(products) || products.length === 0) {

@@ -13,19 +13,6 @@ import {
   DB_DATABASE,
 } from "./config.js";
 
-// const sequelize = new Sequelize(
-//   "railway",
-//   "postgres",
-//   "SREHCLpjnkmHsHuwyqiZGugPMlwmCVwO",
-//   {
-//     host: "roundhouse.proxy.rlwy.net",
-//     port: 14155,
-//     dialect: "postgres",
-
-//     // Puedes agregar más configuraciones aquí según sea necesario
-//   }
-// );
-
 const sequelize = new Sequelize(DB_DATABASE,DB_USER, DB_PASSWORD, {
   host: DB_HOST,
   port: DB_PORT,

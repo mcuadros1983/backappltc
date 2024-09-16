@@ -108,8 +108,7 @@ const crearVenta = async (req, res, next) => {
 
 
     if (formaPago_id == 2) {
-      // Reemplaza 1 con el ID correcto de "cuenta-corriente"
-      // Crear o actualizar la cuenta corriente del cliente
+
       let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(
         cliente_id
       );

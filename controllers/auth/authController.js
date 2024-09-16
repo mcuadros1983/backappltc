@@ -37,10 +37,10 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { usuario, password } = req.body;
-    console.log("credenciales", usuario, password);
+    // console.log("credenciales", usuario, password);
 
     const user = await Usuario.findOne({ where: { usuario } });
-    console.log("userfound", user);
+    // console.log("userfound", user);
 
     if (!user) {
       return res.status(401).json({ error: "Credenciales inválidas" });

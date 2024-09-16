@@ -521,10 +521,6 @@ const crearProductosDesdeExcel = async (req, res, next) => {
           const newData = verificarYReemplazarVacios({
             categoria_producto: row.categoria,
             subcategoria:row.subcategoria,
-            // orden_id: row.orden_id,
-            // sucursal_id: row.sucursal_id,
-            // cliente_id: row.cliente_id,
-            // venta_id: row.venta_id,
             ingreso_id,
             codigo_de_barra,
             num_media,
@@ -570,8 +566,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
 
       // Crea la venta
       if (formaPago == 2) {
-        // Lógica para cuenta corriente
-        // Crea o actualiza la cuenta corriente
+
         let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(destino);
         if (!cuentaCorriente) {
           cuentaCorriente = await crearCuentaCorriente(destino, montoTotal);

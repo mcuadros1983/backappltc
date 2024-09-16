@@ -151,48 +151,6 @@ const obtenerGastosFiltrados = async (req, res, next) => {
   }
 };
 
-// const crearGastos = async (req, res, next) => {
-//   try {
-//     const gastosData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const gastosFiltrados = await Promise.all(
-//       gastosData.map(async (gasto) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(gasto.fecha),
-//           "yyyy-MM-dd"
-//         ); // Asegurar formato DATEONLY
-//         const existeGasto = await Gasto.findOne({
-//           where: {
-//             gastoId: gasto.id,
-//             sucursal_id: gasto.sucursal_id,
-//             fecha: fechaFormatoDateOnly, // Comprobar si ya existe un gasto con la misma fecha
-//           },
-//         });
-//         return existeGasto ? null : gasto;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const gastosParaCrear = gastosFiltrados.filter((gasto) => gasto !== null);
-
-//     // Modificar los datos de los gastos para asignar gasto.id a gastoId
-//     const gastosConId = gastosParaCrear.map((gasto) => ({
-//       ...gasto,
-//       gastoId: gasto.id, // Asignar gasto.id a gastoId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los gastos en la base de datos
-//     const nuevosGastos = await Gasto.bulkCreate(gastosConId);
-
-//     res.status(201).json(nuevosGastos);
-//   } catch (error) {
-//     console.error("Error al crear los gastos:", error);
-//     next(error);
-//   }
-// };
-
 const crearGastos = async (req, res, next) => {
   try {
     const gastosData = req.body;
@@ -288,52 +246,6 @@ const obtenerRetirosFiltrados = async (req, res, next) => {
   }
 };
 
-// const crearRetiros = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de los retiros desde el cuerpo de la solicitud
-//     const retirosData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const retirosFiltrados = await Promise.all(
-//       retirosData.map(async (retiro) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(retiro.fecha),
-//           "yyyy-MM-dd"
-//         ); // Asegurar formato DATEONLY
-//         const existeRetiro = await Retiro.findOne({
-//           where: {
-//             retiroId: retiro.id,
-//             sucursal_id: retiro.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeRetiro ? null : retiro;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const retirosParaCrear = retirosFiltrados.filter(
-//       (retiro) => retiro !== null
-//     );
-
-//     // Iterar sobre los datos de las retiros y asignar el id como retiroId
-//     const retirosConId = retirosParaCrear.map((retiro) => ({
-//       ...retiro,
-//       retiroId: retiro.id, // Asignar el valor del id existente como retiroId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los retiros en la base de datos
-//     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
-
-//     // Retornar los nuevos retiros creados como respuesta
-//     res.status(201).json(nuevosRetiros);
-//   } catch (error) {
-//     console.error("Error al crear los retiros:", error);
-//     next(error);
-//   }
-// };
-
 const crearRetiros = async (req, res, next) => {
   try {
     const retirosData = req.body;
@@ -428,47 +340,6 @@ const obtenerValesFiltrados = async (req, res, next) => {
   }
 };
 
-// const crearVales = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de los vales desde el cuerpo de la solicitud
-//     const valesData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const valesFiltrados = await Promise.all(
-//       valesData.map(async (vale) => {
-//         const fechaFormatoDateOnly = format(new Date(vale.fecha), "yyyy-MM-dd"); // Asegurar formato DATEONLY
-//         const existeVale = await Vale.findOne({
-//           where: {
-//             valeId: vale.id,
-//             sucursal_id: vale.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeVale ? null : vale;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const valesParaCrear = valesFiltrados.filter((vale) => vale !== null);
-
-//     // Iterar sobre los datos de los vales y asignar el id como valeId
-//     const valesConId = valesParaCrear.map((vale) => ({
-//       ...vale,
-//       valeId: vale.id, // Asignar el valor del id existente como valeId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los vales en la base de datos
-//     const nuevosVales = await Vale.bulkCreate(valesConId);
-
-//     // Retornar los nuevos vales creados como respuesta
-//     res.status(201).json(nuevosVales);
-//   } catch (error) {
-//     console.error("Error al crear los vales:", error);
-//     next(error);
-//   }
-// };
-
 const crearVales = async (req, res, next) => {
   try {
     const valesData = req.body;
@@ -560,92 +431,6 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
     next(error);
   }
 };
-
-// Controlador para crear múltiples cupones
-// const crearCupones = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de los cupones desde el cuerpo de la solicitud
-//     const cuponesData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const cuponesFiltrados = await Promise.all(
-//       cuponesData.map(async (cupon) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(cupon.fecha),
-//           "yyyy-MM-dd"
-//         );
-//          // Asegurar formato DATEONLY
-//         const existeCupon = await Cupon.findOne({
-//           where: {
-//             cuponId: cupon.id,
-//             sucursal_id: cupon.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeCupon ? null : cupon;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const cuponesParaCrear = cuponesFiltrados.filter((cupon) => cupon !== null);
-
-//     // Iterar sobre los datos de los cupones y asignar el id como cuponId
-//     const cuponesConId = cuponesParaCrear.map((cupon) => ({
-//       ...cupon,
-//       cuponId: cupon.id, // Asignar el valor del id existente como cuponId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los cupones en la base de datos
-//     const nuevosCupones = await Cupon.bulkCreate(cuponesConId);
-
-//     // Retornar los nuevos cupones creados como respuesta
-//     res.status(201).json(nuevosCupones);
-//   } catch (error) {
-//     console.error("Error al crear los cupones:", error);
-//     next(error);
-//   }
-// };
-
-// const crearCupones = async (req, res, next) => {
-//   try {
-//     const cuponesData = req.body;
-//     const fechasFormateadas = cuponesData.map(cupon => ({
-//       ...cupon,
-//       fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
-//     }));
-
-//     // Obtiene todos los cupones que podrían ser duplicados en una única consulta
-//     const posiblesDuplicados = await Cupon.findAll({
-//       where: {
-//         [Op.or]: fechasFormateadas.map(cupon => ({
-//           cuponId: cupon.id,
-//           sucursal_id: cupon.sucursal_id,
-//           fecha: cupon.fecha
-//         }))
-//       }
-//     });
-
-//     const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
-
-//     const cuponesParaCrear = fechasFormateadas.filter(cupon => {
-//       const clave = `${cupon.id}-${cupon.sucursal_id}-${cupon.fecha}`;
-//       return !duplicadosSet.has(clave);
-//     });
-
-//     const nuevosCupones = await Cupon.bulkCreate(cuponesParaCrear.map(cupon => ({
-//       ...cupon,
-//       cuponId: cupon.id,
-//       id: undefined
-//     })));
-
-//     res.status(201).json(nuevosCupones);
-//   } catch (error) {
-//     console.error("Error al crear los cupones:", error);
-//     next(error);
-//   }
-// };
-
 
 const crearCupones = async (req, res, next) => {
   try {
@@ -745,53 +530,6 @@ const obtenerSueldosFiltrados = async (req, res, next) => {
   }
 };
 
-// // Controlador para crear múltiples sueldos
-// const crearSueldos = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de los sueldos desde el cuerpo de la solicitud
-//     const sueldosData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const sueldosFiltrados = await Promise.all(
-//       sueldosData.map(async (sueldo) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(sueldo.fecha),
-//           "yyyy-MM-dd"
-//         ); // Asegurar formato DATEONLY
-//         const existeSueldo = await Sueldo.findOne({
-//           where: {
-//             sueldoId: sueldo.id,
-//             sucursal_id: sueldo.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeSueldo ? null : sueldo;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const sueldosParaCrear = sueldosFiltrados.filter(
-//       (sueldo) => sueldo !== null
-//     );
-
-//     // Iterar sobre los datos de los sueldos y asignar el id como sueldoId
-//     const sueldosConId = sueldosParaCrear.map((sueldo) => ({
-//       ...sueldo,
-//       sueldoId: sueldo.id, // Asignar el valor del id existente como sueldoId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los sueldos en la base de datos
-//     const nuevosSueldos = await Sueldo.bulkCreate(sueldosConId);
-
-//     // Retornar los nuevos sueldos creados como respuesta
-//     res.status(201).json(nuevosSueldos);
-//   } catch (error) {
-//     console.error("Error al crear los sueldos:", error);
-//     next(error);
-//   }
-// };
-
 const crearSueldos = async (req, res, next) => {
   try {
     const sueldosData = req.body;
@@ -882,53 +620,6 @@ const obtenerIngresosFiltrados = async (req, res, next) => {
     next(error);
   }
 };
-
-// // Controlador para crear múltiples ingresos
-// const crearIngresos = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de los ingresos desde el cuerpo de la solicitud
-//     const ingresosData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const ingresosFiltrados = await Promise.all(
-//       ingresosData.map(async (ingreso) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(ingreso.fecha),
-//           "yyyy-MM-dd"
-//         ); // Asegurar formato DATEONLY
-//         const existeIngreso = await Ingreso.findOne({
-//           where: {
-//             ingresoId: ingreso.id,
-//             sucursal_id: ingreso.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeIngreso ? null : ingreso;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const ingresosParaCrear = ingresosFiltrados.filter(
-//       (ingreso) => ingreso !== null
-//     );
-
-//     // Iterar sobre los datos de los ingresos y asignar el id como ingresoId
-//     const ingresosConId = ingresosParaCrear.map((ingreso) => ({
-//       ...ingreso,
-//       ingresoId: ingreso.id, // Asignar el valor del id existente como ingresoId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear los ingresos en la base de datos
-//     const nuevosIngresos = await Ingreso.bulkCreate(ingresosConId);
-
-//     // Retornar los nuevos ingresos creados como respuesta
-//     res.status(201).json(nuevosIngresos);
-//   } catch (error) {
-//     console.error("Error al crear los ingresos:", error);
-//     next(error);
-//   }
-// };
 
 const crearIngresos = async (req, res, next) => {
   try {
@@ -1023,63 +714,6 @@ const obtenerVtasctasctesFiltradas = async (req, res, next) => {
     next(error);
   }
 };
-
-// // Controlador para crear múltiples ventas a cuenta corriente
-// const crearVtasctasctes = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de las ventas a cuenta corriente desde el cuerpo de la solicitud
-//     const vtasctasctesData = req.body;
-//     // console.log("vtas", vtasctasctesData);
-
-//     // Verificar si todos los objetos en el array no tienen `id`
-//     const todosSinId = vtasctasctesData.every((venta) => !venta.id);
-
-//     if (todosSinId) {
-//       // Si todos los objetos no tienen `id`, hacer bulkCreate directamente
-//       const nuevasVtasctasctes = await Vtactacte.bulkCreate(vtasctasctesData);
-//       return res.status(201).json(nuevasVtasctasctes);
-//     } else {
-//       // Filtrar los datos para omitir los que ya existen en la base de datos
-//       const vtasctasctesFiltradas = await Promise.all(
-//         vtasctasctesData.map(async (venta) => {
-//           const fechaFormatoDateOnly = format(
-//             new Date(venta.fecha),
-//             "yyyy-MM-dd"
-//           ); // Asegurar formato DATEONLY
-//           const existeVenta = await Vtactacte.findOne({
-//             where: {
-//               vtactacteId: venta.id,
-//               sucursal_id: venta.sucursal_id,
-//               fecha: fechaFormatoDateOnly,
-//             },
-//           });
-//           return existeVenta ? null : venta;
-//         })
-//       );
-
-//       // Eliminar los elementos nulos del array
-//       const vtasctasctesParaCrear = vtasctasctesFiltradas.filter(
-//         (venta) => venta !== null
-//       );
-
-//       // Iterar sobre los datos de las ventas a cuenta corriente y asignar el id como ventaId
-//       const ventasConId = vtasctasctesParaCrear.map((venta) => ({
-//         ...venta,
-//         vtactacteId: venta.id, // Asignar el valor del id existente como ventaId
-//         id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//       }));
-
-//       // Crear las ventas a cuenta corriente en la base de datos
-//       const nuevasVtasctasctes = await Vtactacte.bulkCreate(ventasConId);
-
-//       // Retornar las nuevas ventas a cuenta corriente creadas como respuesta
-//       return res.status(201).json(nuevasVtasctasctes);
-//     }
-//   } catch (error) {
-//     console.error("Error al crear las ventas a cuenta corriente:", error);
-//     next(error);
-//   }
-// };
 
 const crearVtasctasctes = async (req, res, next) => {
   try {
@@ -1210,55 +844,6 @@ const obtenerCobranzasctasctesFiltradas = async (req, res, next) => {
     next(error);
   }
 };
-
-// Controlador para crear múltiples cobranzas a cuenta corriente
-// const crearCobranzasctasctes = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de las cobranzas a cuenta corriente desde el cuerpo de la solicitud
-//     const cobranzasctasctesData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const cobranzasctasctesFiltradas = await Promise.all(
-//       cobranzasctasctesData.map(async (cobranza) => {
-//         const fechaFormatoDateOnly = format(
-//           new Date(cobranza.fecha),
-//           "yyyy-MM-dd"
-//         ); // Asegurar formato DATEONLY
-//         const existeCobranza = await Cobranzactacte.findOne({
-//           where: {
-//             cobranzaId: cobranza.id,
-//             sucursal_id: cobranza.sucursal_id,
-//             fecha: fechaFormatoDateOnly,
-//           },
-//         });
-//         return existeCobranza ? null : cobranza;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const cobranzasctasctesParaCrear = cobranzasctasctesFiltradas.filter(
-//       (cobranza) => cobranza !== null
-//     );
-
-//     // Iterar sobre los datos de las cobranzas a cuenta corriente y asignar el id como cobranzaId
-//     const cobranzasConId = cobranzasctasctesParaCrear.map((cobranza) => ({
-//       ...cobranza,
-//       cobranzaId: cobranza.id, // Asignar el valor del id existente como cobranzaId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear las cobranzas a cuenta corriente en la base de datos
-//     const nuevasCobranzasctasctes = await Cobranzactacte.bulkCreate(
-//       cobranzasConId
-//     );
-
-//     // Retornar las nuevas cobranzas a cuenta corriente creadas como respuesta
-//     res.status(201).json(nuevasCobranzasctasctes);
-//   } catch (error) {
-//     console.error("Error al crear las cobranzas a cuenta corriente:", error);
-//     next(error);
-//   }
-// };
 
 const crearCobranzasctasctes = async (req, res, next) => {
   try {
@@ -1515,67 +1100,10 @@ const obtenerDetalleDeCajaPorFechaYSucursal = async (req, res, next) => {
   }
 };
 
-// // Crear un nuevo cierre
-// const crearCierre = async (req, res, next) => {
-//   try {
-//     const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } =
-//       req.body;
-//     const nuevoCierre = await Cierre.create({
-//       fecha,
-//       sucursal_id,
-//       neto,
-//       iva_21,
-//       iva_105,
-//       total,
-//       nro_cierre,
-//     });
-//     res.status(201).json(nuevoCierre);
-//   } catch (error) {
-//     console.error("Error al crear el cierre:", error);
-//     next(error);
-//   }
-// };
-
-// const crearCierre = async (req, res, next) => {
-//   try {
-//     const { fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre } = req.body;
-//     console.log("datos", fecha, sucursal_id, neto, iva_21, iva_105, total, nro_cierre)
-//     // Verificar si ya existe un cierre con los mismos parámetros
-//     const cierreExistente = await Cierre.findOne({
-//       where: {
-//         fecha,
-//         sucursal_id,
-//         nro_cierre
-//       }
-//     });
-
-//     // Si el cierre ya existe, retornar un mensaje y no crear uno nuevo
-//     if (cierreExistente) {
-//       return res.status(409).json({ message: "El cierre ya existe para la fecha, sucursal y número proporcionados." });
-//     }
-
-//     // Crear el nuevo cierre si no existe uno previo
-//     const nuevoCierre = await Cierre.create({
-//       fecha,
-//       sucursal_id,
-//       neto,
-//       iva_21,
-//       iva_105,
-//       total,
-//       nro_cierre,
-//     });
-
-//     res.status(201).json(nuevoCierre);
-//   } catch (error) {
-//     console.error("Error al crear el cierre:", error);
-//     next(error);
-//   }
-// };
-
 const crearCierre = async (req, res, next) => {
   try {
     const cierres = req.body; // El array de objetos cierre
-    console.log("datos", cierres);
+    // console.log("datos", cierres);
 
     const resultados = [];
 
