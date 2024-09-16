@@ -19,6 +19,11 @@ import ventasRindeRouter from "./rinde/ventasRindeRoute.js"
 import infoCajaRouter from "./caja/infoCajaRoute.js";
 import rindeRouter from "./rinde/rindeRoute.js";
 import tablasRouter from "./tablas/tablasRoute.js";
+import equipoRouter from "./mantenimiento/equipoRoute.js";
+import categoriaEquipoRouter from "./mantenimiento/categoriaEquipoRoute.js";
+import mantenimientoRouter from "./mantenimiento/mantenimientoRoute.js";
+import mantenimientoPreventivoRouter from "./mantenimiento/mantenimientoPreventivoRoute.js";
+import ordenMantenimientoRouter from "./mantenimiento/ordenMantenimientoRoute.js";
 
 const router = Router();
 
@@ -37,6 +42,12 @@ router.use(rindeRouter);
 router.use(tablasRouter);
 router.use(ingresosRouter);
 router.use(infoCajaRouter);
+router.use(equipoRouter);
+router.use(categoriaEquipoRouter);
+router.use(mantenimientoRouter);
+router.use(mantenimientoPreventivoRouter);
+router.use(ordenMantenimientoRouter);
+
 router.use(JWTAuth, clientesRouter);
 router.use(JWTAuth, cobranzasRouter);
 router.use(JWTAuth, cuentasCorrientesRouter);

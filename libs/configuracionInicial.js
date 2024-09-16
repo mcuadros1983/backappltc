@@ -4,24 +4,50 @@ import Usuario from "../models/auth/usuarioModel.js";
 import { sequelize } from "../config/database.js";
 import { ADMIN_USERNAME, ADMIN_PASSWORD } from "../config/config.js";
 
+// export const crearRoles = async () => {
+//   try {
+//     // Sincronizar los modelos con la base de datos
+//     await sequelize.sync();
+
+//     // Contar registros
+//     const count = await Rol.count();
+
+//     // Verificar roles existentes
+//     if (count > 0) return;
+
+//     // Crear roles predeterminados
+//     const values = await Promise.all([
+//       Rol.create({ nombre: "admin" }),
+//       Rol.create({ nombre: "gestion" }),
+//       Rol.create({ nombre: "ventas" }),
+//       Rol.create({ nombre: "mantenimiento" }),
+//     ]);
+
+//     crearAdmin();
+//   } catch (error) {
+//     console.error(error);
+//   }
+// };
+
 export const crearRoles = async () => {
   try {
     // Sincronizar los modelos con la base de datos
     await sequelize.sync();
 
-    // Contar registros
-    const count = await Rol.count();
+    // Verificar si existen los roles
+    const rolesExistentes = await Rol.findAll({ where: { nombre: ['admin', 'gestion', 'ventas', 'sucursales','mantenimiento'] } });
 
-    // Verificar roles existentes
-    if (count > 0) return;
+    const roles = ['admin', 'gestion', 'ventas', 'sucursales','mantenimiento'];
+    
+    // Crea solo los roles que no existen
+    for (const rol of roles) {
+      if (!rolesExistentes.some(existingRole => existingRole.nombre === rol)) {
+        await Rol.create({ nombre: rol });
+        console.log(`Rol creado: ${rol}`);
+      }
+    }
 
-    // Crear roles predeterminados
-    const values = await Promise.all([
-      Rol.create({ nombre: "admin" }),
-      Rol.create({ nombre: "gestion" }),
-      Rol.create({ nombre: "ventas" }),
-    ]);
-
+    // Crear el usuario admin
     crearAdmin();
   } catch (error) {
     console.error(error);
