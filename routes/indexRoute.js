@@ -24,6 +24,8 @@ import categoriaEquipoRouter from "./mantenimiento/categoriaEquipoRoute.js";
 import mantenimientoRouter from "./mantenimiento/mantenimientoRoute.js";
 import mantenimientoPreventivoRouter from "./mantenimiento/mantenimientoPreventivoRoute.js";
 import ordenMantenimientoRouter from "./mantenimiento/ordenMantenimientoRoute.js";
+import revisionItemRouter from "./mantenimiento/revisionItemRoute.js";
+import itemEquipoRouter from "./mantenimiento/itemEquipoRoute.js";
 
 const router = Router();
 
@@ -47,6 +49,8 @@ router.use(categoriaEquipoRouter);
 router.use(mantenimientoRouter);
 router.use(mantenimientoPreventivoRouter);
 router.use(ordenMantenimientoRouter);
+router.use(revisionItemRouter);
+router.use(itemEquipoRouter);
 
 router.use(JWTAuth, clientesRouter);
 router.use(JWTAuth, cobranzasRouter);

@@ -53,7 +53,7 @@ export const login = async (req, res) => {
     }
 
     const token = generateToken(user);
-    console.log("token", token);
+    // console.log("token", token);
     res.json({ token });
   } catch (error) {
     console.error(error);

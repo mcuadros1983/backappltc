@@ -343,11 +343,13 @@ const obtenerValesFiltrados = async (req, res, next) => {
 const crearVales = async (req, res, next) => {
   try {
     const valesData = req.body;
+    // console.log("valesData", valesData)
 
     const fechasFormateadas = valesData.map(vale => ({
       ...vale,
       fecha: format(new Date(vale.fecha), "yyyy-MM-dd")
     }));
+    // console.log("fechasformateadas", fechasFormateadas)
 
     // Obtiene todos los vales que podrían ser duplicados en una única consulta
     const posiblesDuplicados = await Vale.findAll({
