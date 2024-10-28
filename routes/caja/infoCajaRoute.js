@@ -1,26 +1,8 @@
 import { Router } from 'express';
 import * as infoCajaRindeController from '../../controllers/caja/infoCajaController.js';
 
+
 const infoCajaRouter = Router();
-
-// Rutas para caja
-// infoCajaRouter.get('/caja/gastos', infoCajaRindeController.obtenerGastos);
-// infoCajaRouter.post('/caja/gastos', infoCajaRindeController.crearGastos);
-// infoCajaRouter.get('/caja/retiros', infoCajaRindeController.obtenerRetiros);
-// infoCajaRouter.post('/caja/retiros', infoCajaRindeController.crearRetiros);
-// infoCajaRouter.get('/caja/vales', infoCajaRindeController.obtenerVales);
-// infoCajaRouter.post('/caja/vales', infoCajaRindeController.crearVales);
-// infoCajaRouter.get('/caja/cupones', infoCajaRindeController.obtenerCupones);
-// infoCajaRouter.post('/caja/cupones', infoCajaRindeController.crearCupones);
-// infoCajaRouter.get('/caja/sueldos', infoCajaRindeController.obtenerSueldos);
-// infoCajaRouter.post('/caja/sueldos', infoCajaRindeController.crearSueldos);
-// infoCajaRouter.get('/caja/ingresos', infoCajaRindeController.obtenerIngresos);
-// infoCajaRouter.post('/caja/ingresos', infoCajaRindeController.crearIngresos);
-// infoCajaRouter.get('/caja/vtasctacte', infoCajaRindeController.obtenerVtasctasctes);
-// infoCajaRouter.post('/caja/vtasctacte', infoCajaRindeController.crearVtasctasctes);
-// infoCajaRouter.get('/caja/cobranzasctacte', infoCajaRindeController.obtenerCobranzasctasctes);
-// infoCajaRouter.post('/caja/cobranzasctacte', infoCajaRindeController.crearCobranzasctasctes);
-
 
 // Rutas para caja
 infoCajaRouter.get('/caja/cajas', infoCajaRindeController.obtenerCajas);
@@ -67,6 +49,13 @@ infoCajaRouter.get('/caja/ajustectacte/:id', infoCajaRindeController.obtenerAjus
 infoCajaRouter.put("/caja/ajustectacte/:id", infoCajaRindeController.actualizarAjustectacte);
 infoCajaRouter.delete("/caja/ajustectacte/:id", infoCajaRindeController.eliminarAjustectacte);
 
+// Rutas para Clienteoneshot
+infoCajaRouter.get('/caja/clientesoneshot', infoCajaRindeController.obtenerClientesOneshot); // Obtener todos los clientes
+infoCajaRouter.get('/caja/clientesoneshot/:id', infoCajaRindeController.obtenerClienteOneshotPorId); // Obtener un cliente por ID
+infoCajaRouter.post('/caja/clientesoneshot', infoCajaRindeController.crearClienteOneshot); // Crear un nuevo cliente
+infoCajaRouter.put('/caja/clientesoneshot/:id', infoCajaRindeController.actualizarClienteOneshot); // Actualizar un cliente por ID
+infoCajaRouter.delete('/caja/clientesoneshot/:id', infoCajaRindeController.eliminarClienteOneshot); // Eliminar un cliente por ID
+infoCajaRouter.post('/caja/clientesoneshot_filtrados', infoCajaRindeController.obtenerClientesOneshotFiltrados); // Filtrar clientes por fechas o usuario
 
 
 export default infoCajaRouter;

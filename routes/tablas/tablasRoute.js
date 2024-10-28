@@ -88,6 +88,12 @@ tablasRouter.get(
   "/obtenerclientespersonatabla",
   tablasController.obtenerClientesPersonaTabla
 );
+
+tablasRouter.get(
+  "/clientespersonatabla/:numero",
+  tablasController.buscarClienteTablaPorNumero
+);
+
 tablasRouter.post(
   "/crearclientespersonatabla",
   tablasController.crearClientesPersonaTabla

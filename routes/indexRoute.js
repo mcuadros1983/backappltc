@@ -26,7 +26,9 @@ import mantenimientoPreventivoRouter from "./mantenimiento/mantenimientoPreventi
 import ordenMantenimientoRouter from "./mantenimiento/ordenMantenimientoRoute.js";
 import revisionItemRouter from "./mantenimiento/revisionItemRoute.js";
 import itemEquipoRouter from "./mantenimiento/itemEquipoRoute.js";
-
+import mensajeRouter from "./caja/mensajeRoute.js";
+import scheduleRouter from "./caja/scheduleRoute.js";
+import syncRouter from "./sync/syncRoute.js";
 const router = Router();
 
 const indexRouter = Router();
@@ -44,6 +46,8 @@ router.use(rindeRouter);
 router.use(tablasRouter);
 router.use(ingresosRouter);
 router.use(infoCajaRouter);
+router.use(mensajeRouter);
+router.use(scheduleRouter);
 router.use(equipoRouter);
 router.use(categoriaEquipoRouter);
 router.use(mantenimientoRouter);
@@ -51,6 +55,7 @@ router.use(mantenimientoPreventivoRouter);
 router.use(ordenMantenimientoRouter);
 router.use(revisionItemRouter);
 router.use(itemEquipoRouter);
+router.use(syncRouter);
 
 router.use(JWTAuth, clientesRouter);
 router.use(JWTAuth, cobranzasRouter);

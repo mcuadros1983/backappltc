@@ -195,6 +195,25 @@ const obtenerClientesPersonaTabla = async (req, res, next) => {
   }
 };
 
+const buscarClienteTablaPorNumero = async (req, res, next) => {
+  const { numero } = req.params; // Obtener el número de los parámetros de la URL
+
+  try {
+    const cliente = await ClientePersonaTabla.findOne({
+      where: { numero },
+    });
+
+    if (!cliente) {
+      return res.status(404).json({ message: "Cliente no encontrado" });
+    }
+
+    res.json(cliente); // Devolver los detalles del cliente encontrado
+  } catch (error) {
+    console.error("Error al buscar el cliente por número:", error);
+    next(error); // Manejar el error y pasarlo al middleware de manejo de errores
+  }
+};
+
 const obtenerEmpleados = async (req, res, next) => {
   try {
     // Obtener todos los empleados
@@ -734,8 +753,6 @@ const crearArticulosPrecios = async (req, res, next) => {
     console.error("Error al crear los precios de los artículos:", error);
     next(error);
   }
-
-
 };
 
 const actualizarPreciosDesdeExcel = async (req, res, next) => {
@@ -1309,4 +1326,5 @@ export {
   obtenerArticulosPorcentaje,
   eliminarArticuloPorcentaje,
   editarArticuloPorcentaje,
+  buscarClienteTablaPorNumero
 };

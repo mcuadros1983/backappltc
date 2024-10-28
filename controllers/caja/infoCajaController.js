@@ -12,6 +12,7 @@ import ClienteTabla from "../../models/tablas/clienteModel.js";
 import Caja from "../../models/caja/cajaModel.js";
 import Cierre from "../../models/caja/cierreModel.js";
 import { format } from "date-fns";
+import Clienteoneshot from "../../models/caja/clienteOneShotModel.js";
 
 const obtenerCajas = async (req, res, next) => {
   try {
@@ -1311,6 +1312,151 @@ const eliminarAjustectacte = async (req, res, next) => {
     next(error);
   }
 };
+
+// Obtener todos los clientes oneshot
+const obtenerClientesOneshot = async (req, res, next) => {
+  try {
+    const clientes = await Clienteoneshot.findAll();
+    res.status(200).json(clientes);
+  } catch (error) {
+    console.error("Error al obtener los clientes oneshot:", error);
+    next(error);
+  }
+};
+
+// Obtener un cliente oneshot por ID
+const obtenerClienteOneshotPorId = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const cliente = await Clienteoneshot.findByPk(id);
+    if (!cliente) {
+      return res.status(404).json({ message: "Cliente no encontrado" });
+    }
+    res.status(200).json(cliente);
+  } catch (error) {
+    console.error("Error al obtener el cliente oneshot por ID:", error);
+    next(error);
+  }
+};
+
+// Crear un nuevo cliente oneshot
+const crearClienteOneshot = async (req, res, next) => {
+  try {
+    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha } = req.body;
+    console.log("fecha", fecha)
+    // Formatear la fecha al formato de Argentina
+    // const fechaFormateada = format(new Date(fecha), "yyyy-MM-dd");
+
+    const nuevoCliente = await Clienteoneshot.create({
+      apellido,
+      nombre,
+      dni,
+      domicilio,
+      telefono,
+      mail,
+      monto,
+      usuario_id,
+      fecha,
+    });
+
+    res.status(201).json(nuevoCliente);
+  } catch (error) {
+    console.error("Error al crear el cliente oneshot:", error);
+    next(error);
+  }
+};
+
+// Actualizar un cliente oneshot por ID
+const actualizarClienteOneshot = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha } = req.body;
+
+    const clienteActualizado = await Clienteoneshot.update(
+      { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha },
+      { where: { id } }
+    );
+
+    if (clienteActualizado[0] === 0) {
+      return res.status(404).json({ message: "Cliente no encontrado" });
+    }
+
+    res.status(200).json({ message: "Cliente actualizado correctamente" });
+  } catch (error) {
+    console.error("Error al actualizar el cliente oneshot:", error);
+    next(error);
+  }
+};
+
+// Eliminar un cliente oneshot por ID
+const eliminarClienteOneshot = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const resultado = await Clienteoneshot.destroy({ where: { id } });
+
+    if (resultado === 0) {
+      return res.status(404).json({ message: "Cliente no encontrado" });
+    }
+
+    res.status(200).json({ message: "Cliente eliminado correctamente" });
+  } catch (error) {
+    console.error("Error al eliminar el cliente oneshot:", error);
+    next(error);
+  }
+};
+
+// Filtrar clientes oneshot por fechas y otros criterios
+// const obtenerClientesOneshotFiltrados = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, usuario_id } = req.body;
+
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     if (usuario_id) {
+//       filters.usuario_id = usuario_id;
+//     }
+
+//     const clientesFiltrados = await Clienteoneshot.findAll({ where: filters });
+
+//     res.json(clientesFiltrados);
+//   } catch (error) {
+//     console.error("Error al filtrar los clientes oneshot:", error);
+//     next(error);
+//   }
+// };
+// Filtrar clientes oneshot por fechas y otros criterios
+const obtenerClientesOneshotFiltrados = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, usuario_id } = req.body;
+
+    const filters = {};
+
+    // Verificar si las fechas son válidas antes de agregarlas al filtro
+    if (fechaDesde && fechaHasta) {
+      filters.fecha = {
+        [Op.between]: [fechaDesde, fechaHasta],
+      };
+    }
+
+    // Filtrar por usuario si se proporciona el usuario_id
+    if (usuario_id) {
+      filters.usuario_id = usuario_id;
+    }
+
+    const clientesFiltrados = await Clienteoneshot.findAll({ where: filters });
+
+    res.json(clientesFiltrados);
+  } catch (error) {
+    console.error("Error al filtrar los clientes oneshot:", error);
+    next(error);
+  }
+};
+
+
 export {
   obtenerCajas,
   obtenerCajasPorCajaId,
@@ -1362,4 +1508,10 @@ export {
   obtenerAjustectactePorId,
   actualizarAjustectacte,
   eliminarAjustectacte,
+  obtenerClientesOneshot,
+  obtenerClienteOneshotPorId,
+  crearClienteOneshot,
+  actualizarClienteOneshot,
+  eliminarClienteOneshot,
+  obtenerClientesOneshotFiltrados,
 };
