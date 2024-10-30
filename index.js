@@ -41,7 +41,7 @@ async function main() {
 
     // Sincroniza las tablas después de que el servidor esté escuchando
     // await sequelize.sync({ force: true });
-    // await sequelize.sync({ alter: true }); // alter: true evita que se borren las tablas para recrearlas pero crea las nuevas
+    await sequelize.sync({ alter: true }); // alter: true evita que se borren las tablas para recrearlas pero crea las nuevas
   } catch (error) {
     console.error("Unable to connect to the database:", error);
   }

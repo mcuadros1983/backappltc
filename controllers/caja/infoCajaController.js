@@ -1342,7 +1342,7 @@ const obtenerClienteOneshotPorId = async (req, res, next) => {
 // Crear un nuevo cliente oneshot
 const crearClienteOneshot = async (req, res, next) => {
   try {
-    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha } = req.body;
+    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha, lote_cupon } = req.body;
     console.log("fecha", fecha)
     // Formatear la fecha al formato de Argentina
     // const fechaFormateada = format(new Date(fecha), "yyyy-MM-dd");
@@ -1357,6 +1357,7 @@ const crearClienteOneshot = async (req, res, next) => {
       monto,
       usuario_id,
       fecha,
+      lote_cupon,
     });
 
     res.status(201).json(nuevoCliente);
@@ -1370,10 +1371,10 @@ const crearClienteOneshot = async (req, res, next) => {
 const actualizarClienteOneshot = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha } = req.body;
+    const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha, lote_cupon } = req.body;
 
     const clienteActualizado = await Clienteoneshot.update(
-      { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha },
+      { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha, lote_cupon },
       { where: { id } }
     );
 

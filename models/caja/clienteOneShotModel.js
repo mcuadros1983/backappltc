@@ -20,7 +20,7 @@ const Clienteoneshot = sequelize.define(
     },
     domicilio: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
     telefono: {
       type: DataTypes.STRING,
@@ -28,7 +28,7 @@ const Clienteoneshot = sequelize.define(
     },
     mail: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
     },
     monto: {
       type: DataTypes.DECIMAL(10, 2), // Decimal con dos decimales para manejar el monto
@@ -42,6 +42,14 @@ const Clienteoneshot = sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: false,
     },
+    lote_cupon: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    // cupon: {
+    //   type: DataTypes.STRING,
+    //   allowNull: false,
+    // },
   },
   {
     timestamps: false,
