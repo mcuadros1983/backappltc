@@ -121,13 +121,14 @@ const obtenerOrden = async (req, res, next) => {
 };
 const crearOrden = async (req, res, next) => {
   try {
-    const { products, peso_total, cantidad_total, selectedBranchId } = req.body;
+    const { products, peso_total, cantidad_total, selectedBranchId, fecha } = req.body;
 
     // Crear la orden sin iniciar una transacción explícita
     const nuevaOrden = await Orden.create({
       peso_total,
       cantidad_total,
       sucursal_id: selectedBranchId,
+      fecha:fecha,
     });
 
     const orden_id = nuevaOrden.id;
