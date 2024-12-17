@@ -12,8 +12,9 @@ import { sequelize } from "./config/database.js";
 // import "./models/gmedias/cobranzaModel.js";
 // import "./models/gmedias/detalleCobranzaModel.js";
 // import "./models/gmedias/sucursalModel.js";
-import "./libs/configuracionInicial.js"
-
+import "./libs/configuracionInicial.js";
+import { WebSocketServer } from "ws"; // Importar WebSocket
+import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos de WebSocket
 
 // import "./models/detalleVentaModel.js";
 
@@ -21,12 +22,26 @@ async function main() {
   try {
     // await sequelize.authenticate();
     console.log("Connection has been established successfully.");
-  
+
     // Sincroniza las tablas después de que el servidor esté escuchando
-    app.listen(PORT, async () => {
-       //await sequelize.sync({ force: true }); // force: false evita que se borren las tablas para recrearlas
+    const server = app.listen(PORT, async () => {
       console.log(`Server is listening on port ${PORT}`);
     });
+
+    // Inicializar WebSocket
+    const wss = new WebSocketServer({ server });
+
+    // Manejar las conexiones de WebSocket
+    wss.on("connection", (ws) => {
+      console.log("Cliente conectado a WebSocket");
+
+      // Manejar eventos de WebSocket en archivo separado
+      handleWebSocketConnection(ws);
+    });
+
+    // Sincroniza las tablas después de que el servidor esté escuchando
+    // await sequelize.sync({ force: true });
+    // await sequelize.sync({ alter: true }); // alter: true evita que se borren las tablas para recrearlas pero crea las nuevas
   } catch (error) {
     console.error("Unable to connect to the database:", error);
   }

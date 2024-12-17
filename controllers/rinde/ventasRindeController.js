@@ -131,6 +131,7 @@ const crearVentaTotal = async (req, res, next) => {
   try {
     // Extraer los datos del cuerpo de la solicitud
     const ventasTotales = req.body;
+    console.log("req.body", req.body)
     // Validar si se recibieron datos
     if (!Array.isArray(ventasTotales)) {
       return res

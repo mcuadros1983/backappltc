@@ -40,7 +40,7 @@ const obtenerIngreso = async (req, res, next) => {
 };
 
 const crearIngreso = async (req, res, next) => {
-  const { products, cantidad_total, peso_total, categoria } = req.body;
+  const { products, cantidad_total, peso_total, categoria, fecha } = req.body;
 // console.log("datos", products, cantidad_total, peso_total, categoria)
   try {
     // Verificar si se recibieron productos
@@ -54,6 +54,7 @@ const crearIngreso = async (req, res, next) => {
       cantidad_total,
       peso_total,
       categoria_ingreso: categoria,
+      fecha:fecha,
     });
     const ingreso_id = nuevoIngreso.id;
 
