@@ -128,7 +128,7 @@ const crearOrden = async (req, res, next) => {
       peso_total,
       cantidad_total,
       sucursal_id: selectedBranchId,
-      fecha:fecha,
+      fecha: fecha,
     });
 
     const orden_id = nuevaOrden.id;
@@ -141,9 +141,26 @@ const crearOrden = async (req, res, next) => {
         const producto = await Producto.findByPk(product.id);
         if (producto && producto.ingreso_id !== null) {
           const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+          // console.log("ingreso", ingreso)
           if (ingreso) {
-            ingreso.peso_total -= producto.kg;
-            ingreso.peso_total += product.kg;
+            // Convertir peso_total a número (manejar NaN con un valor predeterminado de 0)
+            let pesoTotalActual = parseFloat(ingreso.peso_total) || 0;
+            const kgAnterior = parseFloat(producto.kg) || 0;
+            const kgNuevo = parseFloat(product.kg) || 0;
+
+            console.log("Peso total actual:", pesoTotalActual);
+            console.log("Peso del producto anterior (kg):", kgAnterior);
+            console.log("Peso del producto nuevo (kg):", kgNuevo);
+
+            // Realizar la suma y resta
+            pesoTotalActual -= kgAnterior;
+            pesoTotalActual += kgNuevo;
+
+            // Actualizar el ingreso con el nuevo peso_total
+            ingreso.peso_total = pesoTotalActual.toString(); // Guardar como string si la base lo requiere
+            console.log("Peso total actualizado:", ingreso.peso_total);
+
+            // Guardar los cambios
             await ingreso.save();
           }
         }
