@@ -74,12 +74,19 @@ const obtenerVentas = async (req, res, next) => {
   }
 };
 
-const obtenerVentaPorId = async (req, res, next) => {
+const obtenerVentaPorId = async (req, res, next) => { 
   const ventaId = req.params.ventaId;
 
   try {
     const venta = await Venta.findByPk(ventaId, {
-      include: [Cliente, FormaPago, Producto],
+      include: [
+        Cliente,
+        FormaPago,
+        {
+          model: Producto,
+          as: "productos", // Especifica el alias definido en el modelo
+        },
+      ],
     });
 
     if (!venta) {
