@@ -19,7 +19,7 @@ const Producto = sequelize.define(
     },
     codigo_de_barra: {
       type: DataTypes.STRING,
-      unique: true, // Agregamos esta línea para el índice único
+      // unique: true, // Agregamos esta línea para el índice único
     },
     num_media: {
       type: DataTypes.STRING,

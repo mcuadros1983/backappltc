@@ -83,7 +83,7 @@ const crearIngreso = async (req, res, next) => {
         }
       })
     );
-
+ 
     res.json({ nuevoIngreso, productos: productosCreados });
   } catch (error) {
     next(error);

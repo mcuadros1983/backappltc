@@ -72,6 +72,19 @@ const obtenerProductoCodigoBarra = async (req, res, next) => {
   }
 };
 
+const obtenerProductosCodigoBarra = async (req, res, next) => {
+  const { barcode } = req.params;
+
+  try {
+    const products = await Producto.findAll({
+      where: { codigo_de_barra: barcode },
+    });
+    res.json(products);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const obtenerProductosFiltradosSucursalFecha = async (req, res, next) => {
   const { branchId, startDate, endDate } = req.params;
 
@@ -326,19 +339,14 @@ const actualizarProducto = async (req, res, next) => {
 
 
 const actualizarDatosProducto = async (
-  // categoria_producto,
   producto_id,
   orden_id,
   sucursal_id,
   cliente_id,
-  // orden_id = null,
-  // sucursal_id = null,
-  // cliente_id = null,
   venta_id,
   precio,
   kg,
   tropa
-  // detalleVenta_id,
 ) => {
   try {
     // Verificar si la categoría del producto es "porcino"
@@ -806,6 +814,7 @@ export {
   obtenerProductos,
   obtenerProductoPorId,
   obtenerProductoCodigoBarra,
+  obtenerProductosCodigoBarra,
   obtenerProductosFiltradosSucursalFecha,
   crearProducto,
   actualizarDatosProducto,

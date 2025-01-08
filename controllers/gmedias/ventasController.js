@@ -457,12 +457,12 @@ const eliminarVenta = async (req, res, next) => {
         producto.categoria_producto == "porcino"
       ) {
         const ingreso = await Ingreso.findByPk(producto.ingreso_id);
-        if (ingreso) {
-          ingreso.peso_total -= producto.kg; // Restar el peso del producto
-          await ingreso.save();
-        }
+        // if (ingreso) {
+        //   ingreso.peso_total -= producto.kg; // Restar el peso del producto
+        //   await ingreso.save();
+        // }
         // Actualizar el producto con los nuevos valores
-        await actualizarDatosProducto(producto.id, null, 18, null, null, 0, 0);
+        await actualizarDatosProducto(producto.id, null, 18, null, null, producto.precio ? producto.precio : 0, producto.kg ? producto.kg :0,producto.tropa ? producto.tropa : null,);
       } else {
         // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
         await actualizarDatosProducto(
@@ -471,7 +471,20 @@ const eliminarVenta = async (req, res, next) => {
           18, // o el valor correspondiente para sucursal_id
           null, // o el valor correspondiente para cliente_id
           null, // o el valor correspondiente para venta_id
-          0 // o el valor correspondiente para precio
+          producto.precio ? producto.precio : 0, // o el valor correspondiente para precio
+          producto.kg ? producto.kg :0,
+          producto.tropa ? producto.tropa : null,
+
+
+          // producto_id,
+          // orden_id,
+          // sucursal_id,
+          // cliente_id,
+          // venta_id,
+          // precio,
+          // kg,
+          // tropa
+
         );
       }
     });

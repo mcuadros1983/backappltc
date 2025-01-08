@@ -121,7 +121,8 @@ const obtenerOrden = async (req, res, next) => {
 };
 const crearOrden = async (req, res, next) => {
   try {
-    const { products, peso_total, cantidad_total, selectedBranchId, fecha } = req.body;
+    const { products, peso_total, cantidad_total, selectedBranchId, fecha } =
+      req.body;
 
     // Crear la orden sin iniciar una transacción explícita
     const nuevaOrden = await Orden.create({
@@ -254,10 +255,10 @@ const eliminarOrden = async (req, res, next) => {
           producto.categoria_producto == "porcino"
         ) {
           const ingreso = await Ingreso.findByPk(producto.ingreso_id);
-          if (ingreso) {
-            ingreso.peso_total -= product.kg; // Restar el peso del producto
-            await ingreso.save();
-          }
+          // if (ingreso) {
+          //   ingreso.peso_total -= product.kg; // Restar el peso del producto
+          //   await ingreso.save();
+          // }
           // Actualizar el producto con los nuevos valores
           return await actualizarDatosProducto(
             product.id,
@@ -265,8 +266,18 @@ const eliminarOrden = async (req, res, next) => {
             18,
             null,
             null,
-            0,
-            0
+            product.precio ? product.precio : 0,
+            product.kg ? product.kg : 0,
+            product.tropa ? product.tropa : 0
+
+            // producto_id,
+            // orden_id,
+            // sucursal_id,
+            // cliente_id,
+            // venta_id,
+            // precio,
+            // kg,
+            // tropa
           );
         } else {
           // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
@@ -275,7 +286,10 @@ const eliminarOrden = async (req, res, next) => {
             null,
             18,
             null,
-            null
+            null,
+            product.precio ? product.precio : 0,
+            product.kg ? product.kg : 0,
+            product.tropa ? product.tropa : 0
           );
         }
       })
