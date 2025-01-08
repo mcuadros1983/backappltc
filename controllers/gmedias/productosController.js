@@ -762,7 +762,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
   }
 };
 
-const generarCodigos = async (req, res, next) => {
+const generarCodigos = async (req, res, next) => { 
   // console.log("categoria----------", req.body)
   try {
     const { categoria } = req.body;

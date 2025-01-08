@@ -101,42 +101,107 @@ const obtenerVentaPorId = async (req, res, next) => {
   }
 };
 
-const crearVenta = async (req, res, next) => {
-  const { cantidad_total, peso_total, cliente_id, formaPago_id, productos } =
-    req.body;
-  try {
-    let nuevaVenta;
-    let productosActualizados;
+// const crearVenta = async (req, res, next) => {
+//   const { cantidad_total, peso_total, cliente_id, formaPago_id, productos } =
+//     req.body;
+//   try {
+//     let nuevaVenta;
+//     let productosActualizados;
 
+//     // Calcular el monto total de la venta (suma de productos: peso por precio)
+//     const montoTotal = productos.reduce((total, producto) => {
+//       return total + producto.kg * producto.precio;
+//     }, 0);
+
+
+//     if (formaPago_id == 2) {
+
+//       let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(
+//         cliente_id
+//       );
+//       // console.log("recepcion", cuentaCorriente);
+
+//       if (!cuentaCorriente) {
+//         cuentaCorriente = await crearCuentaCorriente(cliente_id, montoTotal);
+//       } else {
+//         // Actualizar el saldo en la cuenta corriente
+
+//         await actualizarCuentaCorrienteIdCliente(cliente_id, montoTotal);
+//       }
+
+//       // Crear el detalle de la cuenta corriente
+
+//       await crearDetalleCuentaCorriente(cuentaCorriente.id, montoTotal);
+//     }
+
+//     // Crear la venta normal
+  
+//     nuevaVenta = await Venta.create({
+//       cantidad_total,
+//       peso_total,
+//       monto_total: montoTotal,
+//       cliente_id,
+//       formaPago_id,
+//     });
+
+//     // Actualizar datos de productos
+//     productosActualizados = await Promise.all(
+//       productos.map(async (product) => {
+//         // Buscar el producto para obtener el ingreso_id
+//         const producto = await Producto.findByPk(product.id);
+//         // Actualizar el campo peso_total del ingreso asociado al producto
+//         if (producto && producto.ingreso_id !== null) {
+//           const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+//           if (ingreso) {
+//             ingreso.peso_total = ingreso.peso_total - producto.kg + product.kg; // Restar el peso del producto anterior
+//             //ingreso.peso_total = ingreso.peso_total + product.kg; // Sumar el peso del nuevo producto
+//             await ingreso.save();
+//           }
+//         }
+
+//         return await actualizarDatosProducto(
+//           product.id,
+//           null, // o el valor correspondiente para orden_id
+//           null, // o el valor correspondiente para sucursal_id
+//           cliente_id,
+//           nuevaVenta.id,
+//           product.precio,
+//           product.kg,
+//           product.tropa
+//         );
+//       })
+//     );
+
+
+//     res.json({ nuevaVenta, productosActualizados });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+const crearVenta = async (req, res, next) => {
+  const { cantidad_total, peso_total, cliente_id, formaPago_id, productos } = req.body;
+  try {
     // Calcular el monto total de la venta (suma de productos: peso por precio)
     const montoTotal = productos.reduce((total, producto) => {
       return total + producto.kg * producto.precio;
     }, 0);
 
-
+    // Manejo de cuenta corriente si la forma de pago es "cuenta corriente"
     if (formaPago_id == 2) {
-
-      let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(
-        cliente_id
-      );
-      // console.log("recepcion", cuentaCorriente);
+      let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(cliente_id);
 
       if (!cuentaCorriente) {
         cuentaCorriente = await crearCuentaCorriente(cliente_id, montoTotal);
       } else {
-        // Actualizar el saldo en la cuenta corriente
-
         await actualizarCuentaCorrienteIdCliente(cliente_id, montoTotal);
       }
-
-      // Crear el detalle de la cuenta corriente
 
       await crearDetalleCuentaCorriente(cuentaCorriente.id, montoTotal);
     }
 
     // Crear la venta normal
-  
-    nuevaVenta = await Venta.create({
+    const nuevaVenta = await Venta.create({
       cantidad_total,
       peso_total,
       monto_total: montoTotal,
@@ -144,40 +209,54 @@ const crearVenta = async (req, res, next) => {
       formaPago_id,
     });
 
-    // Actualizar datos de productos
-    productosActualizados = await Promise.all(
+    // Actualizar datos de productos y manejar el peso_total del ingreso
+    const productosActualizados = await Promise.all(
       productos.map(async (product) => {
-        // Buscar el producto para obtener el ingreso_id
+        const tropa = product.tropa || 0;
+
+        // Buscar el producto en la base de datos
         const producto = await Producto.findByPk(product.id);
-        // Actualizar el campo peso_total del ingreso asociado al producto
         if (producto && producto.ingreso_id !== null) {
+          // Buscar el ingreso asociado al producto
           const ingreso = await Ingreso.findByPk(producto.ingreso_id);
           if (ingreso) {
-            ingreso.peso_total = ingreso.peso_total - producto.kg + product.kg; // Restar el peso del producto anterior
-            //ingreso.peso_total = ingreso.peso_total + product.kg; // Sumar el peso del nuevo producto
+            // Convertir peso_total a número (manejar NaN con un valor predeterminado de 0)
+            let pesoTotalActual = parseFloat(ingreso.peso_total) || 0;
+            const kgAnterior = parseFloat(producto.kg) || 0;
+            const kgNuevo = parseFloat(product.kg) || 0;
+
+            // Restar el peso anterior y sumar el nuevo peso
+            pesoTotalActual -= kgAnterior;
+            pesoTotalActual += kgNuevo;
+
+            // Actualizar el peso_total en el ingreso
+            ingreso.peso_total = pesoTotalActual.toString();
+
+            // Guardar los cambios en el ingreso
             await ingreso.save();
           }
         }
 
+        // Actualizar los datos del producto con la nueva venta
         return await actualizarDatosProducto(
           product.id,
-          null, // o el valor correspondiente para orden_id
-          null, // o el valor correspondiente para sucursal_id
+          null, // No hay orden_id para ventas
+          null, // No se cambia sucursal_id
           cliente_id,
-          nuevaVenta.id,
+          nuevaVenta.id, // Asociar el producto con la venta
           product.precio,
           product.kg,
-          product.tropa
+          tropa
         );
       })
     );
-
 
     res.json({ nuevaVenta, productosActualizados });
   } catch (error) {
     next(error);
   }
 };
+
 
 const obtenerProductosVenta = async (req, res, next) => {
 
