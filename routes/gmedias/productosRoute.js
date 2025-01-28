@@ -12,7 +12,9 @@ const upload = multer({ dest: 'uploads/' });
 
 // Rutas para productos
 productosRouter.get('/productos', productosController.obtenerProductos);
+productosRouter.post('/productos/fecha', productosController.obtenerProductosPorFecha);
 productosRouter.get("/productos/:barcode/barra", productosController.obtenerProductoCodigoBarra);
+productosRouter.get("/productos/:nummedia/numeromedia", productosController.obtenerProductoNumMedia);
 productosRouter.get("/productos/:barcode/productosbarra", productosController.obtenerProductosCodigoBarra);
 productosRouter.get('/productos/:productoId', productosController.obtenerProductoPorId);
 productosRouter.get("/productos/filteredProducts/:branchId/:startDate?/:endDate?", productosController.obtenerProductosFiltradosSucursalFecha);

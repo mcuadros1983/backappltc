@@ -91,7 +91,7 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
     ordenes.forEach((orden) => {
       productos = [...productos, ...orden.Productos];
       orden.Productos.forEach((producto) => {
-        sumaKg += producto.kg;
+        sumaKg += Number(producto.kg);
       });
     });
 
@@ -154,8 +154,8 @@ const crearOrden = async (req, res, next) => {
             console.log("Peso del producto nuevo (kg):", kgNuevo);
 
             // Realizar la suma y resta
-            pesoTotalActual -= kgAnterior;
-            pesoTotalActual += kgNuevo;
+            pesoTotalActual -= Number(kgAnterior);
+            pesoTotalActual += Number(kgNuevo);
 
             // Actualizar el ingreso con el nuevo peso_total
             ingreso.peso_total = pesoTotalActual.toString(); // Guardar como string si la base lo requiere
@@ -263,7 +263,7 @@ const eliminarOrden = async (req, res, next) => {
           return await actualizarDatosProducto(
             product.id,
             null,
-            18,
+            product.ingreso_id === null ? 32 : 18,
             null,
             null,
             product.precio ? product.precio : 0,
@@ -284,7 +284,7 @@ const eliminarOrden = async (req, res, next) => {
           return await actualizarDatosProducto(
             product.id,
             null,
-            18,
+            producto.ingreso_id === null ? 32 : 18,
             null,
             null,
             product.precio ? product.precio : 0,
@@ -326,8 +326,8 @@ const eliminarProductoOrden = async (req, res, next) => {
     if (!orden) {
       return res.status(404).json({ message: "La orden no existe" });
     }
-    orden.peso_total = orden.peso_total - producto.kg;
-    orden.cantidad_total = orden.cantidad_total - 1;
+    orden.peso_total = Number(orden.peso_total) - Number(producto.kg);
+    orden.cantidad_total = Number(orden.cantidad_total) - 1;
 
     if (orden.cantidad_total == 0) {
       await orden.destroy();

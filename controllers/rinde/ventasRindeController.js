@@ -82,7 +82,7 @@ const obtenerVentasFiltradas = async (req, res, next) => {
       if (!montosARestarPorFechaYSucursal[key]) {
         montosARestarPorFechaYSucursal[key] = 0;
       }
-      montosARestarPorFechaYSucursal[key] += venta.cantidad * venta.monto_lista;
+      montosARestarPorFechaYSucursal[key] += Number(venta.cantidad) * Number(venta.monto_lista);
     });
     // console.log("montosARestarPorFechaYSucursal", montosARestarPorFechaYSucursal);
 
@@ -578,7 +578,7 @@ const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
       ) {
         const cantidad = parseFloat(ventaArticulo.cantidad);
         const precio = parseFloat(precioArticulo.precio);
-        montoTotalVenta += cantidad * precio;
+        montoTotalVenta += Number(cantidad) * Number(precio);
         cantidades.push(cantidad); // Agregar la cantidad al array
       }
     }

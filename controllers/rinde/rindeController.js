@@ -98,9 +98,9 @@ const obtenerMontoMovimientosFiltrados = async (req, res, next) => {
 
         // Restar la cantidad para movimientos de entrada y sumarla para movimientos de salida
         if (tipoMovimiento === "entrada") {
-          montoTotalMovimientos -= cantidad * precioArticulo;
+          montoTotalMovimientos -= Number(cantidad) * Number(precioArticulo);
         } else if (tipoMovimiento === "salida") {
-          montoTotalMovimientos += cantidad * precioArticulo;
+          montoTotalMovimientos += Number(cantidad) * Number(precioArticulo);
         }
       }
     }
@@ -415,11 +415,11 @@ const obtenerMontoInventariosFiltrados = async (req, res, next) => {
         if (precioArticulo !== null) {
           // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
           montoTotalInventario +=
-            precioArticulo * inventarioArticulo.cantidadpeso;
+          Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
         }
       }
       // Agregar el monto total al objeto del inventario
-      inventario.total = montoTotalInventario / 1.4;
+      inventario.total = Number(montoTotalInventario) / 1.4;
     }
     //    console.log("inventarios", inventarios);
 
@@ -1045,7 +1045,7 @@ const obtenerKgPorProductoMovimientosFiltrados = async (
       // Si el producto ya está en el acumulador, sumar la cantidad
       // Si no, agregarlo al acumulador con su cantidad correspondiente
       if (index !== -1) {
-        acumulador[index].cantidad += cantidad;
+        acumulador[index].cantidad += Number(cantidad);
       } else {
         acumulador.push({
           codigo: movimiento.articulocodigo,

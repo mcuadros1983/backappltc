@@ -46,7 +46,7 @@ const obtenerVentas = async (req, res, next) => {
       include: [
         {
           model: Cliente,
-          attributes: ["nombre"], // Puedes seleccionar solo los atributos que necesitas
+          attributes: ["id","nombre"], // Puedes seleccionar solo los atributos que necesitas
         },
         {
           model: FormaPago,
@@ -180,7 +180,7 @@ const obtenerVentaPorId = async (req, res, next) => {
 // };
 
 const crearVenta = async (req, res, next) => {
-  const { cantidad_total, peso_total, cliente_id, formaPago_id, productos } = req.body;
+  const { cantidad_total, peso_total, cliente_id, formaPago_id, productos, fecha } = req.body;
   try {
     // Calcular el monto total de la venta (suma de productos: peso por precio)
     const montoTotal = productos.reduce((total, producto) => {
@@ -207,6 +207,7 @@ const crearVenta = async (req, res, next) => {
       monto_total: montoTotal,
       cliente_id,
       formaPago_id,
+      fecha
     });
 
     // Actualizar datos de productos y manejar el peso_total del ingreso
@@ -226,8 +227,8 @@ const crearVenta = async (req, res, next) => {
             const kgNuevo = parseFloat(product.kg) || 0;
 
             // Restar el peso anterior y sumar el nuevo peso
-            pesoTotalActual -= kgAnterior;
-            pesoTotalActual += kgNuevo;
+            pesoTotalActual -= Number(kgAnterior);
+            pesoTotalActual += Number(kgNuevo);
 
             // Actualizar el peso_total en el ingreso
             ingreso.peso_total = pesoTotalActual.toString();
@@ -277,22 +278,35 @@ const actualizarVenta = async (req, res, next) => {
   const ventaId = req.params.ventaId;
   const { clienteId, formaPagoId, productos } = req.body;
 
-  try {
-    if (clienteId || formaPagoId) {
-      const venta = await Venta.findByPk(ventaId);
-      if (!venta) {
-        return res.status(404).json({ message: "Venta no encontrada" });
-      }
+  console.log("Datos recibidos:", { clienteId, formaPagoId, productos });
 
-      if (clienteId && clienteId !== venta.cliente_id) {
+  try {
+    if (!clienteId && !formaPagoId) {
+      return res.status(400).json({
+        message: "Se requieren clienteId o formaPagoId para actualizar la venta",
+      });
+    }
+
+    const venta = await Venta.findByPk(ventaId);
+    if (!venta) {
+      return res.status(404).json({ message: "Venta no encontrada" });
+    }
+
+    // Validar clienteId antes de actualizar
+    if (clienteId && clienteId !== venta.cliente_id) {
+      console.log("Actualizando cliente en productos...");
+
+      try {
         // Actualizar cliente_id en los productos de la venta
-        await Producto.update(
+        const productosActualizados = await Producto.update(
           { cliente_id: clienteId },
           { where: { venta_id: ventaId } }
         );
 
+        console.log("Productos actualizados:", productosActualizados);
+
         // Actualizar cuenta corriente del cliente
-        if (venta.formaPago_id == 2) {
+        if (venta.formaPago_id === 2) {
           await actualizarCuentaCorrienteIdClienteNuevo(
             clienteId,
             venta.monto_total
@@ -302,67 +316,77 @@ const actualizarVenta = async (req, res, next) => {
             venta.monto_total
           );
         }
+
+        // Actualizar el cliente en la venta
         venta.cliente_id = clienteId;
+      } catch (error) {
+        console.error("Error en Producto.update:", error);
+        return res.status(500).json({
+          message: "Error al actualizar los productos de la venta",
+          error: error.message,
+        });
+      }
+    }
+
+    // Actualizar forma de pago y cuenta corriente
+    if (formaPagoId && formaPagoId !== venta.formaPago_id) {
+      console.log("Actualizando forma de pago...");
+      if (formaPagoId == 2) {
+        // Nueva forma de pago es cuenta corriente, sumar al saldo
+        await actualizarCuentaCorrienteIdClienteNuevo(
+          venta.cliente_id,
+          venta.monto_total
+        );
+      } else if (venta.formaPago_id == 2) {
+        // Forma de pago anterior era cuenta corriente, restar del saldo
+        await actualizarCuentaCorrienteIdClienteAnterior(
+          venta.cliente_id,
+          venta.monto_total
+        );
       }
 
-      // Lógica para actualizar la forma de pago y la cuenta corriente según la forma de pago seleccionada
-      if (formaPagoId && formaPagoId !== venta.formaPago_id) {
-        if (formaPagoId == 2) {
-          // Si la formaPago es cta cte, se debe sumar al saldo de la cuenta corriente del cliente, si no existe se crea la cuenta corriente
-          await actualizarCuentaCorrienteIdClienteNuevo(
-            venta.cliente_id,
-            venta.monto_total
-          );
-        } else {
-          // Si la formaPago es efectivo, se debe restar al saldo de la cuenta corriente del cliente
-          await actualizarCuentaCorrienteIdClienteNuevo(
-            venta.cliente_id,
-            venta.monto_total
-          );
-        }
-        venta.formaPago_id = formaPagoId;
-      }
-      await venta.save();
-      res.json({ message: "Venta actualizada correctamente" });
-    } else {
-      res.status(400).json({
-        message:
-          "Se requieren clienteId o formaPagoId para actualizar la venta",
-      });
+      // Actualizar el campo formaPago_id
+      venta.formaPago_id = formaPagoId;
     }
+
+    await venta.save();
+
+    res.json({ message: "Venta actualizada correctamente" });
   } catch (error) {
+    console.error("Error en actualizarVenta:", error);
     next(error);
   }
 };
 
-const actualizarCuentaCorrienteIdClienteNuevo = async (
-  cliente_id,
-  montoVenta
-) => {
+// Función auxiliar para actualizar la cuenta corriente del nuevo cliente
+const actualizarCuentaCorrienteIdClienteNuevo = async (cliente_id, montoVenta) => {
   try {
     const cuentaCorriente = await CuentaCorriente.findOne({
       where: { cliente_id },
     });
 
     if (!cuentaCorriente) {
-      // Si no existe una cuenta corriente para este cliente, se crea una nueva
-      const ctacte = await crearCuentaCorriente(cliente_id, montoVenta);
-      await crearDetalleCuentaCorriente(ctacte.id, montoVenta);
+      console.log("Creando nueva cuenta corriente para el cliente...");
+      const nuevaCuentaCorriente = await crearCuentaCorriente(cliente_id, montoVenta);
+      await crearDetalleCuentaCorriente(nuevaCuentaCorriente.id, montoVenta);
     } else {
-      // Si existe una cuenta corriente, se actualiza el saldo actual
+      console.log("Actualizando cuenta corriente del cliente...");
       const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({
         where: { cuentaCorriente_id: cuentaCorriente.id },
       });
-      detalleCuentaCorriente.monto = detalleCuentaCorriente.monto + montoVenta;
-      cuentaCorriente.saldoActual = cuentaCorriente.saldoActual + montoVenta;
+      detalleCuentaCorriente.monto += montoVenta;
+      cuentaCorriente.saldoActual += montoVenta;
+
       await detalleCuentaCorriente.save();
       await cuentaCorriente.save();
     }
   } catch (error) {
-    console.error(error);
+    console.error("Error en actualizarCuentaCorrienteIdClienteNuevo:", error);
+    throw error;
   }
 };
 
+// Función auxiliar para actualizar la cuenta corriente del cliente anterior
 const actualizarCuentaCorrienteIdClienteAnterior = async (
   cliente_id,
   montoVenta
@@ -373,24 +397,26 @@ const actualizarCuentaCorrienteIdClienteAnterior = async (
     });
 
     if (!cuentaCorriente) {
-      // Si no existe una cuenta corriente para este cliente, se crea una nueva
-      return res
-        .status(404)
-        .json({ message: "Cuenta Corriente no encontrada" });
-    } else {
-      // Si existe una cuenta corriente, se actualiza el saldo actual
-      const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({
-        where: { cuentaCorriente_id: cuentaCorriente.id },
-      });
-      detalleCuentaCorriente.monto = detalleCuentaCorriente.monto - montoVenta;
-      cuentaCorriente.saldoActual = cuentaCorriente.saldoActual - montoVenta;
-      await detalleCuentaCorriente.save();
-      await cuentaCorriente.save();
+      console.log("Cuenta corriente no encontrada para el cliente anterior.");
+      return;
     }
+
+    console.log("Actualizando cuenta corriente del cliente anterior...");
+    const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({
+      where: { cuentaCorriente_id: cuentaCorriente.id },
+    });
+
+    detalleCuentaCorriente.monto -= montoVenta;
+    cuentaCorriente.saldoActual -= montoVenta;
+
+    await detalleCuentaCorriente.save();
+    await cuentaCorriente.save();
   } catch (error) {
-    console.error(error);
+    console.error("Error en actualizarCuentaCorrienteIdClienteAnterior:", error);
+    throw error;
   }
 };
+
 
 const eliminarVenta = async (req, res, next) => {
   const { ventaId } = req.params;
@@ -462,13 +488,14 @@ const eliminarVenta = async (req, res, next) => {
         //   await ingreso.save();
         // }
         // Actualizar el producto con los nuevos valores
-        await actualizarDatosProducto(producto.id, null, 18, null, null, producto.precio ? producto.precio : 0, producto.kg ? producto.kg :0,producto.tropa ? producto.tropa : null,);
+        await actualizarDatosProducto(producto.id, null, producto.ingreso_id === null ? 32 : 18, null, null, producto.precio ? producto.precio : 0, producto.kg ? producto.kg :0,producto.tropa ? producto.tropa : null,);
       } else {
         // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
         await actualizarDatosProducto(
           producto.id, // o el valor correspondiente para producto_id
           null, // o el valor correspondiente para orden_id
-          18, // o el valor correspondiente para sucursal_id
+          producto.ingreso_id === null ? 32 : 18, // Cambiar a 32 si ingreso_id es null
+          // 18, // o el valor correspondiente para sucursal_id
           null, // o el valor correspondiente para cliente_id
           null, // o el valor correspondiente para venta_id
           producto.precio ? producto.precio : 0, // o el valor correspondiente para precio
@@ -498,97 +525,170 @@ const eliminarVenta = async (req, res, next) => {
   }
 };
 
-// Controlador para actualizar un producto en una venta
+// const actualizarProductoEnVenta = async (req, res, next) => {
+//   const ventaId = req.params.ventaId;
+//   const { productoId, nuevoProducto } = req.body;
+
+//   try {
+//     const venta = await Venta.findByPk(ventaId);
+//     if (!venta) return res.status(404).json({ mensaje: "Venta no encontrada" });
+
+
+//     const producto = await Producto.findOne({ 
+//       where: { id: productoId, venta_id: ventaId } 
+//     });
+//     if (!producto) return res.status(404).json({ mensaje: "Producto no encontrado en la venta" });
+
+//     const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+//     if (!ingreso) return res.status(404).json({ mensaje: "Ingreso no encontrado" });
+
+//     // Asegurarse de que las operaciones sean con números
+//     ingreso.peso_total = Number(ingreso.peso_total) - Number(producto.kg);
+//     venta.monto_total = Number(venta.monto_total) - Number(producto.precio) * Number(producto.kg);
+
+//     if (venta.formaPago_id === 2) {
+//       const cuentaCorriente = await CuentaCorriente.findOne({ where: { cliente_id: venta.cliente_id } });
+//       if (!cuentaCorriente) return res.status(404).json({ mensaje: "Cuenta corriente no encontrada" });
+
+//       const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({ where: { cuentaCorriente_id: cuentaCorriente.id } });
+//       if (!detalleCuentaCorriente) return res.status(404).json({ mensaje: "Detalle de cuenta corriente no encontrado" });
+
+//       // Actualizar cuenta corriente y detalle
+//       cuentaCorriente.saldoActual = Number(cuentaCorriente.saldoActual) - Number(producto.precio) * Number(producto.kg);
+//       detalleCuentaCorriente.monto = Number(detalleCuentaCorriente.monto) - Number(producto.precio) * Number(producto.kg);
+
+//       cuentaCorriente.saldoActual += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+//       detalleCuentaCorriente.monto += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+
+//       await cuentaCorriente.save();
+//       await detalleCuentaCorriente.save();
+//     }
+
+//     // Actualizar producto
+//     producto.precio = Number(nuevoProducto.precio);
+//     producto.kg = Number(nuevoProducto.kg);
+//     producto.tropa = nuevoProducto.tropa;
+
+//     // Ajustar valores nuevos del ingreso y venta
+//     ingreso.peso_total += Number(nuevoProducto.kg);
+//     venta.peso_total += Number(nuevoProducto.kg);
+//     venta.monto_total += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+
+//     // Guardar cambios
+//     await producto.save();
+//     await ingreso.save();
+//     await venta.save();
+
+//     res.json({ producto, ingreso, venta });
+//   } catch (error) {
+//     console.error("Error en actualizarProductoEnVenta:", error);
+//     res.status(500).json({ mensaje: "Error interno del servidor", error: error.message });
+//   }
+// };
+
 const actualizarProductoEnVenta = async (req, res, next) => {
   const ventaId = req.params.ventaId;
-  const { productoId, nuevoProducto, formaPago } = req.body;
+  const { productoId, nuevoProducto } = req.body;
+
+  console.log("Datos recibidos en el controlador:");
+  console.log("ventaId:", ventaId);
+  console.log("productoId:", productoId);
+  console.log("nuevoProducto:", nuevoProducto);
 
   try {
-    // Obtener la venta
     const venta = await Venta.findByPk(ventaId);
     if (!venta) {
+      console.log("Venta no encontrada");
       return res.status(404).json({ mensaje: "Venta no encontrada" });
     }
+    console.log("Venta encontrada:", venta);
 
-    // Obtener todos los productos asociados a la venta
-    const productosAsociados = await Producto.findAll({
-      where: { venta_id: venta.id }, // Ajusta según tu lógica de asociación
+    const producto = await Producto.findOne({
+      where: { id: productoId, venta_id: ventaId },
     });
-
-    const producto = productosAsociados.find((p) => p.id == productoId);
-
     if (!producto) {
-      return res
-        .status(404)
-        .json({ mensaje: "Producto no encontrado en la venta" });
+      console.log("Producto no encontrado en la venta");
+      return res.status(404).json({ mensaje: "Producto no encontrado en la venta" });
+    }
+    console.log("Producto encontrado:", producto);
+
+    let ingreso = null;
+
+    // Verificar si el producto tiene asociado un ingreso
+    if (producto.ingreso_id) {
+      ingreso = await Ingreso.findByPk(producto.ingreso_id);
+      if (!ingreso) {
+        console.log("Ingreso no encontrado para el producto con ingreso_id:", producto.ingreso_id);
+        return res.status(404).json({ mensaje: "Ingreso no encontrado" });
+      }
+      console.log("Ingreso encontrado:", ingreso);
+
+      // Ajustar valores del ingreso
+      ingreso.peso_total = Number(ingreso.peso_total) - Number(producto.kg);
+    } else {
+      console.log("El producto no tiene un ingreso asociado. Saltando ajustes en ingreso.");
     }
 
-    // Buscar ingreso
-    const ingreso = await Ingreso.findOne({
-      where: { id: producto.ingreso_id },
-    });
+    // Ajustar valores de la venta
+    venta.monto_total = Number(venta.monto_total) - Number(producto.precio) * Number(producto.kg);
 
-    // Descontar el peso viejo del producto y monto de la venta
-    ingreso.peso_total = ingreso.peso_total - producto.kg;
-    venta.monto_total = venta.monto_total - producto.precio * producto.kg;
-
-    if (venta.formaPago_id == 2) {
-      // Obtener la cuenta corriente asociada a la venta
-      const cuentaCorriente = await CuentaCorriente.findOne({
-        where: { cliente_id: venta.cliente_id },
-      });
-
+    if (venta.formaPago_id === 2) {
+      console.log("Venta con forma de pago en cuenta corriente");
+      const cuentaCorriente = await CuentaCorriente.findOne({ where: { cliente_id: venta.cliente_id } });
       if (!cuentaCorriente) {
-        return res
-          .status(404)
-          .json({ mensaje: "Cuenta corriente no encontrada" });
+        console.log("Cuenta corriente no encontrada");
+        return res.status(404).json({ mensaje: "Cuenta corriente no encontrada" });
       }
-      // Obtener el detalle de la cuenta corriente asociado a la venta
-      const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({
-        where: { cuentaCorriente_id: cuentaCorriente.id },
-      });
+      console.log("Cuenta corriente encontrada:", cuentaCorriente);
 
+      const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({ where: { cuentaCorriente_id: cuentaCorriente.id } });
       if (!detalleCuentaCorriente) {
-        return res
-          .status(404)
-          .json({ mensaje: "Detalle de cuenta corriente no encontrado" });
+        console.log("Detalle de cuenta corriente no encontrado");
+        return res.status(404).json({ mensaje: "Detalle de cuenta corriente no encontrado" });
       }
-      // Descontar el peso viejo del producto y monto de la venta
-      cuentaCorriente.saldoActual =
-        cuentaCorriente.saldoActual - producto.precio * producto.kg;
-      detalleCuentaCorriente.monto =
-        detalleCuentaCorriente.monto - producto.precio * producto.kg;
+      console.log("Detalle cuenta corriente encontrado:", detalleCuentaCorriente);
 
-      // Acutalizar cuenta corriente y detalle
-      cuentaCorriente.saldoActual =
-        cuentaCorriente.saldoActual + nuevoProducto.precio * nuevoProducto.kg;
-      detalleCuentaCorriente.monto =
-        detalleCuentaCorriente.monto + nuevoProducto.precio * nuevoProducto.kg;
+      // Actualizar cuenta corriente y detalle
+      cuentaCorriente.saldoActual = Number(cuentaCorriente.saldoActual) - Number(producto.precio) * Number(producto.kg);
+      detalleCuentaCorriente.monto = Number(detalleCuentaCorriente.monto) - Number(producto.precio) * Number(producto.kg);
+
+      cuentaCorriente.saldoActual += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+      detalleCuentaCorriente.monto += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+
+      console.log("Cuenta corriente y detalle ajustados tras nuevo producto:", cuentaCorriente, detalleCuentaCorriente);
+
       await cuentaCorriente.save();
       await detalleCuentaCorriente.save();
     }
 
-    // Actualizar los datos del producto
-    producto.precio = nuevoProducto.precio;
-    producto.kg = nuevoProducto.kg;
+    // Actualizar producto
+    producto.precio = Number(nuevoProducto.precio);
+    producto.kg = Number(nuevoProducto.kg);
     producto.tropa = nuevoProducto.tropa;
+    console.log("Producto actualizado con nuevos valores:", producto);
 
-    // Actualizar peso total de ingreso y ventas, y monto_total en ventas
-    ingreso.peso_total = ingreso.peso_total + producto.kg;
-    venta.peso_total = venta.peso_total + producto.kg;
-    venta.monto_total = producto.kg * producto.precio;
+    // Ajustar valores nuevos de la venta
+    venta.peso_total += Number(nuevoProducto.kg);
+    venta.monto_total += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
 
-    // Guardar los cambios en producto, ingreso y venta
+    console.log("Venta ajustada tras nuevo producto:", venta);
+
+    // Guardar cambios
     await producto.save();
-    await ingreso.save();
+    if (ingreso) {
+      ingreso.peso_total += Number(nuevoProducto.kg);
+      await ingreso.save();
+      console.log("Ingreso actualizado:", ingreso);
+    }
     await venta.save();
 
-    // // Responder con la venta actualizada
     res.json({ producto, ingreso, venta });
   } catch (error) {
-    next(error);
+    console.error("Error en actualizarProductoEnVenta:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor", error: error.message });
   }
 };
+
 
 const eliminarProductoVenta = async (req, res, next) => {
   try {

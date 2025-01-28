@@ -31,7 +31,8 @@ Ingreso.hasMany(Producto, {
   foreignKey: "ingreso_id",
   sourceKey: "id",
   allowNull: true, // Esta opción indica que la relación no es obligatoria
-  onDelete:"CASCADE"
+  onDelete: 'SET NULL', // Cambiar "CASCADE" a "SET NULL"
+  // onDelete:"CASCADE"
   // onDelete: "SET NULL", // Esta opción establecerá el campo "ingreso_id" en los registros de productos a nulo al eliminar un ingreso.
 });
 

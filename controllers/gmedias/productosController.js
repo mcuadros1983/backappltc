@@ -1,7 +1,7 @@
 // productosController.js
 
 import Producto from "../../models/gmedias/productoModel.js";
-
+import { Op } from "sequelize";
 import Orden from "../../models/gmedias/ordenModel.js";
 import Cliente from "../../models/gmedias/clienteModel.js";
 import Sucursal from "../../models/gmedias/sucursalModel.js";
@@ -41,6 +41,45 @@ const obtenerProductos = async (req, res, next) => {
   }
 };
 
+const obtenerProductosPorFecha = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta } = req.body;
+    console.log("productos fecha2", fechaDesde, fechaHasta)
+
+    // Validar que las fechas estén presentes
+    if (!fechaDesde || !fechaHasta) {
+      return res.status(400).json({
+        mensaje: "Por favor, proporciona las fechas 'fechaDesde' y 'fechaHasta'.",
+      });
+    }
+
+    // Buscar productos dentro del rango de fechas
+    const productos = await Producto.findAll({
+      
+      where: {
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta],
+        },
+      },
+      include: [
+        {
+          model: Cliente,
+          attributes: ["nombre"], // Puedes seleccionar solo los atributos que necesitas
+        },
+        {
+          model: Sucursal,
+          attributes: ["nombre"],
+        },
+      ],
+    });
+    console.log("productos", productos)
+
+    res.json(productos);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const obtenerProductoPorId = async (req, res, next) => {
   const { productoId } = req.params;
 
@@ -65,6 +104,19 @@ const obtenerProductoCodigoBarra = async (req, res, next) => {
   try {
     const product = await Producto.findOne({
       where: { codigo_de_barra: barcode },
+    });
+    res.json(product);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const obtenerProductoNumMedia = async (req, res, next) => {
+  const { nummedia } = req.params;
+
+  try {
+    const product = await Producto.findOne({
+      where: { num_media: nummedia },
     });
     res.json(product);
   } catch (error) {
@@ -142,7 +194,6 @@ const crearProducto = async (req, res, next) => {
 
 const actualizarProducto = async (req, res, next) => {
   const productoId = req.params.productoId;
-  // const { nombre, precio } = req.body;
   const {
     categoria_producto,
     subcategoria,
@@ -171,58 +222,57 @@ const actualizarProducto = async (req, res, next) => {
 
     const cambios = {};
     for (const key in req.body) {
-      // Excluir createdAt y updatedAt
       if (key !== "createdAt" && key !== "updatedAt") {
         if (
           productoOriginal.hasOwnProperty(key) &&
           req.body[key] !== productoOriginal[key]
         ) {
-          // Verificar si el valor es numérico antes de asignarlo a cambios
           const numericValue = parseFloat(req.body[key]);
-          // Verificar si el valor numérico es un número válido
           if (!isNaN(numericValue)) {
             cambios[key] = numericValue;
           } else {
-            // Si el valor no es numérico, lo asignamos tal cual
             cambios[key] = req.body[key];
           }
         }
       }
     }
 
-    // Obtener el ingreso asociado al producto
-    if (cambios.kg) {
+    // Si hay cambios en el peso (kg), validar si el producto tiene un ingreso asociado
+    if (cambios.kg && producto.ingreso_id) {
       const ingreso = await Ingreso.findByPk(producto.ingreso_id);
       if (!ingreso) {
+        console.log(
+          "El producto tiene un ingreso_id, pero no se encontró el ingreso"
+        );
         return res.status(404).json({ mensaje: "Ingreso no encontrado" });
       }
 
-      ingreso.peso_total = ingreso.peso_total - producto.kg + cambios.kg;
+      // Ajustar el peso total del ingreso
+      ingreso.peso_total =
+        Number(ingreso.peso_total) - Number(producto.kg) + Number(cambios.kg);
       await ingreso.save();
+    } else if (cambios.kg) {
+      console.log("El producto no tiene un ingreso asociado. Saltando ajustes en ingreso.");
     }
 
     if (producto.orden_id || producto.venta_id) {
       if (producto.orden_id) {
-        // Obtener la orden asociada al producto
         const orden = await Orden.findByPk(producto.orden_id);
 
         if (cambios.kg) {
-          // Si se está modificando el campo 'kg', actualizar 'peso_total' en la orden
-          orden.peso_total = orden.peso_total - producto.kg + cambios.kg;
+          orden.peso_total =
+            Number(orden.peso_total) - Number(producto.kg) + Number(cambios.kg);
           await orden.save();
         }
 
         if (cambios.sucursal_id) {
-          // Si se está modificando el campo 'kg', actualizar 'peso_total' en la orden
           orden.sucursal_id = cambios.sucursal_id;
           await orden.save();
         }
       }
       if (producto.venta_id) {
-        // Obtener la venta asociada al producto
         const venta = await Venta.findByPk(producto.venta_id);
 
-        // Obtener la ctacte asociada a la venta
         let ctacte = "";
         let detalleCtacte = "";
         ctacte = await CuentaCorriente.findOne({
@@ -236,59 +286,62 @@ const actualizarProducto = async (req, res, next) => {
         }
 
         if (cambios.kg && cambios.precio) {
-          // Ajustamos las ventas
-          venta.peso_total = venta.peso_total - producto.kg + cambios.kg;
+          venta.peso_total =
+            Number(venta.peso_total) - Number(producto.kg) + Number(cambios.kg);
           venta.monto_total =
-            venta.monto_total -
-            producto.kg * producto.precio +
-            cambios.kg * cambios.precio;
+            Number(venta.monto_total) -
+            Number(producto.kg) * Number(producto.precio) +
+            Number(cambios.kg) * Number(cambios.precio);
           await venta.save();
 
-          // Ajustamos la cta cte y el detalle si existe
           if (ctacte) {
-            const montoAnterior = producto.kg * producto.precio;
-            const montoNuevo = cambios.kg * cambios.precio;
+            const montoAnterior = Number(producto.kg) * Number(producto.precio);
+            const montoNuevo =
+              Number(cambios.kg) * Number(cambios.precio);
             ctacte.saldoActual =
-              ctacte.saldoActual - montoAnterior + montoNuevo;
+              Number(ctacte.saldoActual) - montoAnterior + montoNuevo;
             detalleCtacte.monto =
-              detalleCtacte.monto - montoAnterior + montoNuevo;
+              Number(detalleCtacte.monto) - montoAnterior + montoNuevo;
             await ctacte.save();
             await detalleCtacte.save();
           }
         } else if (cambios.kg) {
-          // Ajustamos las ventas
-          venta.peso_total = venta.peso_total - producto.kg + cambios.kg;
-          const montoNuevo = cambios.kg * producto.precio;
+          venta.peso_total =
+            Number(venta.peso_total) - Number(producto.kg) + Number(cambios.kg);
+          const montoNuevo = Number(cambios.kg) * Number(producto.precio);
           venta.monto_total =
-            venta.monto_total - producto.kg * producto.precio + montoNuevo;
+            Number(venta.monto_total) -
+            Number(producto.kg) * Number(producto.precio) +
+            montoNuevo;
           await venta.save();
 
-          // Ajustamos la cta cte y el detalle si existe
           if (ctacte) {
-            const montoAnterior = producto.kg * producto.precio;
-            const montoNuevo = cambios.kg * producto.precio;
+            const montoAnterior = Number(producto.kg) * Number(producto.precio);
+            const montoNuevo =
+              Number(cambios.kg) * Number(producto.precio);
             ctacte.saldoActual =
-              ctacte.saldoActual - montoAnterior + montoNuevo;
+              Number(ctacte.saldoActual) - montoAnterior + montoNuevo;
             detalleCtacte.monto =
-              detalleCtacte.monto - montoAnterior + montoNuevo;
+              Number(detalleCtacte.monto) - montoAnterior + montoNuevo;
             await ctacte.save();
             await detalleCtacte.save();
           }
         } else if (cambios.precio) {
-          // Ajustamos las ventas
-          const montoNuevo = producto.kg * cambios.precio;
+          const montoNuevo = Number(producto.kg) * Number(cambios.precio);
           venta.monto_total =
-            venta.monto_total - producto.kg * producto.precio + montoNuevo;
+            Number(venta.monto_total) -
+            Number(producto.kg) * Number(producto.precio) +
+            montoNuevo;
           await venta.save();
 
-          // Ajustamos la cta cte y el detalle si existe
           if (ctacte) {
-            const montoAnterior = producto.kg * producto.precio;
-            const montoNuevo = producto.kg * cambios.precio;
+            const montoAnterior = Number(producto.kg) * Number(producto.precio);
+            const montoNuevo =
+              Number(producto.kg) * Number(cambios.precio);
             ctacte.saldoActual =
-              ctacte.saldoActual - montoAnterior + montoNuevo;
+              Number(ctacte.saldoActual) - montoAnterior + montoNuevo;
             detalleCtacte.monto =
-              detalleCtacte.monto - montoAnterior + montoNuevo;
+              Number(detalleCtacte.monto) - montoAnterior + montoNuevo;
             await ctacte.save();
             await detalleCtacte.save();
           }
@@ -300,11 +353,10 @@ const actualizarProducto = async (req, res, next) => {
       const newObj = {};
       for (const key in obj) {
         if (obj.hasOwnProperty(key)) {
-          // Verificar si el valor es vacío
           if (obj[key] === "") {
-            newObj[key] = null; // Asignar null si el valor es vacío
+            newObj[key] = null;
           } else {
-            newObj[key] = obj[key]; // Mantener el valor original si no es vacío
+            newObj[key] = obj[key];
           }
         }
       }
@@ -333,9 +385,208 @@ const actualizarProducto = async (req, res, next) => {
 
     res.json(producto);
   } catch (error) {
+    console.error("Error en actualizarProducto:", error);
     next(error);
   }
 };
+
+
+// const actualizarProducto = async (req, res, next) => {
+//   const productoId = req.params.productoId;
+//   // const { nombre, precio } = req.body;
+//   const {
+//     categoria_producto,
+//     subcategoria,
+//     orden_id,
+//     sucursal_id,
+//     cliente_id,
+//     venta_id,
+//     codigo_de_barra,
+//     num_media,
+//     garron,
+//     precio,
+//     costo,
+//     kg,
+//     tropa,
+//   } = req.body;
+
+//   try {
+//     // Obtener el producto
+//     const producto = await Producto.findByPk(productoId);
+//     if (!producto) {
+//       return res.status(404).json({ mensaje: "Producto no encontrado" });
+//     }
+
+//     // Obtener el producto original de la base de datos
+//     const productoOriginal = producto.toJSON();
+
+//     const cambios = {};
+//     for (const key in req.body) {
+//       // Excluir createdAt y updatedAt
+//       if (key !== "createdAt" && key !== "updatedAt") {
+//         if (
+//           productoOriginal.hasOwnProperty(key) &&
+//           req.body[key] !== productoOriginal[key]
+//         ) {
+//           // Verificar si el valor es numérico antes de asignarlo a cambios
+//           const numericValue = parseFloat(req.body[key]);
+//           // Verificar si el valor numérico es un número válido
+//           if (!isNaN(numericValue)) {
+//             cambios[key] = numericValue;
+//           } else {
+//             // Si el valor no es numérico, lo asignamos tal cual
+//             cambios[key] = req.body[key];
+//           }
+//         }
+//       }
+//     }
+
+//     // Obtener el ingreso asociado al producto
+//     if (cambios.kg) {
+//       const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+//       if (!ingreso) {
+//         return res.status(404).json({ mensaje: "Ingreso no encontrado" });
+//       }
+
+//       ingreso.peso_total = ingreso.peso_total - producto.kg + cambios.kg;
+//       await ingreso.save();
+//     }
+
+//     if (producto.orden_id || producto.venta_id) {
+//       if (producto.orden_id) {
+//         // Obtener la orden asociada al producto
+//         const orden = await Orden.findByPk(producto.orden_id);
+
+//         if (cambios.kg) {
+//           // Si se está modificando el campo 'kg', actualizar 'peso_total' en la orden
+//           orden.peso_total = Number(orden.peso_total) - Number(producto.kg) + Number(cambios.kg);
+//           await orden.save();
+//         }
+
+//         if (cambios.sucursal_id) {
+//           // Si se está modificando el campo 'kg', actualizar 'peso_total' en la orden
+//           orden.sucursal_id = cambios.sucursal_id;
+//           await orden.save();
+//         }
+//       }
+//       if (producto.venta_id) {
+//         // Obtener la venta asociada al producto
+//         const venta = await Venta.findByPk(producto.venta_id);
+
+//         // Obtener la ctacte asociada a la venta
+//         let ctacte = "";
+//         let detalleCtacte = "";
+//         ctacte = await CuentaCorriente.findOne({
+//           cliente_id: producto.cliente_id,
+//         });
+
+//         if (ctacte) {
+//           detalleCtacte = await DetalleCuentaCorriente.findOne({
+//             cuentaCorriente_id: ctacte.id,
+//           });
+//         }
+
+//         if (cambios.kg && cambios.precio) {
+//           // Ajustamos las ventas
+//           venta.peso_total = venta.peso_total - producto.kg + cambios.kg;
+//           venta.monto_total =
+//             venta.monto_total -
+//             producto.kg * producto.precio +
+//             cambios.kg * cambios.precio;
+//           await venta.save();
+
+//           // Ajustamos la cta cte y el detalle si existe
+//           if (ctacte) {
+//             const montoAnterior = producto.kg * producto.precio;
+//             const montoNuevo = cambios.kg * cambios.precio;
+//             ctacte.saldoActual =
+//               ctacte.saldoActual - montoAnterior + montoNuevo;
+//             detalleCtacte.monto =
+//               detalleCtacte.monto - montoAnterior + montoNuevo;
+//             await ctacte.save();
+//             await detalleCtacte.save();
+//           }
+//         } else if (cambios.kg) {
+//           // Ajustamos las ventas
+//           venta.peso_total = venta.peso_total - producto.kg + cambios.kg;
+//           const montoNuevo = cambios.kg * producto.precio;
+//           venta.monto_total =
+//             venta.monto_total - producto.kg * producto.precio + montoNuevo;
+//           await venta.save();
+
+//           // Ajustamos la cta cte y el detalle si existe
+//           if (ctacte) {
+//             const montoAnterior = producto.kg * producto.precio;
+//             const montoNuevo = cambios.kg * producto.precio;
+//             ctacte.saldoActual =
+//               ctacte.saldoActual - montoAnterior + montoNuevo;
+//             detalleCtacte.monto =
+//               detalleCtacte.monto - montoAnterior + montoNuevo;
+//             await ctacte.save();
+//             await detalleCtacte.save();
+//           }
+//         } else if (cambios.precio) {
+//           // Ajustamos las ventas
+//           const montoNuevo = producto.kg * cambios.precio;
+//           venta.monto_total =
+//             venta.monto_total - producto.kg * producto.precio + montoNuevo;
+//           await venta.save();
+
+//           // Ajustamos la cta cte y el detalle si existe
+//           if (ctacte) {
+//             const montoAnterior = producto.kg * producto.precio;
+//             const montoNuevo = producto.kg * cambios.precio;
+//             ctacte.saldoActual =
+//               ctacte.saldoActual - montoAnterior + montoNuevo;
+//             detalleCtacte.monto =
+//               detalleCtacte.monto - montoAnterior + montoNuevo;
+//             await ctacte.save();
+//             await detalleCtacte.save();
+//           }
+//         }
+//       }
+//     }
+
+//     function checkAndReplaceEmpty(obj) {
+//       const newObj = {};
+//       for (const key in obj) {
+//         if (obj.hasOwnProperty(key)) {
+//           // Verificar si el valor es vacío
+//           if (obj[key] === "") {
+//             newObj[key] = null; // Asignar null si el valor es vacío
+//           } else {
+//             newObj[key] = obj[key]; // Mantener el valor original si no es vacío
+//           }
+//         }
+//       }
+//       return newObj;
+//     }
+
+//     const newData = {
+//       categoria_producto,
+//       subcategoria,
+//       orden_id,
+//       sucursal_id,
+//       cliente_id,
+//       venta_id,
+//       codigo_de_barra,
+//       num_media,
+//       garron,
+//       precio,
+//       costo,
+//       kg,
+//       tropa,
+//     };
+
+//     const newDataProcessed = checkAndReplaceEmpty(newData);
+//     producto.set(newDataProcessed);
+//     await producto.save();
+
+//     res.json(producto);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 
 const actualizarDatosProducto = async (
@@ -370,6 +621,59 @@ const actualizarDatosProducto = async (
   }
 };
 
+// const eliminarProducto = async (req, res, next) => {
+//   const productoId = req.params.productoId;
+
+//   try {
+//     const producto = await Producto.findByPk(productoId);
+
+//     if (!producto) {
+//       return res.status(404).json({ mensaje: "Producto no encontrado" });
+//     }
+
+//     if (
+//       producto.sucursal_id !== 18 ||
+//       producto.orden_id !== null ||
+//       producto.cliente_id !== null ||
+//       producto.venta_id !== null
+//     ) {
+//       return res.status(400).json({
+//         mensaje: "Producto no se puede eliminar, ya que ha salido del stock",
+//       });
+//     }
+
+//     // Obtener el ingreso asociado al producto
+//     const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+
+//     if (!ingreso) {
+//       return res.status(404).json({ mensaje: "Ingreso no encontrado" });
+//     }
+
+//     // Verificar si este producto es el único en el ingreso
+//     const productosEnIngreso = await Producto.findAll({
+//       where: { ingreso_id: ingreso.id },
+//     });
+
+//     if (productosEnIngreso.length === 1) {
+//       // Si es el único, eliminar el ingreso
+//       await ingreso.destroy();
+//       return res.json({ mensaje: "Ingreso eliminado con éxito" });
+//     } else {
+//       // Si no es el único, actualizar la cantidad_total y peso_total del ingreso
+//       ingreso.cantidad_total -= 1; // Restar 1 a la cantidad_total (puedes ajustar según tu lógica)
+//       ingreso.peso_total -= producto.kg; // Restar el peso del producto eliminado
+//       await ingreso.save();
+//     }
+
+//     // Eliminar el producto
+//     await producto.destroy();
+
+//     res.json({ mensaje: "Producto eliminado con éxito" });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const eliminarProducto = async (req, res, next) => {
   const productoId = req.params.productoId;
 
@@ -382,6 +686,7 @@ const eliminarProducto = async (req, res, next) => {
 
     if (
       producto.sucursal_id !== 18 ||
+      // producto.sucursal_id !== 32 ||
       producto.orden_id !== null ||
       producto.cliente_id !== null ||
       producto.venta_id !== null
@@ -389,6 +694,13 @@ const eliminarProducto = async (req, res, next) => {
       return res.status(400).json({
         mensaje: "Producto no se puede eliminar, ya que ha salido del stock",
       });
+    }
+
+    // Verificar si el producto tiene un ingreso asociado
+    if (!producto.ingreso_id) {
+      // Si no hay ingreso asociado, simplemente eliminar el producto
+      await producto.destroy();
+      return res.json({ mensaje: "Producto eliminado con éxito" });
     }
 
     // Obtener el ingreso asociado al producto
@@ -422,6 +734,7 @@ const eliminarProducto = async (req, res, next) => {
     next(error);
   }
 };
+
 
 const procesarDesdeExcel = async (req, res, next) => {
   // console.log("datosexcel", req.body);
@@ -465,9 +778,7 @@ let lastUsedId = 0;
 const crearProductosDesdeExcel = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ mensaje: "No se ha subido ningún archivo." });
+      return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
     }
 
     // Lee el archivo Excel
@@ -479,85 +790,87 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     // Obtiene los datos adicionales del cuerpo de la solicitud
     const { operacion, destino, formaPago } = req.body;
 
-    // Calcula la cantidad total de productos
-    const cantidad_total = data.length;
+    if (operacion === "romaneo") {
+      // Procesar productos para la operación "Romaneo"
+      const productosProcesados = await Promise.all(
+        data.map(async (row) => {
+          console.log("row", row)
+          try {
+            // Verificar si el producto ya existe
+            const productoExistente = await Producto.findOne({
+              where: { num_media: String(row.num_media) },
+            });
 
-    // Calcula el peso total sumando los pesos de todos los productos
-    const peso_total = data.reduce((total, row) => {
-      if (row.kg) {
-        return total + parseFloat(row.kg);
-      } else {
-        return total;
-      }
-    }, 0);
+            if (productoExistente) {
+              console.log(`El producto con num_media ${row.num_media} ya existe.`);
+              return null; // Saltar si ya existe
+            }
 
-    const categoria = data[0].categoria;
+            // Crear el producto con la sucursal_id fija
+            const nuevoProducto = await Producto.create({
+              categoria_producto: row.categoria,
+              subcategoria: row.subcategoria,
+              num_media: row.num_media,
+              garron: row.garron,
+              precio: row.precio,
+              costo: row.costo,
+              kg: row.kg,
+              tropa: row.tropa,
+              sucursal_id: 32, // Sucursal fija para romaneo
+            });
 
-    // Crea el ingreso
-    const nuevoIngreso = await Ingreso.create({
-      cantidad_total,
-      peso_total,
-      categoria_ingreso: categoria,
-    });
+            return nuevoProducto;
+          } catch (error) {
+            console.error(
+              `Error al procesar el producto con num_media ${row.num_media}:`,
+              error
+            );
+            throw error;
+          }
+        })
+      );
 
-    // Obtiene el ID del ingreso creado
-    const ingreso_id = nuevoIngreso.id;
+      // Filtrar productos creados correctamente
+      const productosCreados = productosProcesados.filter(
+        (producto) => producto !== null
+      );
 
-    // Consulta el último valor de id en ProductoId
-    const lastProductId = await ProductoId.findOne({
-      order: [["id", "DESC"]],
-    });
+      // Eliminar el archivo cargado
+      fs.unlinkSync(req.file.path);
 
-    let lastId = 0;
-    if (lastProductId) {
-      lastId = lastProductId.id;
+      // Responder con los productos creados
+      return res.status(200).json({
+        mensaje: "Los productos han sido procesados correctamente en Romaneo.",
+        productos: productosCreados,
+      });
     }
 
-    // Itera sobre los datos del archivo Excel
+    // Para operaciones diferentes de "romaneo"
     const productosCreados = await Promise.all(
-      data.map(async (row, index) => {
+      data.map(async (row) => {
         try {
-          // Incrementa el último id para el nuevo producto
-          const newId = lastUsedId + index + 1;
+          // Buscar el producto existente por num_media
+          let producto = await Producto.findOne({ where: { num_media: String(row.num_media) } });
 
-          const { codigo_de_barra, num_media } = generarCodigoDeBarras(
-            categoria,
-            newId
-          );
+          if (!producto) {
+            // Si no existe, crear el producto
+            producto = await Producto.create({
+              categoria_producto: row.categoria,
+              subcategoria: row.subcategoria,
+              num_media: row.num_media,
+              garron: row.garron,
+              precio: row.precio,
+              costo: row.costo,
+              kg: row.kg,
+              tropa: row.tropa,
+              sucursal_id: null, // Sucursal será asignada más adelante
+            });
+          }
 
-          // Aplica la lógica de checkAndReplaceEmpty
-          const newData = verificarYReemplazarVacios({
-            categoria_producto: row.categoria,
-            subcategoria:row.subcategoria,
-            ingreso_id,
-            codigo_de_barra,
-            num_media,
-            garron: row.garron,
-            precio: row.precio,
-            costo: row.costo,
-            kg: row.kg,
-            tropa: row.tropa,
-          });
-
-          // Crea un nuevo producto asociado al ingreso
-          const productoCreado = await Producto.create({
-            ...newData,
-            ingreso_id,
-          });
-
-          // Crear el registro en productoId con el id del producto creado
-          const nuevoProductoId = await ProductoId.create({
-            id: productoCreado.id,
-            // productoId: nuevoProducto.id,
-          });
-
-          // Actualiza el lastUsedId con el último ID creado
-          lastUsedId = productoCreado.id;
-
-          return productoCreado;
+          return producto;
         } catch (error) {
           console.error("Error al procesar producto desde Excel:", row, error);
-          throw error; // Propaga el error para manejarlo en el bloque catch de Promise.all
+          throw error;
         }
       })
     );
@@ -565,68 +878,65 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     // Elimina el archivo cargado después de procesarlo
     fs.unlinkSync(req.file.path);
 
-    // Crea la venta u orden según el tipo
+    // Continúa con la lógica de venta u orden
     if (operacion === "venta") {
       // Calcula el monto total de la venta (suma de productos: peso por precio)
       const montoTotal = productosCreados.reduce((total, producto) => {
-        return total + producto.kg * producto.precio;
+        return Number(total) + Number(producto.kg) * Number(producto.precio);
       }, 0);
 
-      // Crea la venta
+      // Manejar cuenta corriente si la forma de pago es cuenta corriente
       if (formaPago == 2) {
-
         let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(destino);
         if (!cuentaCorriente) {
           cuentaCorriente = await crearCuentaCorriente(destino, montoTotal);
         } else {
           await actualizarCuentaCorrienteIdCliente(destino, montoTotal);
         }
-        // Crea el detalle de la cuenta corriente
+
+        // Crear el detalle de la cuenta corriente
         await crearDetalleCuentaCorriente(cuentaCorriente.id, montoTotal);
       }
 
       // Crea la venta
       const nuevaVenta = await Venta.create({
-        cantidad_total: cantidad_total,
-        peso_total: peso_total, // Esto puede requerir ajustes dependiendo de la lógica de tu aplicación
+        cantidad_total: productosCreados.length,
+        peso_total: productosCreados.reduce((total, p) => total + p.kg, 0),
         monto_total: montoTotal,
         cliente_id: destino,
         formaPago_id: formaPago,
       });
 
-      // console.log("venta --------------", nuevaVenta);
-
-      // Actualiza los productos con el id de la venta
-      const productosActualizados = await Promise.all(
+      // Asocia los productos a la venta
+      await Promise.all(
         productosCreados.map(async (producto) => {
           producto.venta_id = nuevaVenta.id;
           producto.cliente_id = destino;
           producto.sucursal_id = null;
-          return await producto.save();
+          await producto.save();
         })
       );
     } else if (operacion === "orden") {
       // Crea la orden
       const nuevaOrden = await Orden.create({
-        peso_total,
-        cantidad_total,
+        peso_total: productosCreados.reduce((total, p) => Number(total) + Number(p.kg), 0),
+        cantidad_total: productosCreados.length,
         sucursal_id: destino,
       });
 
-      // Actualiza los productos con el id de la orden
-      const productosActualizados = await Promise.all(
+      // Asocia los productos a la orden
+      await Promise.all(
         productosCreados.map(async (producto) => {
           producto.orden_id = nuevaOrden.id;
           producto.sucursal_id = destino;
-          return await producto.save();
+          await producto.save();
         })
       );
     }
-    // Devuelve una respuesta exitosa con el nuevo ingreso y los productos creados
+
+    // Devuelve una respuesta exitosa con los productos creados
     return res.status(200).json({
-      mensaje:
-        "Los productos han sido creados correctamente desde el archivo Excel.",
-      nuevoIngreso,
+      mensaje: "Los productos han sido procesados correctamente desde el archivo Excel.",
       productos: productosCreados,
     });
   } catch (error) {
@@ -637,23 +947,310 @@ const crearProductosDesdeExcel = async (req, res, next) => {
   }
 };
 
-// Función para actualizar productos desde un archivo Excel
+
+
+// // Función para actualizar productos desde un archivo Excel
+// const actualizarProductosDesdeExcel = async (req, res, next) => {
+//   try {
+//     if (!req.file) {
+//       return res
+//         .status(400)
+//         .json({ mensaje: "No se ha subido ningún archivo." });
+//     }
+
+//     // Lee el archivo Excel
+//     const workbook = xlsx.readFile(req.file.path);
+//     const sheetName = workbook.SheetNames[0];
+//     const sheet = workbook.Sheets[sheetName];
+//     const data = xlsx.utils.sheet_to_json(sheet);
+
+//     // Itera sobre los datos del archivo Excel
+//     for (const row of data) {
+//       const {
+//         categoria_producto,
+//         subcategoria,
+//         codigo_de_barra,
+//         num_media,
+//         garron,
+//         precio,
+//         costo,
+//         kg,
+//         tropa,
+//       } = row;
+
+//       // Busca el producto en la base de datos por su código de barras
+//       const producto = await Producto.findOne({
+//         where: { num_media: num_media },
+//       });
+
+//       if (producto) {
+//         // Busca el ingreso asociado al producto
+//         const ingreso = await Ingreso.findOne({
+//           where: { id: producto.ingreso_id },
+//         });
+
+//         // console.log("ingreso", ingreso, producto.kg, kg);
+//         if (kg !== undefined) {
+//           // Actualiza el peso total del ingreso
+//           ingreso.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//           ingreso.peso_total += Number(kg); // Suma el peso del nuevo producto
+
+//           // Guarda los cambios en el ingreso
+//           await ingreso.save();
+//         }
+
+//         // Busca la orden asociada al producto
+//         if (producto.orden_id !== null && kg != undefined) {
+//           const orden = await Orden.findOne({
+//             where: { id: producto.orden_id },
+//           });
+
+//           // Actualiza el peso total del ingreso
+//           orden.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//           orden.peso_total += Number(kg); // Suma el peso del nuevo producto
+
+//           // Guarda los cambios en el ingreso
+//           await orden.save();
+//         }
+
+//         // Busca la venta asociada al producto
+//         if (producto.venta_id !== null && kg !== undefined) {
+//           const venta = await Venta.findOne({
+//             where: { id: producto.venta_id },
+//           });
+//           if (venta) {
+//             // Actualiza el peso total del ingreso
+//             venta.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//             venta.monto_total -= Number(producto.kg) * Number(producto.precio);
+//             venta.peso_total += Number(kg); // Suma el peso del nuevo producto
+//             venta.monto_total += Number(kg) * Number(precio);
+
+//             // Guarda los cambios en el ingreso
+//             await venta.save();
+//           }
+
+//           if (venta.formaPago_id == 2) {
+//             // Busca la ctacte asociada a la venta
+//             const ctacte = await CuentaCorriente.findOne({
+//               where: { cliente_id: venta.cliente_id },
+//             });
+//             // Actualiza el peso total del ingreso
+//             ctacte.saldoActual -= Number(producto.kg) * Number(producto.precio);
+//             ctacte.saldoActual += Number(kg) * Number(precio);
+
+//             // Guarda los cambios en el ingreso
+//             await ctacte.save();
+
+//             // Busca detallecuentacorriente asociada a la cuentacorrietne
+//             const detalleCtacte = await DetalleCuentaCorriente.findOne({
+//               where: { cuentaCorriente_id: ctacte.id },
+//             });
+//             // Actualiza el peso total del ingreso
+//             detalleCtacte.monto -= Number(producto.kg) * Number(producto.precio);
+//             detalleCtacte.monto += Number(kg) * Number(precio);
+
+//             // Guarda los cambios en el ingreso
+//             await detalleCtacte.save();
+//           }
+//         }
+//         if (categoria_producto) producto.categoria_producto = categoria_producto;
+//         if (subcategoria) producto.subcategoria = subcategoria;
+//         if (garron) producto.garron = garron;
+//         if (precio) producto.precio = precio;
+//         if (costo) producto.costo = costo;
+//         if (kg) producto.kg = kg;
+//         if (tropa) producto.tropa = tropa;
+
+//         // Guarda los cambios en la base de datos
+//         await producto.save();
+//       }
+//     }
+
+//     // Elimina el archivo cargado después de procesarlo
+//     fs.unlinkSync(req.file.path);
+
+//     // Devuelve una respuesta exitosa
+//     return res.status(200).json({
+//       mensaje:
+//         "Los productos han sido actualizados correctamente desde el archivo Excel.",
+//     });
+//   } catch (error) {
+//     console.error("Error al actualizar productos desde Excel:", error);
+//     return res.status(500).json({
+//       mensaje: "Error al actualizar productos desde el archivo Excel.",
+//     });
+//   }
+// };
+
+// const actualizarProductosDesdeExcel = async (req, res, next) => {
+//   try {
+//     if (!req.file) {
+//       return res
+//         .status(400)
+//         .json({ mensaje: "No se ha subido ningún archivo." });
+//     }
+
+//     // Lee el archivo Excel
+//     const workbook = xlsx.readFile(req.file.path);
+//     const sheetName = workbook.SheetNames[0];
+//     const sheet = workbook.Sheets[sheetName];
+//     const data = xlsx.utils.sheet_to_json(sheet);
+
+//     // Itera sobre los datos del archivo Excel
+//     for (const row of data) {
+//       const {
+//         categoria_producto,
+//         subcategoria,
+//         codigo_de_barra,
+//         num_media,
+//         garron,
+//         precio,
+//         costo,
+//         kg,
+//         tropa,
+//       } = row;
+
+//       // Busca el producto en la base de datos por su número de media
+//       const producto = await Producto.findOne({
+//         where: { num_media: num_media },
+//       });
+
+//       if (producto) {
+//         // Validar si existe un ingreso asociado al producto
+//         if (producto.ingreso_id) {
+//           const ingreso = await Ingreso.findOne({
+//             where: { id: producto.ingreso_id },
+//           });
+
+//           if (ingreso && kg !== undefined) {
+//             // Actualiza el peso total del ingreso
+//             ingreso.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//             ingreso.peso_total += Number(kg); // Suma el peso del nuevo producto
+
+//             // Guarda los cambios en el ingreso
+//             await ingreso.save();
+//           }
+//         }
+
+//         // Busca la orden asociada al producto
+//         if (producto.orden_id !== null && kg !== undefined) {
+//           const orden = await Orden.findOne({
+//             where: { id: producto.orden_id },
+//           });
+
+//           if (orden) {
+//             // Actualiza el peso total de la orden
+//             orden.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//             orden.peso_total += Number(kg); // Suma el peso del nuevo producto
+
+//             // Guarda los cambios en la orden
+//             await orden.save();
+//           }
+//         }
+
+//         // Busca la venta asociada al producto
+//         if (producto.venta_id !== null && kg !== undefined) {
+//           const venta = await Venta.findOne({
+//             where: { id: producto.venta_id },
+//           });
+
+//           if (venta) {
+//             // Actualiza el peso y monto total de la venta
+//             venta.peso_total -= Number(producto.kg); // Resta el peso del producto anterior
+//             venta.monto_total -= Number(producto.kg) * Number(producto.precio);
+//             venta.peso_total += Number(kg); // Suma el peso del nuevo producto
+//             venta.monto_total += Number(kg) * Number(precio);
+
+//             // Guarda los cambios en la venta
+//             await venta.save();
+
+//             // Si la venta está asociada a una cuenta corriente
+//             if (venta.formaPago_id == 2) {
+//               // Busca la cuenta corriente asociada a la venta
+//               const ctacte = await CuentaCorriente.findOne({
+//                 where: { cliente_id: venta.cliente_id },
+//               });
+
+//               if (ctacte) {
+//                 // Actualiza el saldo actual de la cuenta corriente
+//                 ctacte.saldoActual -=
+//                   Number(producto.kg) * Number(producto.precio);
+//                 ctacte.saldoActual += Number(kg) * Number(precio);
+
+//                 // Guarda los cambios en la cuenta corriente
+//                 await ctacte.save();
+
+//                 // Busca el detalle asociado a la cuenta corriente
+//                 const detalleCtacte = await DetalleCuentaCorriente.findOne({
+//                   where: { cuentaCorriente_id: ctacte.id },
+//                 });
+
+//                 if (detalleCtacte) {
+//                   // Actualiza el monto del detalle
+//                   detalleCtacte.monto -=
+//                     Number(producto.kg) * Number(producto.precio);
+//                   detalleCtacte.monto += Number(kg) * Number(precio);
+
+//                   // Guarda los cambios en el detalle
+//                   await detalleCtacte.save();
+//                 }
+//               }
+//             }
+//           }
+//         }
+
+//         // Actualiza los campos del producto si existen en la fila
+//         if (categoria_producto) producto.categoria_producto = categoria_producto;
+//         if (subcategoria) producto.subcategoria = subcategoria;
+//         if (garron) producto.garron = garron;
+//         if (precio) producto.precio = precio;
+//         if (costo) producto.costo = costo;
+//         if (kg) producto.kg = kg;
+//         if (tropa) producto.tropa = tropa;
+
+//         // Guarda los cambios en el producto
+//         await producto.save();
+//       }
+//     }
+
+//     // Elimina el archivo cargado después de procesarlo
+//     fs.unlinkSync(req.file.path);
+
+//     // Devuelve una respuesta exitosa
+//     return res.status(200).json({
+//       mensaje:
+//         "Los productos han sido actualizados correctamente desde el archivo Excel.",
+//     });
+//   } catch (error) {
+//     console.error("Error al actualizar productos desde Excel:", error);
+//     return res.status(500).json({
+//       mensaje: "Error al actualizar productos desde el archivo Excel.",
+//     });
+//   }
+// };
+
 const actualizarProductosDesdeExcel = async (req, res, next) => {
   try {
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ mensaje: "No se ha subido ningún archivo." });
+      console.log("No se ha subido ningún archivo.");
+      return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
     }
+
+    console.log("Archivo recibido:", req.file.path);
 
     // Lee el archivo Excel
     const workbook = xlsx.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0];
+    console.log("Hoja seleccionada:", sheetName);
     const sheet = workbook.Sheets[sheetName];
     const data = xlsx.utils.sheet_to_json(sheet);
 
+    console.log("Datos procesados desde el archivo Excel:", data);
+
     // Itera sobre los datos del archivo Excel
-    for (const row of data) {
+    for (const [index, row] of data.entries()) {
+      console.log(`Procesando fila ${index + 1}:`, row);
+
       const {
         categoria_producto,
         subcategoria,
@@ -666,81 +1263,129 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
         tropa,
       } = row;
 
-      // Busca el producto en la base de datos por su código de barras
+      console.log("Valores extraídos:", {
+        categoria_producto,
+        subcategoria,
+        codigo_de_barra,
+        num_media,
+        garron,
+        precio,
+        costo,
+        kg,
+        tropa,
+      });
+
+      if (!num_media) {
+        console.log(`Fila ${index + 1} omitida: falta 'num_media'.`);
+        continue;
+      }
+
+      // Busca el producto en la base de datos por su número de media
       const producto = await Producto.findOne({
-        where: { num_media: num_media },
+        where: { num_media: String(num_media) }, // Asegúrate de que sea un string
       });
 
       if (producto) {
-        // Busca el ingreso asociado al producto
-        const ingreso = await Ingreso.findOne({
-          where: { id: producto.ingreso_id },
-        });
+        console.log(`Producto encontrado para 'num_media' ${num_media}:`, producto);
 
-        // console.log("ingreso", ingreso, producto.kg, kg);
-        if (kg !== undefined) {
-          // Actualiza el peso total del ingreso
-          ingreso.peso_total -= producto.kg; // Resta el peso del producto anterior
-          ingreso.peso_total += kg; // Suma el peso del nuevo producto
+        // Validar si existe un ingreso asociado al producto
+        if (producto.ingreso_id) {
+          console.log("Producto tiene un ingreso asociado:", producto.ingreso_id);
 
-          // Guarda los cambios en el ingreso
-          await ingreso.save();
+          const ingreso = await Ingreso.findOne({
+            where: { id: producto.ingreso_id },
+          });
+
+          if (ingreso) {
+            console.log("Ingreso encontrado:", ingreso);
+            if (kg !== undefined) {
+              console.log(
+                `Actualizando peso del ingreso. Peso anterior: ${ingreso.peso_total}, Producto.kg: ${producto.kg}, Nuevo kg: ${kg}`
+              );
+
+              ingreso.peso_total -= Number(producto.kg);
+              ingreso.peso_total += Number(kg);
+
+              await ingreso.save();
+              console.log("Ingreso actualizado:", ingreso);
+            }
+          } else {
+            console.log("Ingreso no encontrado para ID:", producto.ingreso_id);
+          }
+        } else {
+          console.log("El producto no tiene un ingreso asociado.");
         }
 
-        // Busca la orden asociada al producto
-        if (producto.orden_id !== null && kg != undefined) {
+        // Resto de las actualizaciones (orden, venta, producto, etc.)
+        if (producto.orden_id !== null && kg !== undefined) {
           const orden = await Orden.findOne({
             where: { id: producto.orden_id },
           });
 
-          // Actualiza el peso total del ingreso
-          orden.peso_total -= producto.kg; // Resta el peso del producto anterior
-          orden.peso_total += kg; // Suma el peso del nuevo producto
+          if (orden) {
+            console.log("Orden encontrada:", orden);
+            console.log(
+              `Actualizando peso de la orden. Peso anterior: ${orden.peso_total}, Producto.kg: ${producto.kg}, Nuevo kg: ${kg}`
+            );
 
-          // Guarda los cambios en el ingreso
-          await orden.save();
+            orden.peso_total -= Number(producto.kg);
+            orden.peso_total += Number(kg);
+
+            await orden.save();
+            console.log("Orden actualizada:", orden);
+          }
         }
 
-        // Busca la venta asociada al producto
         if (producto.venta_id !== null && kg !== undefined) {
           const venta = await Venta.findOne({
             where: { id: producto.venta_id },
           });
+
           if (venta) {
-            // Actualiza el peso total del ingreso
-            venta.peso_total -= producto.kg; // Resta el peso del producto anterior
-            venta.monto_total -= producto.kg * producto.precio;
-            venta.peso_total += kg; // Suma el peso del nuevo producto
-            venta.monto_total += kg * precio;
+            console.log("Venta encontrada:", venta);
 
-            // Guarda los cambios en el ingreso
+            venta.peso_total -= Number(producto.kg);
+            venta.monto_total -= Number(producto.kg) * Number(producto.precio);
+            venta.peso_total += Number(kg);
+            venta.monto_total += Number(kg) * Number(precio);
+
             await venta.save();
-          }
+            console.log("Venta actualizada:", venta);
 
-          if (venta.formaPago_id == 2) {
-            // Busca la ctacte asociada a la venta
-            const ctacte = await CuentaCorriente.findOne({
-              where: { cliente_id: venta.cliente_id },
-            });
-            // Actualiza el peso total del ingreso
-            ctacte.saldoActual -= producto.kg * producto.precio;
-            ctacte.saldoActual += kg * precio;
+            if (venta.formaPago_id == 2) {
+              const ctacte = await CuentaCorriente.findOne({
+                where: { cliente_id: venta.cliente_id },
+              });
 
-            // Guarda los cambios en el ingreso
-            await ctacte.save();
+              if (ctacte) {
+                console.log("Cuenta corriente encontrada:", ctacte);
 
-            // Busca detallecuentacorriente asociada a la cuentacorrietne
-            const detalleCtacte = await DetalleCuentaCorriente.findOne({
-              where: { cuentaCorriente_id: ctacte.id },
-            });
-            // Actualiza el peso total del ingreso
-            detalleCtacte.monto -= producto.kg * producto.precio;
-            detalleCtacte.monto += kg * precio;
+                ctacte.saldoActual -=
+                  Number(producto.kg) * Number(producto.precio);
+                ctacte.saldoActual += Number(kg) * Number(precio);
 
-            // Guarda los cambios en el ingreso
-            await detalleCtacte.save();
+                await ctacte.save();
+                console.log("Cuenta corriente actualizada:", ctacte);
+
+                const detalleCtacte = await DetalleCuentaCorriente.findOne({
+                  where: { cuentaCorriente_id: ctacte.id },
+                });
+
+                if (detalleCtacte) {
+                  console.log("Detalle de cuenta corriente encontrado:", detalleCtacte);
+
+                  detalleCtacte.monto -=
+                    Number(producto.kg) * Number(producto.precio);
+                  detalleCtacte.monto += Number(kg) * Number(precio);
+
+                  await detalleCtacte.save();
+                  console.log("Detalle de cuenta corriente actualizado:", detalleCtacte);
+                }
+              }
+            }
           }
         }
+
         if (categoria_producto) producto.categoria_producto = categoria_producto;
         if (subcategoria) producto.subcategoria = subcategoria;
         if (garron) producto.garron = garron;
@@ -749,15 +1394,17 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
         if (kg) producto.kg = kg;
         if (tropa) producto.tropa = tropa;
 
-        // Guarda los cambios en la base de datos
         await producto.save();
+        console.log(`Producto actualizado:`, producto);
+      } else {
+        console.log(`Producto no encontrado para 'num_media': ${num_media}`);
       }
     }
 
     // Elimina el archivo cargado después de procesarlo
     fs.unlinkSync(req.file.path);
+    console.log("Archivo eliminado tras procesamiento:", req.file.path);
 
-    // Devuelve una respuesta exitosa
     return res.status(200).json({
       mensaje:
         "Los productos han sido actualizados correctamente desde el archivo Excel.",
@@ -769,6 +1416,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
     });
   }
 };
+
 
 const generarCodigos = async (req, res, next) => { 
   // console.log("categoria----------", req.body)
@@ -812,8 +1460,10 @@ const generarCodigos = async (req, res, next) => {
 
 export {
   obtenerProductos,
+  obtenerProductosPorFecha,
   obtenerProductoPorId,
   obtenerProductoCodigoBarra,
+  obtenerProductoNumMedia,
   obtenerProductosCodigoBarra,
   obtenerProductosFiltradosSucursalFecha,
   crearProducto,
