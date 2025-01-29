@@ -685,8 +685,7 @@ const eliminarProducto = async (req, res, next) => {
     }
 
     if (
-      producto.sucursal_id !== 18 ||
-      // producto.sucursal_id !== 32 ||
+      (producto.sucursal_id !== 18 && producto.sucursal_id !== 32) ||
       producto.orden_id !== null ||
       producto.cliente_id !== null ||
       producto.venta_id !== null
