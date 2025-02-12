@@ -339,7 +339,7 @@ const eliminarProductoOrden = async (req, res, next) => {
       producto.kg = 0;
     }
     producto.orden_id = null;
-    producto.sucursal_id = 18;
+    producto.sucursal_id = producto.ingreso_id ? 18 : 32;
     await producto.save();
 
     res.json(orden);

@@ -483,10 +483,6 @@ const eliminarVenta = async (req, res, next) => {
         producto.categoria_producto == "porcino"
       ) {
         const ingreso = await Ingreso.findByPk(producto.ingreso_id);
-        // if (ingreso) {
-        //   ingreso.peso_total -= producto.kg; // Restar el peso del producto
-        //   await ingreso.save();
-        // }
         // Actualizar el producto con los nuevos valores
         await actualizarDatosProducto(producto.id, null, producto.ingreso_id === null ? 32 : 18, null, null, producto.precio ? producto.precio : 0, producto.kg ? producto.kg :0,producto.tropa ? producto.tropa : null,);
       } else {
@@ -589,11 +585,6 @@ const eliminarVenta = async (req, res, next) => {
 const actualizarProductoEnVenta = async (req, res, next) => {
   const ventaId = req.params.ventaId;
   const { productoId, nuevoProducto } = req.body;
-
-  console.log("Datos recibidos en el controlador:");
-  console.log("ventaId:", ventaId);
-  console.log("productoId:", productoId);
-  console.log("nuevoProducto:", nuevoProducto);
 
   try {
     const venta = await Venta.findByPk(ventaId);
@@ -747,12 +738,13 @@ const eliminarProductoVenta = async (req, res, next) => {
       await venta.save();
     }
 
-    if (producto.categoria_producto == "porcino") {
-      producto.kg = 0;
-    }
+    // if (producto.categoria_producto == "porcino") {
+    //   producto.kg = 0;
+    // }
     producto.venta_id = null;
     producto.cliente_id = null;
-    producto.sucursal_id = 18;
+    // console.log("sucursal_id-------, producto")
+    producto.sucursal_id = producto.ingreso_id ? 18 : 32;
     await producto.save();
 
     res.json(venta);

@@ -767,6 +767,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
 };
 
 const actualizarProductosDesdeExcel = async (req, res, next) => {
+  console.log("actualizando.......")
   try {
     if (!req.file) {
       console.log("No se ha subido ningún archivo.");
@@ -800,7 +801,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
         tropa,
       } = row;
 
-      console.log("Valores extraídos:", {
+      console.log("Valores extraídos:", { 
         categoria_producto,
         subcategoria,
         codigo_de_barra,
