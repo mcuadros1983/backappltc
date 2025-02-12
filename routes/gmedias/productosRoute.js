@@ -27,3 +27,4 @@ productosRouter.post('/productos/generarcodigos', productosController.generarCod
 productosRouter.post('/productos/upload', upload.single('file'), productosController.procesarDesdeExcel);
 
 export default productosRouter;
+

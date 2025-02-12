@@ -498,7 +498,7 @@ const eliminarVenta = async (req, res, next) => {
           // 18, // o el valor correspondiente para sucursal_id
           null, // o el valor correspondiente para cliente_id
           null, // o el valor correspondiente para venta_id
-          producto.precio ? producto.precio : 0, // o el valor correspondiente para precio
+          producto.precio = 0, // o el valor correspondiente para precio
           producto.kg ? producto.kg :0,
           producto.tropa ? producto.tropa : null,
 
