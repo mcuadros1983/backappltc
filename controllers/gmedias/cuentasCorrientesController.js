@@ -29,6 +29,8 @@ const obtenerOperacionesCuentaCorriente = async (req, res, next) => {
       where: { cliente_id: clienteId },
     });
 
+    
+
     // Obtener cobranzas
     if (cuentaCorriente) {
       cobranzas = await Cobranza.findAll({
@@ -41,6 +43,8 @@ const obtenerOperacionesCuentaCorriente = async (req, res, next) => {
         where: { cuentaCorriente_id: cuentaCorriente.id },
       });
     }
+
+    console.log("cuentacorriente-----------", cuentaCorriente)
 
     // Construir la respuesta
     const operacionesCuentaCorriente = {

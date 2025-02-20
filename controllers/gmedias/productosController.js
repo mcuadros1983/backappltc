@@ -422,59 +422,6 @@ const actualizarDatosProducto = async (
   }
 };
 
-// const eliminarProducto = async (req, res, next) => {
-//   const productoId = req.params.productoId;
-
-//   try {
-//     const producto = await Producto.findByPk(productoId);
-
-//     if (!producto) {
-//       return res.status(404).json({ mensaje: "Producto no encontrado" });
-//     }
-
-//     if (
-//       producto.sucursal_id !== 18 ||
-//       producto.orden_id !== null ||
-//       producto.cliente_id !== null ||
-//       producto.venta_id !== null
-//     ) {
-//       return res.status(400).json({
-//         mensaje: "Producto no se puede eliminar, ya que ha salido del stock",
-//       });
-//     }
-
-//     // Obtener el ingreso asociado al producto
-//     const ingreso = await Ingreso.findByPk(producto.ingreso_id);
-
-//     if (!ingreso) {
-//       return res.status(404).json({ mensaje: "Ingreso no encontrado" });
-//     }
-
-//     // Verificar si este producto es el único en el ingreso
-//     const productosEnIngreso = await Producto.findAll({
-//       where: { ingreso_id: ingreso.id },
-//     });
-
-//     if (productosEnIngreso.length === 1) {
-//       // Si es el único, eliminar el ingreso
-//       await ingreso.destroy();
-//       return res.json({ mensaje: "Ingreso eliminado con éxito" });
-//     } else {
-//       // Si no es el único, actualizar la cantidad_total y peso_total del ingreso
-//       ingreso.cantidad_total -= 1; // Restar 1 a la cantidad_total (puedes ajustar según tu lógica)
-//       ingreso.peso_total -= producto.kg; // Restar el peso del producto eliminado
-//       await ingreso.save();
-//     }
-
-//     // Eliminar el producto
-//     await producto.destroy();
-
-//     res.json({ mensaje: "Producto eliminado con éxito" });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
 const eliminarProducto = async (req, res, next) => {
   const productoId = req.params.productoId;
 
@@ -636,7 +583,12 @@ const crearProductosDesdeExcel = async (req, res, next) => {
       );
 
       // Eliminar el archivo cargado
-      fs.unlinkSync(req.file.path);
+      // fs.unlinkSync(req.file.path);
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      } else {
+        console.warn(`Archivo no encontrado para eliminar: ${req.file.path}`);
+      }
 
       // Responder con los productos creados
       return res.status(200).json({
@@ -646,12 +598,43 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     }
 
     // Para operaciones diferentes de "romaneo"
+    for (const row of data) {
+      try {
+        // Buscar el producto existente por num_media
+        let producto = await Producto.findOne({ where: { num_media: String(row.num_media) } });
+        console.log("Ubicando producto ---------", producto);
+    
+        if (producto && producto.ingreso_id) {
+          // Eliminar el archivo cargado antes de devolver el error
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    
+          // Retornar error si el producto ya tiene ingreso_id
+          return res.status(400).json({
+            error: true,
+            mensaje: `El listado contiene productos ingresados previamente. Producto duplicado: num_media ${producto.num_media}`
+          });
+        }
+    
+      } catch (error) {
+        console.error("Error al verificar producto desde Excel:", row, error);
+    
+        // Eliminar archivo si ocurre un error durante la verificación
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    
+        return res.status(500).json({
+          error: true,
+          mensaje: "Error al verificar productos desde el archivo Excel."
+        });
+      }
+    }
+
+    
     const productosCreados = await Promise.all(
       data.map(async (row) => {
         try {
           // Buscar el producto existente por num_media
           let producto = await Producto.findOne({ where: { num_media: String(row.num_media) } });
-
+          console.log("ubicar producto---------", producto)
           if (!producto) {
             // Si no existe, crear el producto
             producto = await Producto.create({
@@ -676,7 +659,12 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     );
 
     // Elimina el archivo cargado después de procesarlo
-    fs.unlinkSync(req.file.path);
+    // fs.unlinkSync(req.file.path);
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    } else {
+      console.warn(`Archivo no encontrado para eliminar: ${req.file.path}`);
+    }
 
     if (operacion === "venta") {
       const cliente = await Cliente.findByPk(destino);
@@ -733,25 +721,51 @@ const crearProductosDesdeExcel = async (req, res, next) => {
           await producto.save();
         })
       );
-    } else if (operacion === "orden") {
-      // Crea la orden
-      const nuevaOrden = await Orden.create({
-        fecha:fechaOperacion,
-        // peso_total: productosCreados.reduce((total, p) => Number(total) + Number(p.kg), 0),
-        peso_total: productosCreados.reduce((total, p) => total + Number(p.kg || 0), 0),
-        cantidad_total: productosCreados.length,
-        sucursal_id: destino,
+    } else if (operacion === "ingreso") {
+      // Verificar si algún producto ya tiene un ingreso_id asignado
+      for (const producto of productosCreados) {
+        const productoExistente = await Producto.findOne({
+          where: { num_media: String(producto.num_media) }
+        });
+    
+        if (productoExistente && productoExistente.ingreso_id) {
+          if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        
+          return res.status(400).json({
+            error: true,
+            mensaje: `El listado contiene productos ingresados previamente. Producto duplicado: num_media ${producto.num_media}`
+          });
+        }
+        
+      }
+    
+      // Calcular cantidad_total y peso_total
+      const cantidad_total = productosCreados.length;
+      const peso_total = productosCreados.reduce((total, p) => total + Number(p.kg || 0), 0);
+      
+      // Determinar la categoría del ingreso (por ejemplo, a partir del primer producto)
+      const categoria = productosCreados[0]?.categoria_producto || "sin_categoria";
+    
+      // Crear el ingreso
+      const nuevoIngreso = await Ingreso.create({
+        cantidad_total,
+        peso_total,
+        categoria_ingreso: categoria,
+        fecha: fechaOperacion,
       });
-
-      // Asocia los productos a la orden
+    
+      const ingreso_id = nuevoIngreso.id;
+    
+      // Asociar productos al ingreso
       await Promise.all(
         productosCreados.map(async (producto) => {
-          producto.orden_id = nuevaOrden.id;
-          producto.sucursal_id = destino;
+          producto.ingreso_id = ingreso_id;
+          producto.sucursal_id = 18; // Asignar sucursal específica para ingreso
           await producto.save();
         })
       );
     }
+    
 
     // Devuelve una respuesta exitosa con los productos creados
     return res.status(200).json({
@@ -940,7 +954,12 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
     }
 
     // Elimina el archivo cargado después de procesarlo
-    fs.unlinkSync(req.file.path);
+    // fs.unlinkSync(req.file.path);
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    } else {
+      console.warn(`Archivo no encontrado para eliminar: ${req.file.path}`);
+    }
     console.log("Archivo eliminado tras procesamiento:", req.file.path);
 
     return res.status(200).json({
