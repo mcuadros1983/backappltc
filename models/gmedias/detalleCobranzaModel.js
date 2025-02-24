@@ -19,7 +19,5 @@ const DetalleCobranza = sequelize.define('DetalleCobranza', {
   freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
 });
 
-// Definir relaciones
-// Puedes agregar relaciones aquí según tus necesidades
 
 export default DetalleCobranza;

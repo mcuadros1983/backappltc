@@ -11,15 +11,16 @@ import { sequelize } from "../../config/database.js";
 export const registrarCobranza = async (req, res, next) => {
   try {
     // Obtener datos de la solicitud
-    const { clienteId, detallesCobranza, descripcionCobranza, formaCobro, montoTotal } = req.body;
+    const { clienteId, detallesCobranza, descripcionCobranza, formaCobro, montoTotal, fecha } = req.body;
 
     // Crear la cobranza
 
-    const cobranza = await Cobranza.create({ monto_total: montoTotal, descripcion_cobro: descripcionCobranza, forma_cobro: formaCobro });
+    const cobranza = await Cobranza.create({ monto_total: montoTotal, descripcion_cobro: descripcionCobranza, forma_cobro: formaCobro, fecha });
 
     const detalleCobranza = await registrarDetalleCobranza(
       cobranza.id,
-      montoTotal
+      montoTotal,
+      fecha
     );
 
 
