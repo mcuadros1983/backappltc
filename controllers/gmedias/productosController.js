@@ -564,6 +564,13 @@ const crearProductosDesdeExcel = async (req, res, next) => {
               kg: row.kg,
               tropa: row.tropa,
               sucursal_id: 32, // Sucursal fija para romaneo
+              codigo_de_barra:
+              "00" +
+              String(row.num_media) +
+              "00" +
+              String(row.tropa) +
+              "00" +
+              String(row.kg),
             });
 
             return nuevoProducto;
@@ -634,7 +641,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         try {
           // Buscar el producto existente por num_media
           let producto = await Producto.findOne({ where: { num_media: String(row.num_media) } });
-          console.log("ubicar producto---------", producto)
+
           if (!producto) {
             // Si no existe, crear el producto
             producto = await Producto.create({
@@ -647,6 +654,13 @@ const crearProductosDesdeExcel = async (req, res, next) => {
               kg: row.kg,
               tropa: row.tropa,
               sucursal_id: null, // Sucursal será asignada más adelante
+              codigo_de_barra:
+              "00" +
+              String(row.num_media) +
+              "00" +
+              String(row.tropa) +
+              "00" +
+              String(row.kg),
             });
           }
 
@@ -668,7 +682,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
 
     if (operacion === "venta") {
       const cliente = await Cliente.findByPk(destino);
-      console.log("cliente", cliente);
+
     
       // Verificar y calcular precio si es necesario
       productosCreados.forEach((producto) => {
@@ -781,7 +795,6 @@ const crearProductosDesdeExcel = async (req, res, next) => {
 };
 
 const actualizarProductosDesdeExcel = async (req, res, next) => {
-  console.log("actualizando.......")
   try {
     if (!req.file) {
       console.log("No se ha subido ningún archivo.");
