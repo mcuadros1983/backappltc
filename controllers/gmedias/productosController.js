@@ -413,7 +413,7 @@ const actualizarDatosProducto = async (
       precio,
       kg,
       tropa,
-      updatedAt: new Date(`${fecha}T00:00:00`),
+      createdAt: new Date(`${fecha}T00:00:00`),
     };
     await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
     // producto.set(newData);
