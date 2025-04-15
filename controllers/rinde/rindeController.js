@@ -182,13 +182,9 @@ const eliminarMovimientoInterno = async (req, res, next) => {
 
 const crearMovimientoInterno = async (req, res, next) => {
   try {
-    // Obtener los movimientos internos desde el cuerpo de la solicitud
     const movimientos = Array.isArray(req.body) ? req.body : [req.body];
-    // console.log("movimentos", movimientos[0]);
-
     // Obtener el último ID de movimiento
     const ultimoIdMovimiento = await obtenerUltimoIdMovimiento();
-    // console.log("ultimo", ultimoIdMovimiento);
 
     // Filtrar los movimientos para mantener solo aquellos que tienen un ID mayor que el último ID de movimiento
     const movimientosParaCrear = movimientos.filter(

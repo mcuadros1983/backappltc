@@ -398,7 +398,8 @@ const actualizarDatosProducto = async (
   venta_id,
   precio,
   kg,
-  tropa
+  tropa,
+  fecha
 ) => {
   try {
     // Verificar si la categoría del producto es "porcino"
@@ -412,10 +413,12 @@ const actualizarDatosProducto = async (
       precio,
       kg,
       tropa,
+      updatedAt: new Date(`${fecha}T00:00:00`),
     };
-    producto.set(newData);
+    await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
+    // producto.set(newData);
 
-    await producto.save();
+    // await producto.save();
     return producto;
   } catch (error) {
     console.log(error);

@@ -174,7 +174,8 @@ const crearOrden = async (req, res, next) => {
           null,
           product.precio,
           product.kg,
-          tropa
+          tropa,
+          fecha
         );
       })
     );

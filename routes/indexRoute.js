@@ -29,6 +29,7 @@ import itemEquipoRouter from "./mantenimiento/itemEquipoRoute.js";
 import mensajeRouter from "./caja/mensajeRoute.js";
 import scheduleRouter from "./caja/scheduleRoute.js";
 import syncRouter from "./sync/syncRoute.js";
+import ventaStaticsRouter from "./statics/ventaStaticsRoute.js";
 const router = Router();
 
 const indexRouter = Router();
@@ -55,6 +56,7 @@ router.use(mantenimientoPreventivoRouter);
 router.use(ordenMantenimientoRouter);
 router.use(revisionItemRouter);
 router.use(itemEquipoRouter);
+router.use(ventaStaticsRouter);
 router.use(syncRouter);
 
 router.use(JWTAuth, clientesRouter);

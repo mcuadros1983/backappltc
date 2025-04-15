@@ -207,7 +207,7 @@ const crearVenta = async (req, res, next) => {
       monto_total: montoTotal,
       cliente_id,
       formaPago_id,
-      fecha
+      fecha,
     });
 
     // Actualizar datos de productos y manejar el peso_total del ingreso
@@ -247,7 +247,8 @@ const crearVenta = async (req, res, next) => {
           nuevaVenta.id, // Asociar el producto con la venta
           product.precio,
           product.kg,
-          tropa
+          tropa,
+          fecha
         );
       })
     );
