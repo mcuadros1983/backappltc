@@ -38,6 +38,10 @@ const Rinde = sequelize.define(
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
+    totalMovimientosOtros: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+    },
     totalInventarioInicial: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,

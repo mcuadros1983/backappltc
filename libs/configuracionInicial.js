@@ -4,31 +4,6 @@ import Usuario from "../models/auth/usuarioModel.js";
 import { sequelize } from "../config/database.js";
 import { ADMIN_USERNAME, ADMIN_PASSWORD } from "../config/config.js";
 
-// export const crearRoles = async () => {
-//   try {
-//     // Sincronizar los modelos con la base de datos
-//     await sequelize.sync();
-
-//     // Contar registros
-//     const count = await Rol.count();
-
-//     // Verificar roles existentes
-//     if (count > 0) return;
-
-//     // Crear roles predeterminados
-//     const values = await Promise.all([
-//       Rol.create({ nombre: "admin" }),
-//       Rol.create({ nombre: "gestion" }),
-//       Rol.create({ nombre: "ventas" }),
-//       Rol.create({ nombre: "mantenimiento" }),
-//     ]);
-
-//     crearAdmin();
-//   } catch (error) {
-//     console.error(error);
-//   }
-// };
-
 export const crearRoles = async () => {
   try {
     // Sincronizar los modelos con la base de datos

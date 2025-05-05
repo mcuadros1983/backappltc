@@ -1,8 +1,13 @@
 // rindeRouter.js
 import { Router } from "express";
 import * as rindeController from "../../controllers/rinde/rindeController.js";
+import express from "express";
+import multer from "multer";
 
 const rindeRouter = Router();
+
+// Configuración de multer para manejar la carga de archivos
+const upload = multer({ dest: 'uploads/' });
 
 // Rutas para obtener ventas totales
 rindeRouter.post(
@@ -59,6 +64,15 @@ rindeRouter.delete(
 );
 rindeRouter.put("/editarFormula/:formulaId", rindeController.editarFormula);
 rindeRouter.post("/obtenerstock", rindeController.obtenerStock);
+
+rindeRouter.post("/movimientos-otro", rindeController.obtenerMovimientosFiltradosOtro);
+rindeRouter.post("/movimientos-otro/monto", rindeController.obtenerMontoMovimientosFiltradosOtro);
+rindeRouter.post("/movimientos-otro/crear", rindeController.crearMovimientoOtro);
+rindeRouter.delete("/movimientos-otro/:movimientoId", rindeController.eliminarMovimientoOtro);
+rindeRouter.post('/movimientos-otro-excel', upload.single('file'), rindeController.crearMovimientosOtrosDesdeExcel);
+rindeRouter.post("/movimientos-otro/fechas-unicas", rindeController.obtenerFechasUnicasMovimientosOtros);
+rindeRouter.post("/movimientos-otro/eliminar-por-fechas", rindeController.eliminarMovimientosOtrosPorFechas);
+rindeRouter.post("/cargarinventarios-excel",upload.single("file"), rindeController.cargarInventarioDesdeExcel);
 
 // Exportar el enrutador
 export default rindeRouter;
