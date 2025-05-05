@@ -26,11 +26,10 @@ async function main() {
     // Sincroniza las tablas después de que el servidor esté escuchando
     const server = app.listen(PORT, async () => {
       console.log(`Server is listening on port ${PORT}`);
-
-      // 👇 Sincronizar estructura de la base de datos sin borrar datos
-      await sequelize.sync({ alter: true });
-      console.log("Base de datos sincronizada con alter:true");
+      
     });
+
+
 
     // Inicializar WebSocket
     const wss = new WebSocketServer({ server });
