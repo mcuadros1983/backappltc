@@ -390,6 +390,42 @@ const actualizarProducto = async (req, res, next) => {
   }
 };
 
+// const actualizarDatosProducto = async (
+//   producto_id,
+//   orden_id,
+//   sucursal_id,
+//   cliente_id,
+//   venta_id,
+//   precio,
+//   kg,
+//   tropa,
+//   fecha
+// ) => {
+//   try {
+//     // Verificar si la categoría del producto es "porcino"
+//     const producto = await Producto.findByPk(producto_id);
+//     const newData = {
+//       // categoria_producto,
+//       orden_id,
+//       sucursal_id,
+//       cliente_id,
+//       venta_id,
+//       precio,
+//       kg,
+//       tropa,
+//       createdAt: new Date(`${fecha}T00:00:00`),
+//     };
+//     console.log("fecha", fecha, createdAt)
+//     // await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
+//     producto.set(newData);
+
+//     await producto.save();
+//     return producto;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+
 const actualizarDatosProducto = async (
   producto_id,
   orden_id,
@@ -402,10 +438,12 @@ const actualizarDatosProducto = async (
   fecha
 ) => {
   try {
-    // Verificar si la categoría del producto es "porcino"
     const producto = await Producto.findByPk(producto_id);
+
+    const parsedFecha = new Date(`${fecha}T00:00:00`);
+    console.log("fecha", fecha, parsedFecha);
+
     const newData = {
-      // categoria_producto,
       orden_id,
       sucursal_id,
       cliente_id,
@@ -413,9 +451,9 @@ const actualizarDatosProducto = async (
       precio,
       kg,
       tropa,
-      createdAt: new Date(`${fecha}T00:00:00`),
+      fecha: parsedFecha, // actualiza el campo 'fecha'
     };
-    // await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
+
     producto.set(newData);
 
     await producto.save();
@@ -424,6 +462,7 @@ const actualizarDatosProducto = async (
     console.log(error);
   }
 };
+
 
 const eliminarProducto = async (req, res, next) => {
   const productoId = req.params.productoId;
