@@ -415,10 +415,10 @@ const actualizarDatosProducto = async (
       tropa,
       createdAt: new Date(`${fecha}T00:00:00`),
     };
-    await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
-    // producto.set(newData);
+    // await producto.update(newData, { silent: true }); // para que no lo sobrescriba automáticamente
+    producto.set(newData);
 
-    // await producto.save();
+    await producto.save();
     return producto;
   } catch (error) {
     console.log(error);
