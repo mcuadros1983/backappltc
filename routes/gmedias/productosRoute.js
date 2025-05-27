@@ -25,6 +25,7 @@ productosRouter.post('/productos/generarcodigos', productosController.generarCod
 
 // Ruta para subir un archivo Excel y actualizar productos
 productosRouter.post('/productos/upload', upload.single('file'), productosController.procesarDesdeExcel);
+productosRouter.post('/productos/actualizar-por-tropa', productosController.actualizarProductosPorTropa);
 
 export default productosRouter;
 

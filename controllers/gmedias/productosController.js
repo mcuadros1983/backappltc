@@ -1069,6 +1069,42 @@ const generarCodigos = async (req, res, next) => {
   }
 };
 
+const actualizarProductosPorTropa = async (req, res, next) => {
+  try {
+    const { tropa, categoria_producto, subcategoria, costo } = req.body;
+
+    if (!tropa) {
+      return res.status(400).json({ mensaje: "La tropa es obligatoria." });
+    }
+
+    const camposActualizar = {};
+    if (categoria_producto) camposActualizar.categoria_producto = categoria_producto;
+    if (subcategoria) camposActualizar.subcategoria = subcategoria;
+    if (costo !== undefined && costo !== null && costo !== "") {
+      const costoNum = parseFloat(costo);
+      if (isNaN(costoNum)) {
+        return res.status(400).json({ mensaje: "El costo debe ser un número válido." });
+      }
+      camposActualizar.costo = costoNum;
+    }
+
+    if (Object.keys(camposActualizar).length === 0) {
+      return res.status(400).json({ mensaje: "No se proporcionó ningún campo para actualizar." });
+    }
+
+    const [updatedRows] = await Producto.update(camposActualizar, {
+      where: { tropa },
+    });
+
+    res.json({
+      mensaje: `Se actualizaron ${updatedRows} productos con tropa ${tropa}.`,
+    });
+  } catch (error) {
+    console.error("Error en actualizarProductosPorTropa:", error);
+    next(error);
+  }
+};
+
 
 export {
   obtenerProductos,
@@ -1083,5 +1119,6 @@ export {
   actualizarProducto,
   eliminarProducto,
   procesarDesdeExcel,
-  generarCodigos
+  generarCodigos,
+  actualizarProductosPorTropa
 };

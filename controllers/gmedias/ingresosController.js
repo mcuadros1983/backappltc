@@ -38,76 +38,78 @@ const obtenerIngreso = async (req, res, next) => {
   }
 };
 
-  const crearIngreso = async (req, res, next) => {
-    const { products, cantidad_total, peso_total, categoria, fecha } = req.body;
-    try {
-      // Verificar si se recibieron productos
-      if (!products || !Array.isArray(products) || products.length === 0) {
-        return res
-          .status(400)
-          .json({ error: "No se recibieron productos válidos" });
-      }
+const crearIngreso = async (req, res, next) => {
+  const { products, cantidad_total, peso_total, categoria, fecha } = req.body;
+  console.log("productos", products)
+  try {
+    // Verificar si se recibieron productos
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "No se recibieron productos válidos" });
+    }
 
-      const nuevoIngreso = await Ingreso.create({
-        cantidad_total,
-        peso_total,
-        categoria_ingreso: categoria,
-        fecha: fecha,
-      });
-      const ingreso_id = nuevoIngreso.id;
+    const nuevoIngreso = await Ingreso.create({
+      cantidad_total,
+      peso_total,
+      categoria_ingreso: categoria,
+      fecha: fecha,
+    });
+    const ingreso_id = nuevoIngreso.id;
 
-      const productosCreados = await Promise.all(
-        products.map(async (producto) => {
-          try {
-            // Verificar si el producto ya existe con el num_media
-            const productoExistente = await Producto.findOne({
-              where: {
-                num_media: String(producto.num_media),
-              },
+    const productosCreados = await Promise.all(
+      products.map(async (producto) => {
+        try {
+          // Verificar si el producto ya existe con el num_media
+          const productoExistente = await Producto.findOne({
+            where: {
+              num_media: String(producto.num_media),
+            },
+          });
+
+          if (productoExistente && productoExistente.sucursal_id === 32) {
+            // Actualizar solo los campos que no sean nulos o vacíos
+            productoExistente.ingreso_id = ingreso_id;
+            productoExistente.sucursal_id = 18;
+            productoExistente.categoria_producto = producto.categoria_producto || productoExistente.categoria_producto;
+            productoExistente.codigo_de_barra = producto.codigo_de_barra || productoExistente.codigo_de_barra;
+            productoExistente.num_media = producto.num_media || productoExistente.num_media;
+            productoExistente.precio = producto.precio !== null && producto.precio !== undefined ? producto.precio : productoExistente.precio;
+            productoExistente.kg = producto.kg !== null && producto.kg !== undefined ? producto.kg : productoExistente.kg;
+            productoExistente.tropa = producto.tropa || productoExistente.tropa;
+            await productoExistente.save();
+            return productoExistente;
+          } else {
+            // Crear un nuevo producto si no existe
+            const productoCreado = await Producto.create({
+              categoria_producto: categoria,
+              subcategoria: producto.subcategoria,
+              codigo_de_barra: producto.codigo_de_barra,
+              num_media: producto.num_media,
+              precio: producto.precio,
+              kg: producto.kg,
+              tropa: producto.tropa,
+              ingreso_id,
             });
 
-            if (productoExistente && productoExistente.sucursal_id === 32) { 
-              // Actualizar solo los campos que no sean nulos o vacíos
-              productoExistente.ingreso_id = ingreso_id;
-              productoExistente.sucursal_id = 18;
-              productoExistente.categoria_producto = producto.categoria_producto || productoExistente.categoria_producto;
-              productoExistente.codigo_de_barra = producto.codigo_de_barra || productoExistente.codigo_de_barra;
-              productoExistente.num_media = producto.num_media || productoExistente.num_media;
-              productoExistente.precio = producto.precio !== null && producto.precio !== undefined ? producto.precio : productoExistente.precio;
-              productoExistente.kg = producto.kg !== null && producto.kg !== undefined ? producto.kg : productoExistente.kg;
-              productoExistente.tropa = producto.tropa || productoExistente.tropa;
-              await productoExistente.save();
-              return productoExistente;
-            } else {
-              // Crear un nuevo producto si no existe
-              const productoCreado = await Producto.create({
-                categoria_producto: categoria,
-                codigo_de_barra: producto.codigo_de_barra,
-                num_media: producto.num_media,
-                precio: producto.precio,
-                kg: producto.kg,
-                tropa: producto.tropa,
-                ingreso_id,
-              });
+            await ProductoId.create({
+              id: productoCreado.id,
+            });
 
-              await ProductoId.create({
-                id: productoCreado.id,
-              });
-
-              return productoCreado;
-            }
-          } catch (error) {
-            console.error("Error al procesar producto:", producto, error);
-            throw error; // Propaga el error para manejarlo en el bloque catch de Promise.all
+            return productoCreado;
           }
-        })
-      );
+        } catch (error) {
+          console.error("Error al procesar producto:", producto, error);
+          throw error; // Propaga el error para manejarlo en el bloque catch de Promise.all
+        }
+      })
+    );
 
-      res.json({ nuevoIngreso, productos: productosCreados });
-    } catch (error) {
-      next(error);
-    }
-  };
+    res.json({ nuevoIngreso, productos: productosCreados });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 

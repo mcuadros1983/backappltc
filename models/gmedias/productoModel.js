@@ -10,7 +10,7 @@ const Producto = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    categoria_producto: {
+    categoria_producto: { 
       type: DataTypes.STRING,
     },
     subcategoria: {
