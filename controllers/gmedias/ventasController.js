@@ -46,7 +46,7 @@ const obtenerVentas = async (req, res, next) => {
       include: [
         {
           model: Cliente,
-          attributes: ["id","nombre"], // Puedes seleccionar solo los atributos que necesitas
+          attributes: ["id", "nombre"], // Puedes seleccionar solo los atributos que necesitas
         },
         {
           model: FormaPago,
@@ -74,7 +74,7 @@ const obtenerVentas = async (req, res, next) => {
   }
 };
 
-const obtenerVentaPorId = async (req, res, next) => { 
+const obtenerVentaPorId = async (req, res, next) => {
   const ventaId = req.params.ventaId;
 
   try {
@@ -113,7 +113,6 @@ const obtenerVentaPorId = async (req, res, next) => {
 //       return total + producto.kg * producto.precio;
 //     }, 0);
 
-
 //     if (formaPago_id == 2) {
 
 //       let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(
@@ -135,7 +134,7 @@ const obtenerVentaPorId = async (req, res, next) => {
 //     }
 
 //     // Crear la venta normal
-  
+
 //     nuevaVenta = await Venta.create({
 //       cantidad_total,
 //       peso_total,
@@ -172,7 +171,6 @@ const obtenerVentaPorId = async (req, res, next) => {
 //       })
 //     );
 
-
 //     res.json({ nuevaVenta, productosActualizados });
 //   } catch (error) {
 //     next(error);
@@ -180,7 +178,14 @@ const obtenerVentaPorId = async (req, res, next) => {
 // };
 
 const crearVenta = async (req, res, next) => {
-  const { cantidad_total, peso_total, cliente_id, formaPago_id, productos, fecha } = req.body;
+  const {
+    cantidad_total,
+    peso_total,
+    cliente_id,
+    formaPago_id,
+    productos,
+    fecha,
+  } = req.body;
   try {
     // Calcular el monto total de la venta (suma de productos: peso por precio)
     const montoTotal = productos.reduce((total, producto) => {
@@ -189,7 +194,9 @@ const crearVenta = async (req, res, next) => {
 
     // Manejo de cuenta corriente si la forma de pago es "cuenta corriente"
     if (formaPago_id == 2) {
-      let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(cliente_id);
+      let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(
+        cliente_id
+      );
 
       if (!cuentaCorriente) {
         cuentaCorriente = await crearCuentaCorriente(cliente_id, montoTotal);
@@ -259,16 +266,13 @@ const crearVenta = async (req, res, next) => {
   }
 };
 
-
 const obtenerProductosVenta = async (req, res, next) => {
-
   const { id } = req.params;
   try {
     const productos = await Producto.findAll({
- 
       where: { venta_id: id },
     });
-  
+
     res.json(productos);
   } catch (error) {
     next(error);
@@ -284,7 +288,8 @@ const actualizarVenta = async (req, res, next) => {
   try {
     if (!clienteId && !formaPagoId) {
       return res.status(400).json({
-        message: "Se requieren clienteId o formaPagoId para actualizar la venta",
+        message:
+          "Se requieren clienteId o formaPagoId para actualizar la venta",
       });
     }
 
@@ -360,7 +365,10 @@ const actualizarVenta = async (req, res, next) => {
 };
 
 // Función auxiliar para actualizar la cuenta corriente del nuevo cliente
-const actualizarCuentaCorrienteIdClienteNuevo = async (cliente_id, montoVenta) => {
+const actualizarCuentaCorrienteIdClienteNuevo = async (
+  cliente_id,
+  montoVenta
+) => {
   try {
     const cuentaCorriente = await CuentaCorriente.findOne({
       where: { cliente_id },
@@ -368,7 +376,10 @@ const actualizarCuentaCorrienteIdClienteNuevo = async (cliente_id, montoVenta) =
 
     if (!cuentaCorriente) {
       console.log("Creando nueva cuenta corriente para el cliente...");
-      const nuevaCuentaCorriente = await crearCuentaCorriente(cliente_id, montoVenta);
+      const nuevaCuentaCorriente = await crearCuentaCorriente(
+        cliente_id,
+        montoVenta
+      );
       await crearDetalleCuentaCorriente(nuevaCuentaCorriente.id, montoVenta);
     } else {
       console.log("Actualizando cuenta corriente del cliente...");
@@ -413,11 +424,13 @@ const actualizarCuentaCorrienteIdClienteAnterior = async (
     await detalleCuentaCorriente.save();
     await cuentaCorriente.save();
   } catch (error) {
-    console.error("Error en actualizarCuentaCorrienteIdClienteAnterior:", error);
+    console.error(
+      "Error en actualizarCuentaCorrienteIdClienteAnterior:",
+      error
+    );
     throw error;
   }
 };
-
 
 const eliminarVenta = async (req, res, next) => {
   const { ventaId } = req.params;
@@ -485,7 +498,17 @@ const eliminarVenta = async (req, res, next) => {
       ) {
         const ingreso = await Ingreso.findByPk(producto.ingreso_id);
         // Actualizar el producto con los nuevos valores
-        await actualizarDatosProducto(producto.id, null, producto.ingreso_id === null ? 32 : 18, null, null, producto.precio ? producto.precio : 0, producto.kg ? producto.kg :0,producto.tropa ? producto.tropa : null,);
+        await actualizarDatosProducto(
+          producto.id,
+          null,
+          producto.ingreso_id === null ? 32 : 18,
+          null,
+          null,
+          producto.precio ? producto.precio : 0,
+          producto.kg ? producto.kg : 0,
+          producto.tropa ? producto.tropa : null,
+          producto.fecha
+        );
       } else {
         // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
         await actualizarDatosProducto(
@@ -495,10 +518,10 @@ const eliminarVenta = async (req, res, next) => {
           // 18, // o el valor correspondiente para sucursal_id
           null, // o el valor correspondiente para cliente_id
           null, // o el valor correspondiente para venta_id
-          producto.precio = 0, // o el valor correspondiente para precio
-          producto.kg ? producto.kg :0,
+          (producto.precio = 0), // o el valor correspondiente para precio
+          producto.kg ? producto.kg : 0,
           producto.tropa ? producto.tropa : null,
-
+          producto.fecha
 
           // producto_id,
           // orden_id,
@@ -508,7 +531,6 @@ const eliminarVenta = async (req, res, next) => {
           // precio,
           // kg,
           // tropa
-
         );
       }
     });
@@ -530,9 +552,8 @@ const eliminarVenta = async (req, res, next) => {
 //     const venta = await Venta.findByPk(ventaId);
 //     if (!venta) return res.status(404).json({ mensaje: "Venta no encontrada" });
 
-
-//     const producto = await Producto.findOne({ 
-//       where: { id: productoId, venta_id: ventaId } 
+//     const producto = await Producto.findOne({
+//       where: { id: productoId, venta_id: ventaId }
 //     });
 //     if (!producto) return res.status(404).json({ mensaje: "Producto no encontrado en la venta" });
 
@@ -600,7 +621,9 @@ const actualizarProductoEnVenta = async (req, res, next) => {
     });
     if (!producto) {
       console.log("Producto no encontrado en la venta");
-      return res.status(404).json({ mensaje: "Producto no encontrado en la venta" });
+      return res
+        .status(404)
+        .json({ mensaje: "Producto no encontrado en la venta" });
     }
     console.log("Producto encontrado:", producto);
 
@@ -610,7 +633,10 @@ const actualizarProductoEnVenta = async (req, res, next) => {
     if (producto.ingreso_id) {
       ingreso = await Ingreso.findByPk(producto.ingreso_id);
       if (!ingreso) {
-        console.log("Ingreso no encontrado para el producto con ingreso_id:", producto.ingreso_id);
+        console.log(
+          "Ingreso no encontrado para el producto con ingreso_id:",
+          producto.ingreso_id
+        );
         return res.status(404).json({ mensaje: "Ingreso no encontrado" });
       }
       console.log("Ingreso encontrado:", ingreso);
@@ -618,36 +644,60 @@ const actualizarProductoEnVenta = async (req, res, next) => {
       // Ajustar valores del ingreso
       ingreso.peso_total = Number(ingreso.peso_total) - Number(producto.kg);
     } else {
-      console.log("El producto no tiene un ingreso asociado. Saltando ajustes en ingreso.");
+      console.log(
+        "El producto no tiene un ingreso asociado. Saltando ajustes en ingreso."
+      );
     }
 
     // Ajustar valores de la venta
-    venta.monto_total = Number(venta.monto_total) - Number(producto.precio) * Number(producto.kg);
+    venta.monto_total =
+      Number(venta.monto_total) - Number(producto.precio) * Number(producto.kg);
 
     if (venta.formaPago_id === 2) {
       console.log("Venta con forma de pago en cuenta corriente");
-      const cuentaCorriente = await CuentaCorriente.findOne({ where: { cliente_id: venta.cliente_id } });
+      const cuentaCorriente = await CuentaCorriente.findOne({
+        where: { cliente_id: venta.cliente_id },
+      });
       if (!cuentaCorriente) {
         console.log("Cuenta corriente no encontrada");
-        return res.status(404).json({ mensaje: "Cuenta corriente no encontrada" });
+        return res
+          .status(404)
+          .json({ mensaje: "Cuenta corriente no encontrada" });
       }
       console.log("Cuenta corriente encontrada:", cuentaCorriente);
 
-      const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({ where: { cuentaCorriente_id: cuentaCorriente.id } });
+      const detalleCuentaCorriente = await DetalleCuentaCorriente.findOne({
+        where: { cuentaCorriente_id: cuentaCorriente.id },
+      });
       if (!detalleCuentaCorriente) {
         console.log("Detalle de cuenta corriente no encontrado");
-        return res.status(404).json({ mensaje: "Detalle de cuenta corriente no encontrado" });
+        return res
+          .status(404)
+          .json({ mensaje: "Detalle de cuenta corriente no encontrado" });
       }
-      console.log("Detalle cuenta corriente encontrado:", detalleCuentaCorriente);
+      console.log(
+        "Detalle cuenta corriente encontrado:",
+        detalleCuentaCorriente
+      );
 
       // Actualizar cuenta corriente y detalle
-      cuentaCorriente.saldoActual = Number(cuentaCorriente.saldoActual) - Number(producto.precio) * Number(producto.kg);
-      detalleCuentaCorriente.monto = Number(detalleCuentaCorriente.monto) - Number(producto.precio) * Number(producto.kg);
+      cuentaCorriente.saldoActual =
+        Number(cuentaCorriente.saldoActual) -
+        Number(producto.precio) * Number(producto.kg);
+      detalleCuentaCorriente.monto =
+        Number(detalleCuentaCorriente.monto) -
+        Number(producto.precio) * Number(producto.kg);
 
-      cuentaCorriente.saldoActual += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
-      detalleCuentaCorriente.monto += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+      cuentaCorriente.saldoActual +=
+        Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+      detalleCuentaCorriente.monto +=
+        Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
 
-      console.log("Cuenta corriente y detalle ajustados tras nuevo producto:", cuentaCorriente, detalleCuentaCorriente);
+      console.log(
+        "Cuenta corriente y detalle ajustados tras nuevo producto:",
+        cuentaCorriente,
+        detalleCuentaCorriente
+      );
 
       await cuentaCorriente.save();
       await detalleCuentaCorriente.save();
@@ -661,7 +711,8 @@ const actualizarProductoEnVenta = async (req, res, next) => {
 
     // Ajustar valores nuevos de la venta
     venta.peso_total += Number(nuevoProducto.kg);
-    venta.monto_total += Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
+    venta.monto_total +=
+      Number(nuevoProducto.precio) * Number(nuevoProducto.kg);
 
     console.log("Venta ajustada tras nuevo producto:", venta);
 
@@ -677,10 +728,11 @@ const actualizarProductoEnVenta = async (req, res, next) => {
     res.json({ producto, ingreso, venta });
   } catch (error) {
     console.error("Error en actualizarProductoEnVenta:", error);
-    res.status(500).json({ mensaje: "Error interno del servidor", error: error.message });
+    res
+      .status(500)
+      .json({ mensaje: "Error interno del servidor", error: error.message });
   }
 };
-
 
 const eliminarProductoVenta = async (req, res, next) => {
   try {
@@ -754,13 +806,12 @@ const eliminarProductoVenta = async (req, res, next) => {
   }
 };
 
-
 const fetchSaleCreatedAt = async (req, res) => {
   const { ventaId } = req.params;
 
   try {
     // Buscar la venta en la base de datos por el ID de la sucursal
-    const venta = await Venta.findOne({ id:ventaId });
+    const venta = await Venta.findOne({ id: ventaId });
 
     if (!venta) {
       // Manejar el caso si la venta no se encuentra
@@ -768,7 +819,7 @@ const fetchSaleCreatedAt = async (req, res) => {
     }
 
     // Devolver la fecha de creación de la venta
-    res.json(venta.fecha) ;
+    res.json(venta.fecha);
   } catch (error) {
     console.error("Error al obtener la fecha de creación de la venta:", error);
     throw error;

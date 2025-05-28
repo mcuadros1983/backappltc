@@ -269,7 +269,8 @@ const eliminarOrden = async (req, res, next) => {
             null,
             product.precio ? product.precio : 0,
             product.kg ? product.kg : 0,
-            product.tropa ? product.tropa : 0
+            product.tropa ? product.tropa : 0,
+            product.fecha
 
             // producto_id,
             // orden_id,
@@ -290,7 +291,9 @@ const eliminarOrden = async (req, res, next) => {
             null,
             product.precio ? product.precio : 0,
             product.kg ? product.kg : 0,
-            product.tropa ? product.tropa : 0
+            product.tropa ? product.tropa : 0,
+            product.fecha
+
           );
         }
       })

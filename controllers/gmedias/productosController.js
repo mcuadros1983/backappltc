@@ -426,6 +426,44 @@ const actualizarProducto = async (req, res, next) => {
 //   }
 // };
 
+// const actualizarDatosProducto = async (
+//   producto_id,
+//   orden_id,
+//   sucursal_id,
+//   cliente_id,
+//   venta_id,
+//   precio,
+//   kg,
+//   tropa,
+//   fecha
+// ) => {
+//   try {
+//     console.log("sucursal_Id", sucursal_id)
+//     const producto = await Producto.findByPk(producto_id);
+
+//     const parsedFecha = new Date(`${fecha}T00:00:00`);
+//     console.log("fecha", fecha, parsedFecha);
+
+//     const newData = {
+//       orden_id,
+//       sucursal_id,
+//       cliente_id,
+//       venta_id,
+//       precio,
+//       kg,
+//       tropa,
+//       fecha: parsedFecha, // actualiza el campo 'fecha'
+//     };
+
+//     producto.set(newData);
+
+//     await producto.save();
+//     return producto;
+//   } catch (error) {
+//     console.log(error);
+//   }
+// };
+
 const actualizarDatosProducto = async (
   producto_id,
   orden_id,
@@ -438,9 +476,20 @@ const actualizarDatosProducto = async (
   fecha
 ) => {
   try {
+    console.log( "producto_id", producto_id,
+  "orden_id", orden_id,
+  "sucursal_id", sucursal_id,
+  "cliente_id", cliente_id,
+  "venta_id", venta_id,
+  "precio", precio,
+  "kg", kg,
+  "tropa", tropa,
+  "fecha", fecha)
+    console.log("sucursal_Id", sucursal_id);
+
     const producto = await Producto.findByPk(producto_id);
 
-    const parsedFecha = new Date(`${fecha}T00:00:00`);
+    const parsedFecha = fecha ? new Date(`${fecha}T00:00:00`) : null;
     console.log("fecha", fecha, parsedFecha);
 
     const newData = {
@@ -451,17 +500,21 @@ const actualizarDatosProducto = async (
       precio,
       kg,
       tropa,
-      fecha: parsedFecha, // actualiza el campo 'fecha'
     };
 
-    producto.set(newData);
+    if (parsedFecha instanceof Date && !isNaN(parsedFecha)) {
+      newData.fecha = parsedFecha;
+    }
 
+    producto.set(newData);
     await producto.save();
+
     return producto;
   } catch (error) {
     console.log(error);
   }
 };
+
 
 
 const eliminarProducto = async (req, res, next) => {
