@@ -1029,6 +1029,36 @@ const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
   }
 };
 
+const obtenerCantidadDiasConVentas = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    const diasConVentas = await VentaTotal.findAll({
+      attributes: [
+        [sequelize.fn("DATE", sequelize.col("fecha")), "fecha"],
+      ],
+      where: filters,
+      group: ["fecha"],
+    });
+
+    res.json({ diasConVentas: diasConVentas.length });
+  } catch (error) {
+    console.error("Error al obtener cantidad de días con ventas:", error);
+    next(error);
+  }
+};
+
+
 export {
   obtenerVentasTotales,
   obtenerVentasFiltradas,
@@ -1055,5 +1085,6 @@ export {
   obtenerKgPorUsuarioFiltradas,
   obtenerKgPorSucursalFiltradas,
   crearCantidadTicketPorUsuario,
-  obtenerCantidadTicketPorUsuario
+  obtenerCantidadTicketPorUsuario,
+  obtenerCantidadDiasConVentas
 };

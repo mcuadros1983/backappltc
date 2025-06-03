@@ -371,8 +371,9 @@ const obtenerInventariosFiltrados = async (req, res, next) => {
 
 const obtenerMontoInventariosFiltrados = async (req, res, next) => {
   try {
-    let { sucursalId } = req.body;
-    let { fechaDesde, fechaHasta } = req.body;
+    // let { sucursalId } = req.body;
+    // let { fechaDesde, fechaHasta } = req.body;
+    let { sucursalId, fechaDesde, fechaHasta, excludedCategories } = req.body;
 
     let filters = {};
 
@@ -406,14 +407,33 @@ const obtenerMontoInventariosFiltrados = async (req, res, next) => {
     // Calcular el monto total de cada inventario
     for (const inventario of inventarios) {
       let montoTotalInventario = 0;
+      // for (const inventarioArticulo of inventario.Inventario_articulos) {
+      //   const precioArticulo = await buscarPrecioArticulo(
+      //     inventarioArticulo.articulocodigo
+      //   );
+      //   if (precioArticulo !== null) {
+      //     // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
+      //     montoTotalInventario +=
+      //       Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
+      //   }
+      // }
       for (const inventarioArticulo of inventario.Inventario_articulos) {
-        const precioArticulo = await buscarPrecioArticulo(
-          inventarioArticulo.articulocodigo
-        );
-        if (precioArticulo !== null) {
-          // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
-          montoTotalInventario +=
-            Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
+        const articulo = await ArticuloTabla.findOne({
+          where: { codigobarra: inventarioArticulo.articulocodigo },
+        });
+
+        // Excluir si la subcategoría está en excludedCategories
+        if (
+          articulo &&
+          (!excludedCategories || !excludedCategories.includes(articulo.subcategoria_id))
+        ) {
+          const precioArticulo = await buscarPrecioArticulo(
+            inventarioArticulo.articulocodigo
+          );
+          if (precioArticulo !== null) {
+            montoTotalInventario +=
+              Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
+          }
         }
       }
       // Agregar el monto total al objeto del inventario
@@ -512,6 +532,29 @@ const crearRinde = async (req, res, next) => {
       totalKgCerdo,
       rinde,
       datosAjuste,
+
+      // Nuevos campos
+      cantidadMedias,
+      totalKg,
+      mbcerdo,
+      costoprom,
+      mgtotal,
+      mgporkg,
+      promdiario,
+      totalventa,
+      gastos,
+      cajagrande,
+      otros,
+      costovacuno,
+      achuras,
+      difInventario,
+      costoporcino,
+      ingEsperado,
+      ingVendido,
+      difEsperado,
+      difVendido,
+      valorRinde,
+      eficiencia,
     } = req.body;
 
     const formatToTwoDecimals = (value) => {
@@ -521,56 +564,152 @@ const crearRinde = async (req, res, next) => {
       return 0;
     };
 
-    const formattedTotalVentas = formatToTwoDecimals(totalVentas);
-    const formattedTotalMovimientos = formatToTwoDecimals(totalMovimientos);
-    const formattedTotalMovimientosOtros = formatToTwoDecimals(totalMovimientosOtros);
-    const formattedTotalInventarioInicial = formatToTwoDecimals(
-      totalInventarioInicial
-    );
-    const formattedTotalInventarioFinal =
-      formatToTwoDecimals(totalInventarioFinal);
-    const formattedRinde = formatToTwoDecimals(rinde);
-
     const nuevoRinde = await Rinde.create({
       fechaDesde,
       fechaHasta,
       mes,
       anio,
       sucursal_id,
-      totalVentas: formattedTotalVentas,
-      totalMovimientos: formattedTotalMovimientos,
-      totalMovimientosOtros: formattedTotalMovimientosOtros,
-      totalInventarioInicial: formattedTotalInventarioInicial,
-      totalInventarioFinal: formattedTotalInventarioFinal,
-      ingresoEsperadoNovillo,
-      ingresoEsperadoVaca,
-      ingresoEsperadoCerdo,
-      totalKgNovillo,
-      totalKgVaca,
-      totalKgCerdo,
-      rinde: formattedRinde,
+      totalVentas: formatToTwoDecimals(totalVentas),
+      totalMovimientos: formatToTwoDecimals(totalMovimientos),
+      totalMovimientosOtros: formatToTwoDecimals(totalMovimientosOtros),
+      totalInventarioInicial: formatToTwoDecimals(totalInventarioInicial),
+      totalInventarioFinal: formatToTwoDecimals(totalInventarioFinal),
+      ingresoEsperadoNovillo: formatToTwoDecimals(ingresoEsperadoNovillo),
+      ingresoEsperadoVaca: formatToTwoDecimals(ingresoEsperadoVaca),
+      ingresoEsperadoCerdo: formatToTwoDecimals(ingresoEsperadoCerdo),
+      totalKgNovillo: formatToTwoDecimals(totalKgNovillo),
+      totalKgVaca: formatToTwoDecimals(totalKgVaca),
+      totalKgCerdo: formatToTwoDecimals(totalKgCerdo),
+      rinde: formatToTwoDecimals(rinde),
+
+      // Nuevos campos
+      cantidadMedias: cantidadMedias || 0,
+      totalKg: formatToTwoDecimals(totalKg),
+      mbcerdo: formatToTwoDecimals(mbcerdo),
+      costoprom: formatToTwoDecimals(costoprom),
+      mgtotal: formatToTwoDecimals(mgtotal),
+      mgporkg: formatToTwoDecimals(mgporkg),
+      promdiario: formatToTwoDecimals(promdiario),
+      totalventa: formatToTwoDecimals(totalventa),
+      gastos: formatToTwoDecimals(gastos),
+      cajagrande: formatToTwoDecimals(cajagrande),
+      otros: formatToTwoDecimals(otros),
+      costovacuno: formatToTwoDecimals(costovacuno),
+      achuras: formatToTwoDecimals(achuras),
+      difInventario: formatToTwoDecimals(difInventario),
+      costoporcino: formatToTwoDecimals(costoporcino),
+      ingEsperado: formatToTwoDecimals(ingEsperado),
+      ingVendido: formatToTwoDecimals(ingVendido),
+      difEsperado: formatToTwoDecimals(difEsperado),
+      difVendido: formatToTwoDecimals(difVendido),
+      valorRinde: formatToTwoDecimals(valorRinde),
+      eficiencia: formatToTwoDecimals(eficiencia),
     });
 
-    // Verifica si hay ajustes a crear y si el array no está vacío
+    // Crear ajustes si existen
     if (datosAjuste && Array.isArray(datosAjuste) && datosAjuste.length > 0) {
-      const ajustesPromesas = datosAjuste.map(async (ajuste) => {
-        return AjusteRinde.create({
+      const ajustesPromesas = datosAjuste.map((ajuste) =>
+        AjusteRinde.create({
           ...ajuste,
           rinde_id: nuevoRinde.id,
-        });
-      });
+        })
+      );
 
       await Promise.all(ajustesPromesas);
     }
 
-    res
-      .status(201)
-      .json({ mensaje: "Rinde creado satisfactoriamente", rinde: nuevoRinde });
+    res.status(201).json({
+      mensaje: "Rinde creado satisfactoriamente",
+      rinde: nuevoRinde,
+    });
   } catch (error) {
     console.error("Error al crear el registro de Rinde:", error);
     next(error);
   }
 };
+
+
+// const crearRinde = async (req, res, next) => {
+//   try {
+//     const {
+//       fechaDesde,
+//       fechaHasta,
+//       mes,
+//       anio,
+//       sucursal_id,
+//       totalVentas,
+//       totalMovimientos,
+//       totalMovimientosOtros,
+//       totalInventarioInicial,
+//       totalInventarioFinal,
+//       ingresoEsperadoNovillo,
+//       ingresoEsperadoVaca,
+//       ingresoEsperadoCerdo,
+//       totalKgNovillo,
+//       totalKgVaca,
+//       totalKgCerdo,
+//       rinde,
+//       datosAjuste,
+//     } = req.body;
+
+//     const formatToTwoDecimals = (value) => {
+//       if (value && !isNaN(value)) {
+//         return parseFloat(value).toFixed(2);
+//       }
+//       return 0;
+//     };
+
+//     const formattedTotalVentas = formatToTwoDecimals(totalVentas);
+//     const formattedTotalMovimientos = formatToTwoDecimals(totalMovimientos);
+//     const formattedTotalMovimientosOtros = formatToTwoDecimals(totalMovimientosOtros);
+//     const formattedTotalInventarioInicial = formatToTwoDecimals(
+//       totalInventarioInicial
+//     );
+//     const formattedTotalInventarioFinal =
+//       formatToTwoDecimals(totalInventarioFinal);
+//     const formattedRinde = formatToTwoDecimals(rinde);
+
+//     const nuevoRinde = await Rinde.create({
+//       fechaDesde,
+//       fechaHasta,
+//       mes,
+//       anio,
+//       sucursal_id,
+//       totalVentas: formattedTotalVentas,
+//       totalMovimientos: formattedTotalMovimientos,
+//       totalMovimientosOtros: formattedTotalMovimientosOtros,
+//       totalInventarioInicial: formattedTotalInventarioInicial,
+//       totalInventarioFinal: formattedTotalInventarioFinal,
+//       ingresoEsperadoNovillo,
+//       ingresoEsperadoVaca,
+//       ingresoEsperadoCerdo,
+//       totalKgNovillo,
+//       totalKgVaca,
+//       totalKgCerdo,
+//       rinde: formattedRinde,
+//     });
+
+//     // Verifica si hay ajustes a crear y si el array no está vacío
+//     if (datosAjuste && Array.isArray(datosAjuste) && datosAjuste.length > 0) {
+//       const ajustesPromesas = datosAjuste.map(async (ajuste) => {
+//         return AjusteRinde.create({
+//           ...ajuste,
+//           rinde_id: nuevoRinde.id,
+//         });
+//       });
+
+//       await Promise.all(ajustesPromesas);
+//     }
+
+//     res
+//       .status(201)
+//       .json({ mensaje: "Rinde creado satisfactoriamente", rinde: nuevoRinde });
+//   } catch (error) {
+//     console.error("Error al crear el registro de Rinde:", error);
+//     next(error);
+//   }
+// };
 
 const obtenerRindes = async (req, res, next) => {
   try {
@@ -630,13 +769,26 @@ const eliminarRinde = async (req, res, next) => {
     // Obtener el ID del RINDE desde la solicitud
     const { rindeId } = req.params;
 
-    // Eliminar el RINDE
-    await Rinde.destroy({
-      where: { id: rindeId },
-    });
+    // // Eliminar el RINDE
+    // await Rinde.destroy({
+    //   where: { id: rindeId },
+    // });
 
-    // Enviar una respuesta exitosa
-    res.json({ message: "Rinde eliminado exitosamente" });
+    // // Enviar una respuesta exitosa
+    // res.json({ message: "Rinde eliminado exitosamente" });
+    const rinde = await Rinde.findByPk(rindeId);
+
+    if (!rinde) {
+      return res.status(404).json({ message: "Rinde no encontrado" });
+    }
+
+    // Eliminar los ajustes relacionados
+    await AjusteRinde.destroy({ where: { rinde_id: rinde.id } });
+
+    // Ahora sí podés eliminar el rinde
+    await rinde.destroy();
+
+    res.json({ message: "Rinde eliminado correctamente" });
   } catch (error) {
     console.error("Error al eliminar el Rinde:", error);
     next(error);
@@ -1412,7 +1564,7 @@ const obtenerMovimientosFiltradosOtro = async (req, res, next) => {
     const filters = {
       fecha: { [Op.between]: [fechaDesde, fechaHasta] },
     };
-    if (sucursalId) filters.sucursal_id = sucursalId;
+    if (sucursalId) filters.sucursaldestino_id = sucursalId;
 
     const movimientos = await InventarioMovimientoOtro.findAll({
       where: filters,
@@ -1470,7 +1622,7 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
     };
 
     if (sucursalId) {
-      filters.sucursal_id = sucursalId;
+      filters.sucursaldestino_id = sucursalId;
     }
 
     const movimientos = await InventarioMovimientoOtro.findAll({
@@ -1492,16 +1644,12 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
       }
 
       if (precioArticulo) {
-        const cantidad = parseFloat(movimiento.cantidad);
-        const tipoMovimiento = movimiento.tipo.toLowerCase();
-
-        if (tipoMovimiento === "entrada") {
-          montoTotalMovimientos -= Number(cantidad) * Number(precioArticulo);
-        } else if (tipoMovimiento === "salida") {
-          montoTotalMovimientos += Number(cantidad) * Number(precioArticulo);
-        }
+        const cantidad = parseFloat(movimiento.cantidad) || 0;
+        montoTotalMovimientos += cantidad * precioArticulo;
       }
     }
+
+    console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
 
     res.status(200).json({ montoTotalMovimientos });
   } catch (error) {
@@ -1513,9 +1661,29 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
 const crearMovimientosOtrosDesdeExcel = async (req, res) => {
   try {
     if (!req.file) {
-      return res
-        .status(400)
-        .json({ mensaje: "No se ha subido ningún archivo." });
+      return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
+    }
+
+    const { tipo, sucursal_codigo } = req.body;
+
+    if (!tipo || !sucursal_codigo) {
+      return res.status(400).json({
+        mensaje: "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+      });
+    }
+
+    if (!["FABRICA", "ACHURA"].includes(tipo)) {
+      return res.status(400).json({
+        mensaje: `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
+      });
+    }
+
+    const sucursalOrigen = await Sucursal.findOne({
+      where: { codigo: String(sucursal_codigo).trim() },
+    });
+
+    if (!sucursalOrigen) {
+      throw new Error(`Sucursal origen inexistente (código: ${sucursal_codigo})`);
     }
 
     const workbook = xlsx.readFile(req.file.path);
@@ -1527,56 +1695,40 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
     const parseFechaExcel = (fechaValor) => {
       if (typeof fechaValor === "string" && fechaValor.includes("/")) {
         const [dia, mes, anio] = fechaValor.split("/");
-        return `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+        const fechaISO = `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+        if (isNaN(new Date(fechaISO))) return null;
+        return fechaISO;
       }
+
       if (typeof fechaValor === "number") {
         const date = new Date(Math.round((fechaValor - 25569) * 86400 * 1000));
         return date.toISOString().split("T")[0];
       }
-      return fechaValor;
+
+      // Si viene como texto tipo "2024-05-01"
+      const date = new Date(fechaValor);
+      return isNaN(date) ? null : date.toISOString().split("T")[0];
     };
 
     for (let index = 0; index < data.length; index++) {
       const row = data[index];
       const fila = index + 2;
 
-      const {
-        fecha,
-        tipo,
-        articulocodigo,
-        cantidad,
-        sucursal_codigo,
-        sucursaldestino_codigo,
-        remito,
-      } = row;
+      const { fecha, articulocodigo, cantidad, remito, sucursaldestino_codigo } = row;
 
-      if (
-        !fecha ||
-        !tipo ||
-        !articulocodigo ||
-        !cantidad ||
-        !sucursal_codigo ||
-        !sucursaldestino_codigo
-      ) {
-        throw new Error(`Faltan campos obligatorios en la fila ${fila}`);
+      if (!fecha || !articulocodigo || !cantidad || !sucursaldestino_codigo) {
+        throw new Error(`Faltan campos obligatorios en la fila ${fila}.`);
       }
 
-      if (!["EGRE", "ACH"].includes(tipo)) {
-        throw new Error(`Tipo inválido en fila ${fila}: debe ser EGRE o ACH`);
-      }
-
-      const sucursalOrigen = await Sucursal.findOne({
-        where: { codigo: String(sucursal_codigo).trim() },
-      });
-      if (!sucursalOrigen) {
-        throw new Error(
-          `Sucursal origen inexistente en fila ${fila} (código: ${sucursal_codigo})`
-        );
+      const fechaNormalizada = parseFechaExcel(fecha);
+      if (!fechaNormalizada) {
+        throw new Error(`Fecha inválida en la fila ${fila}: ${fecha}`);
       }
 
       const sucursalDestino = await Sucursal.findOne({
         where: { codigo: String(sucursaldestino_codigo).trim() },
       });
+
       if (!sucursalDestino) {
         throw new Error(
           `Sucursal destino inexistente en fila ${fila} (código: ${sucursaldestino_codigo})`
@@ -1586,64 +1738,32 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
       const articulo = await ArticuloTabla.findOne({
         where: { codigobarra: String(articulocodigo).trim() },
       });
+
       if (!articulo) {
         throw new Error(
           `Artículo inexistente en fila ${fila} (código: ${articulocodigo})`
         );
       }
 
-      const articulodescripcion = articulo.descripcion;
-
-      const cantidadNormalizada = parseFloat(
-        String(cantidad).replace(",", ".")
-      );
+      // Validar cantidad como número (puede venir como string con coma)
+      const cantidadNormalizada = parseFloat(String(cantidad).replace(",", "."));
       if (isNaN(cantidadNormalizada)) {
         throw new Error(`Cantidad inválida en la fila ${fila}: ${cantidad}`);
       }
 
-      const fechaNormalizada = parseFechaExcel(fecha);
-
-      if (tipo === "EGRE") {
-        movimientosAInsertar.push({
-          fecha: fechaNormalizada,
-          sucursal_id: sucursalOrigen.id,
-          articulocodigo,
-          articulodescripcion,
-          cantidad: cantidadNormalizada,
-          tipo: "salida",
-          numerolote: remito || null,
-          sucursaldestino_id: null,
-        });
-
-        movimientosAInsertar.push({
-          fecha: fechaNormalizada,
-          sucursal_id: sucursalDestino.id,
-          articulocodigo,
-          articulodescripcion,
-          cantidad: cantidadNormalizada,
-          tipo: "entrada",
-          numerolote: remito || null,
-          sucursaldestino_id: null,
-        });
-      }
-
-      if (tipo === "ACH") {
-        movimientosAInsertar.push({
-          fecha: fechaNormalizada,
-          sucursal_id: sucursalDestino.id,
-          articulocodigo,
-          articulodescripcion,
-          cantidad: cantidadNormalizada,
-          tipo: "entrada",
-          numerolote: remito || null,
-          sucursaldestino_id: null,
-        });
-      }
+      movimientosAInsertar.push({
+        fecha: fechaNormalizada,
+        sucursal_id: sucursalOrigen.id,
+        articulocodigo,
+        articulodescripcion: articulo.descripcion,
+        cantidad: cantidadNormalizada,
+        tipo: tipo === "FABRICA" ? "FABRICA" : "ACHURA",
+        numerolote: remito || null,
+        sucursaldestino_id: sucursalDestino.id,
+      });
     }
 
-    const movimientosCreados = await InventarioMovimientoOtro.bulkCreate(
-      movimientosAInsertar
-    );
+    const movimientosCreados = await InventarioMovimientoOtro.bulkCreate(movimientosAInsertar);
 
     if (fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
@@ -1712,7 +1832,7 @@ const cargarInventarioDesdeExcel = async (req, res, next) => {
   try {
     const file = req.file;
     const { anio, mes, fecha, sucursal_id, usuario_id } = req.body;
-    console.log("datos",anio, mes, fecha, sucursal_id, usuario_id)
+    console.log("datos", anio, mes, fecha, sucursal_id, usuario_id)
 
     if (!file || !anio || !mes || !fecha || !sucursal_id || !usuario_id) {
       return res.status(400).json({ message: "Faltan datos requeridos en el formulario" });
@@ -1777,6 +1897,55 @@ const cargarInventarioDesdeExcel = async (req, res, next) => {
   }
 };
 
+const obtenerAchurasTotales = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    const filters = {
+      fecha: { [Op.between]: [fechaDesde, fechaHasta] },
+      tipo: 'ACHURA',
+    };
+
+    if (sucursalId) filters.sucursaldestino_id = sucursalId;
+
+    const movimientosAchuras = await InventarioMovimientoOtro.findAll({
+      where: filters,
+    });
+
+    // Mapa para almacenar el precio de cada artículo
+    const preciosArticulos = new Map();
+
+    // Recorrer los movimientos para calcular el total
+    let montoTotalAchuras = 0;
+
+    for (const movimiento of movimientosAchuras) {
+      // Obtener el precio del artículo desde el mapa si ya fue buscado antes
+      let precioArticulo = preciosArticulos.get(movimiento.articulocodigo);
+
+      // Si no se ha buscado antes, buscarlo en la base de datos y almacenarlo en el mapa
+      if (!precioArticulo) {
+        const precio = await buscarPrecioArticulo(movimiento.articulocodigo);
+        if (precio) {
+          preciosArticulos.set(movimiento.articulocodigo, precio);
+          precioArticulo = precio;
+        }
+      }
+
+      // Si se encuentra el precio del artículo, calcular el monto del movimiento
+      if (precioArticulo) {
+        const cantidad = parseFloat(movimiento.cantidad);
+        montoTotalAchuras += Number(cantidad) * Number(precioArticulo);
+      }
+    }
+
+    console.log("monto", montoTotalAchuras)
+
+    res.status(200).json({ montoTotalAchuras });
+  } catch (error) {
+    console.error("Error al calcular achuras:", error);
+    next(error);
+  }
+};
 
 
 export {
@@ -1808,5 +1977,6 @@ export {
   eliminarMovimientoOtro,
   crearMovimientosOtrosDesdeExcel,
   obtenerFechasUnicasMovimientosOtros,
-  eliminarMovimientosOtrosPorFechas
+  eliminarMovimientosOtrosPorFechas,
+  obtenerAchurasTotales
 };

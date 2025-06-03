@@ -1457,6 +1457,36 @@ const obtenerClientesOneshotFiltrados = async (req, res, next) => {
   }
 };
 
+const obtenerSumaGastosFiltrados = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    const resultado = await Gasto.findAll({
+      where: filters,
+      attributes: [
+        [sequelize.fn("SUM", sequelize.col("importe")), "totalGastos"],
+      ],
+    });
+
+    const totalGastos = resultado[0].dataValues.totalGastos || 0;
+
+    res.json({ totalGastos });
+  } catch (error) {
+    console.error("Error al obtener suma de gastos:", error);
+    next(error);
+  }
+};
+
 
 export {
   obtenerCajas,
@@ -1515,4 +1545,5 @@ export {
   actualizarClienteOneshot,
   eliminarClienteOneshot,
   obtenerClientesOneshotFiltrados,
+  obtenerSumaGastosFiltrados
 };

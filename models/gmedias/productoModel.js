@@ -45,7 +45,7 @@ const Producto = sequelize.define(
     sucursal_id: {
       type: DataTypes.INTEGER,
       // allowNull: true,
-      defaultValue: 18,
+      // defaultValue: 18,
     },
     fecha: {
       type: DataTypes.DATEONLY,

@@ -11,6 +11,7 @@ infoCajaRouter.post('/caja/cajas', infoCajaRindeController.crearCajas);
 infoCajaRouter.get('/caja/gastos', infoCajaRindeController.obtenerGastos);
 infoCajaRouter.post('/caja/gastos_filtrados', infoCajaRindeController.obtenerGastosFiltrados);
 infoCajaRouter.post('/caja/gastos', infoCajaRindeController.crearGastos);
+infoCajaRouter.post('/caja/suma_gastos', infoCajaRindeController.obtenerSumaGastosFiltrados);
 infoCajaRouter.get('/caja/retiros', infoCajaRindeController.obtenerRetiros);
 infoCajaRouter.post('/caja/retiros_filtrados', infoCajaRindeController.obtenerRetirosFiltrados);
 infoCajaRouter.post('/caja/retiros', infoCajaRindeController.crearRetiros);

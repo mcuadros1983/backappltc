@@ -27,6 +27,7 @@ ventasRindeRouter.post('/ventas/por_usuario_filtradas', ventasRindeController.ob
 ventasRindeRouter.post('/ventas/kg_por_usuario_filtradas', ventasRindeController.obtenerKgPorUsuarioFiltradas);
 ventasRindeRouter.post('/ventas/kg_por_sucursal_filtradas', ventasRindeController.obtenerKgPorSucursalFiltradas);
 ventasRindeRouter.post('/ventas/cantidad_ticket_por_usuario', ventasRindeController.obtenerCantidadTicketPorUsuario);
+ventasRindeRouter.post('/ventas/dias-con-ventas', ventasRindeController.obtenerCantidadDiasConVentas);
 
 // ventas/monto_con_articulo_filtradas
 

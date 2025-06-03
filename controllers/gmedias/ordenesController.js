@@ -5,6 +5,8 @@ import Sucursal from "../../models/gmedias/sucursalModel.js";
 import { actualizarDatosProducto } from "./productosController.js";
 import { sequelize } from "../../config/database.js";
 import { Op } from "sequelize";
+import xlsx from "xlsx"; // Importa la librería para leer archivos Excel
+import fs from "fs"; // Importa el módulo fs para manipulación de archivos
 
 const obtenerOrdenes = async (req, res, next) => {
   try {
@@ -186,7 +188,7 @@ const crearOrden = async (req, res, next) => {
   }
 };
 
-const obenerProductosOrden = async (req, res, next) => {
+const obtenerProductosOrden = async (req, res, next) => {
   const { id } = req.params;
   try {
     const productos = await Producto.findAll({
@@ -372,14 +374,338 @@ const fetchOrderCreatedAt = async (req, res) => {
   }
 };
 
+const obtenerCantidadMediasBovino = async (req, res, next) => {
+  console.log("obtener cantidades....");
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    if (!fechaDesde || !fechaHasta || !sucursalId) {
+      return res.status(400).json({ error: "Faltan parámetros requeridos." });
+    }
+
+    const ordenes = await Orden.findAll({
+      where: {
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta],
+        },
+        sucursal_id: sucursalId,
+      },
+      include: [
+        {
+          model: Producto,
+          as: "Productos",
+          where: {
+            categoria_producto: "bovino",
+          },
+          attributes: ["num_media"],
+        },
+      ],
+    });
+
+    let sumaMedias = 0;
+    ordenes.forEach((orden) => {
+      sumaMedias += orden.Productos.length;
+    });
+
+    res.json({ cantidadMedias: sumaMedias });
+  } catch (error) {
+    console.error("Error al obtener cantidad de medias bovino:", error);
+    next(error);
+  }
+};
+
+const obtenerCostoPromedio = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId, totalKg } = req.body;
+
+    if (!fechaDesde || !fechaHasta || !sucursalId || !totalKg) {
+      return res.status(400).json({ error: "Faltan parámetros requeridos." });
+    }
+
+    const ordenes = await Orden.findAll({
+      where: {
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta],
+        },
+        sucursal_id: sucursalId,
+      },
+      include: [
+        {
+          model: Producto,
+          as: "Productos",
+          where: {
+            categoria_producto: "bovino",
+          },
+          attributes: ["kg", "costo"],
+        },
+      ],
+    });
+
+    let sumaCostoTotal = 0;
+    ordenes.forEach((orden) => {
+      orden.Productos.forEach((producto) => {
+        const kg = parseFloat(producto.kg) || 0;
+        const costo = parseFloat(producto.costo) || 0;
+        sumaCostoTotal += kg * costo;
+      });
+    });
+
+    const costoPromedio = sumaCostoTotal / parseFloat(totalKg || 1);
+
+    res.json({ costoPromedio });
+  } catch (error) {
+    console.error("Error al calcular costo promedio:", error);
+    next(error);
+  }
+};
+
+const obtenerCostoVacunoTotal = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    if (!fechaDesde || !fechaHasta || !sucursalId) {
+      return res.status(400).json({ error: "Faltan parámetros requeridos." });
+    }
+
+    const ordenes = await Orden.findAll({
+      where: {
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta],
+        },
+        sucursal_id: sucursalId,
+      },
+      include: [
+        {
+          model: Producto,
+          as: "Productos",
+          where: {
+            categoria_producto: "bovino",
+          },
+          attributes: ["kg", "costo"],
+        },
+      ],
+    });
+
+    let costoTotalVacuno = 0;
+    ordenes.forEach((orden) => {
+      orden.Productos.forEach((producto) => {
+        const kg = parseFloat(producto.kg) || 0;
+        const costo = parseFloat(producto.costo) || 0;
+        costoTotalVacuno += kg * costo;
+      });
+    });
+
+    res.json({ costoTotalVacuno });
+  } catch (error) {
+    console.error("Error al obtener costo vacuno total:", error);
+    next(error);
+  }
+};
+
+
+const obtenerCostoPorcinoTotal = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    if (!fechaDesde || !fechaHasta || !sucursalId) {
+      return res.status(400).json({ error: "Faltan parámetros requeridos." });
+    }
+
+    const ordenes = await Orden.findAll({
+      where: {
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta],
+        },
+        sucursal_id: sucursalId,
+      },
+      include: [
+        {
+          model: Producto,
+          as: "Productos",
+          where: {
+            categoria_producto: "porcino",
+          },
+          attributes: ["kg", "costo"],
+        },
+      ],
+    });
+
+    let costoTotalPorcino = 0;
+    ordenes.forEach((orden) => {
+      orden.Productos.forEach((producto) => {
+        const kg = parseFloat(producto.kg) || 0;
+        const costo = parseFloat(producto.costo) || 0;
+        costoTotalPorcino += kg * costo;
+      });
+    });
+
+    res.json({ costoTotalPorcino });
+  } catch (error) {
+    console.error("Error al obtener costo porcino total:", error);
+    next(error);
+  }
+};
+
+
+// Función para convertir fechas desde Excel a 'YYYY-MM-DD'
+const convertirFechaExcel = (valorFecha) => {
+  if (typeof valorFecha === "number") {
+    const fechaBase = new Date(1900, 0, 1);
+    fechaBase.setDate(fechaBase.getDate() + valorFecha - 2); // Ajuste por bug histórico de Excel
+    return fechaBase.toISOString().split("T")[0];
+  } else if (typeof valorFecha === "string") {
+    const date = new Date(valorFecha);
+    if (!isNaN(date)) {
+      return date.toISOString().split("T")[0];
+    }
+  }
+  return null;
+};
+
+// Función para generar código único de barra / num_media
+const generarCodigoUnico = async () => {
+  let intento = 0;
+  let codigo;
+  let existe;
+
+  do {
+    const aleatorio = Math.floor(Math.random() * 1000000);
+    const tiempo = Date.now();
+    codigo = `${tiempo}${aleatorio}`.slice(-13);
+    existe = await Producto.findOne({ where: { codigo_de_barra: codigo } });
+    intento++;
+    if (intento > 10) throw new Error("No se pudo generar un código único");
+  } while (existe);
+
+  return codigo;
+};
+
+const crearOrdenesDesdeExcel = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
+    }
+
+    const { categoria, subcategoria } = req.body;
+
+    if (!categoria || !subcategoria) {
+      return res.status(400).json({ mensaje: "Faltan 'categoria' o 'subcategoria' en el body." });
+    }
+
+    const workbook = xlsx.readFile(req.file.path);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = xlsx.utils.sheet_to_json(sheet);
+
+    const camposEsperados = ["fecha", "sucursaldestino_codigo", "tropa", "kg", "costo"];
+    const errores = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const fila = data[i];
+      for (const campo of camposEsperados) {
+        if (!fila[campo]) {
+          errores.push(`Fila ${i + 2} sin campo obligatorio: ${campo}`);
+        }
+      }
+    }
+
+    if (errores.length > 0) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ mensaje: "Errores en el archivo", errores });
+    }
+
+    // Agrupar por fecha+codigoSucursal
+    const productosPorGrupo = {};
+    data.forEach((item) => {
+      const fecha = convertirFechaExcel(item.fecha);
+      const clave = `${fecha}_${item.sucursaldestino_codigo}`;
+      if (!productosPorGrupo[clave]) {
+        productosPorGrupo[clave] = [];
+      }
+      productosPorGrupo[clave].push({ ...item, fechaConvertida: fecha });
+    });
+
+    const ordenesCreadas = [];
+
+    for (const clave in productosPorGrupo) {
+      const grupo = productosPorGrupo[clave];
+      const { fechaConvertida, sucursaldestino_codigo } = grupo[0];
+      const codigoSucursal = String(sucursaldestino_codigo).trim();
+
+      const sucursal = await Sucursal.findOne({ where: { codigo: codigoSucursal } });
+      if (!sucursal) continue;
+
+      let peso_total = 0;
+      const productos = [];
+
+      for (const fila of grupo) {
+        const codigo = await generarCodigoUnico();
+
+        const producto = await Producto.create({
+          categoria_producto: categoria,
+          subcategoria: subcategoria,
+          costo: parseFloat(fila.costo),
+          kg: parseFloat(fila.kg),
+          tropa: fila.tropa.toString(),
+          sucursal_id: sucursal.id,
+          fecha: fila.fechaConvertida,
+          codigo_de_barra: codigo,
+          num_media: codigo,
+        });
+
+        productos.push(producto);
+        peso_total += parseFloat(fila.kg);
+      }
+
+      const nuevaOrden = await Orden.create({
+        cantidad_total: productos.length,
+        peso_total,
+        sucursal_id: sucursal.id,
+        fecha: grupo[0].fechaConvertida,
+      });
+
+      await Promise.all(
+        productos.map(async (p) => {
+          p.orden_id = nuevaOrden.id;
+          await p.save();
+        })
+      );
+
+      ordenesCreadas.push({
+        fecha: grupo[0].fechaConvertida,
+        sucursal: sucursal.nombre,
+        orden_id: nuevaOrden.id,
+        productos: productos.map((p) => p.id),
+      });
+    }
+
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+    return res.status(200).json({
+      mensaje: "Órdenes y productos creados correctamente.",
+      ordenes: ordenesCreadas,
+    });
+
+  } catch (error) {
+    console.error("Error en crearOrdenesDesdeExcel:", error);
+    if (fs.existsSync(req.file?.path)) fs.unlinkSync(req.file.path);
+    return res.status(500).json({ mensaje: "Error al procesar archivo Excel." });
+  }
+};
+
+
 export {
   obtenerOrdenes,
   obtenerOrdenesFiltradas,
   obtenerOrden,
   crearOrden,
-  obenerProductosOrden,
+  obtenerProductosOrden,
   actualizarOrden,
   eliminarOrden,
   eliminarProductoOrden,
   fetchOrderCreatedAt,
+  obtenerCantidadMediasBovino,
+  obtenerCostoPromedio,
+  obtenerCostoVacunoTotal,
+  obtenerCostoPorcinoTotal,
+  crearOrdenesDesdeExcel
 };

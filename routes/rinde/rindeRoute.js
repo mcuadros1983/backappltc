@@ -67,6 +67,7 @@ rindeRouter.post("/obtenerstock", rindeController.obtenerStock);
 
 rindeRouter.post("/movimientos-otro", rindeController.obtenerMovimientosFiltradosOtro);
 rindeRouter.post("/movimientos-otro/monto", rindeController.obtenerMontoMovimientosFiltradosOtro);
+rindeRouter.post("/movimientos-otro/achuras", rindeController.obtenerAchurasTotales);
 rindeRouter.post("/movimientos-otro/crear", rindeController.crearMovimientoOtro);
 rindeRouter.delete("/movimientos-otro/:movimientoId", rindeController.eliminarMovimientoOtro);
 rindeRouter.post('/movimientos-otro-excel', upload.single('file'), rindeController.crearMovimientosOtrosDesdeExcel);
@@ -76,3 +77,5 @@ rindeRouter.post("/cargarinventarios-excel",upload.single("file"), rindeControll
 
 // Exportar el enrutador
 export default rindeRouter;
+
+//"/movimientos-otro/achuras", obtenerAchurasTotales);
