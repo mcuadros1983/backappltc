@@ -1947,6 +1947,92 @@ const obtenerAchurasTotales = async (req, res, next) => {
   }
 };
 
+const editarArticuloInventario = async (req, res, next) => {
+  try {
+    const { articuloId } = req.params;
+    const { cantidadpeso, precio } = req.body;
+
+    const articulo = await InventarioArticulo.findByPk(articuloId);
+    if (!articulo) {
+      return res.status(404).json({ message: "Artículo no encontrado" });
+    }
+
+    articulo.cantidadpeso = cantidadpeso ?? articulo.cantidadpeso;
+    articulo.precio = precio ?? articulo.precio;
+
+    await articulo.save();
+
+    res.json({ message: "Artículo actualizado", articulo });
+  } catch (error) {
+    console.error("Error al editar artículo de inventario:", error);
+    next(error);
+  }
+};
+
+// DELETE /inventario/:inventarioId/articulo/:articuloId
+const eliminarArticuloInventario = async (req, res, next) => {
+  try {
+    const { inventarioId, articuloId } = req.params;
+
+    // Eliminar relación de la tabla intermedia
+    await InventarioInventarioArticulo.destroy({
+      where: {
+        inventario_id: inventarioId,
+        ventasarticulos_id: articuloId,
+      },
+    });
+
+    // Eliminar el artículo
+    await InventarioArticulo.destroy({ where: { id: articuloId } });
+
+    res.json({ message: "Artículo eliminado del inventario" });
+  } catch (error) {
+    console.error("Error al eliminar artículo de inventario:", error);
+    next(error);
+  }
+};
+
+// POST /inventario/:inventarioId/articulo
+const agregarArticuloInventario = async (req, res, next) => {
+  try {
+    const { inventarioId } = req.params;
+    const { articulocodigo, cantidadpeso } = req.body;
+
+    if (!articulocodigo || !cantidadpeso) {
+      return res.status(400).json({ message: "Faltan datos obligatorios." });
+    }
+
+    const inventario = await Inventario.findByPk(inventarioId);
+    if (!inventario) {
+      return res.status(404).json({ message: "Inventario no encontrado." });
+    }
+
+    const articuloOriginal = await ArticuloTabla.findOne({
+      where: { codigobarra: articulocodigo },
+    });
+
+    const descripcion = articuloOriginal?.descripcion || "DESCONOCIDO";
+
+    const nuevoArticulo = await InventarioArticulo.create({
+      articulocodigo,
+      articulodescripcion: descripcion,
+      cantidadpeso,
+      precio: 0,
+      inventario_id: inventarioId,
+    });
+
+    await InventarioInventarioArticulo.create({
+      inventario_id: inventarioId,
+      ventasarticulos_id: nuevoArticulo.id,
+    });
+
+    res.status(201).json({ message: "Artículo agregado", articulo: nuevoArticulo });
+  } catch (error) {
+    console.error("Error al agregar artículo al inventario:", error);
+    next(error);
+  }
+};
+
 
 export {
   obtenerMovimientosFiltrados,
@@ -1978,5 +2064,8 @@ export {
   crearMovimientosOtrosDesdeExcel,
   obtenerFechasUnicasMovimientosOtros,
   eliminarMovimientosOtrosPorFechas,
-  obtenerAchurasTotales
+  obtenerAchurasTotales,
+  editarArticuloInventario,
+  eliminarArticuloInventario,
+  agregarArticuloInventario
 };

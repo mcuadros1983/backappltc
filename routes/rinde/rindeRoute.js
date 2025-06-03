@@ -74,6 +74,18 @@ rindeRouter.post('/movimientos-otro-excel', upload.single('file'), rindeControll
 rindeRouter.post("/movimientos-otro/fechas-unicas", rindeController.obtenerFechasUnicasMovimientosOtros);
 rindeRouter.post("/movimientos-otro/eliminar-por-fechas", rindeController.eliminarMovimientosOtrosPorFechas);
 rindeRouter.post("/cargarinventarios-excel",upload.single("file"), rindeController.cargarInventarioDesdeExcel);
+rindeRouter.put(
+  "/inventario/articulo/:articuloId",
+  rindeController.editarArticuloInventario
+);
+
+rindeRouter.delete(
+  "/inventario/:inventarioId/articulo/:articuloId",
+  rindeController.eliminarArticuloInventario
+);
+
+rindeRouter.post("/inventario/:inventarioId/articulo", rindeController.agregarArticuloInventario);
+
 
 // Exportar el enrutador
 export default rindeRouter;
