@@ -16,6 +16,7 @@ ordenesRouter.get('/ordenes/productos', ordenesController.obtenerProductosOrden)
 ordenesRouter.post('/sumacantidad', ordenesController.obtenerCantidadMediasBovino);
 ordenesRouter.get('/ordenes', ordenesController.obtenerOrdenes);
 ordenesRouter.post('/ordenesfiltradas', ordenesController.obtenerOrdenesFiltradas);
+ordenesRouter.post('/productosordenesfiltradas', ordenesController.obtenerProductosFiltradosOrdenes);
 ordenesRouter.get('/ordenes/:id', ordenesController.obtenerOrden);
 ordenesRouter.post('/ordenes', ordenesController.crearOrden); 
 ordenesRouter.get('/ordenes/:id/productos', ordenesController.obtenerProductosOrden);

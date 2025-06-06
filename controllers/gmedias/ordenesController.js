@@ -105,6 +105,64 @@ const obtenerOrdenesFiltradas = async (req, res, next) => {
   }
 };
 
+const obtenerProductosFiltradosOrdenes = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId, categoria, subcategoria } = req.body;
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    if (categoria) {
+      filters.categoria_producto = categoria;
+    }
+
+    if (subcategoria) {
+      filters.subcategoria = subcategoria;
+    }
+
+    // Consultar productos directamente
+    const productos = await Producto.findAll({
+      where: filters,
+      attributes: [
+        "id",
+        "subcategoria",
+        "codigo_de_barra",
+        "num_media",
+        "precio",
+        "kg",
+        "tropa",
+        "sucursal_id",
+        "fecha"
+      ],
+      include: [
+        {
+          model: Sucursal,
+          attributes: ["id", "nombre"],
+        },
+      ],
+    });
+
+    // Calcular la suma total de kg
+    let sumaKg = 0;
+    productos.forEach((producto) => {
+      sumaKg += Number(producto.kg) || 0;
+    });
+
+    res.status(200).json({ productos, sumaKg });
+  } catch (error) {
+    console.error("Error al obtener los productos filtrados:", error);
+    next(error);
+  }
+};
+
+
 const obtenerOrden = async (req, res, next) => {
   const { id } = req.params;
   try {
@@ -374,8 +432,48 @@ const fetchOrderCreatedAt = async (req, res) => {
   }
 };
 
+// const obtenerCantidadMediasBovino = async (req, res, next) => {
+//   console.log("obtener cantidades....");
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     if (!fechaDesde || !fechaHasta || !sucursalId) {
+//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
+//     }
+
+//     const ordenes = await Orden.findAll({
+//       where: {
+//         fecha: {
+//           [Op.between]: [fechaDesde, fechaHasta],
+//         },
+//         sucursal_id: sucursalId,
+//       },
+//       include: [
+//         {
+//           model: Producto,
+//           as: "Productos",
+//           where: {
+//             categoria_producto: "bovino",
+//           },
+//           attributes: ["num_media"],
+//         },
+//       ],
+//     });
+
+//     let sumaMedias = 0;
+//     ordenes.forEach((orden) => {
+//       sumaMedias += orden.Productos.length;
+//     });
+
+//     res.json({ cantidadMedias: sumaMedias });
+//   } catch (error) {
+//     console.error("Error al obtener cantidad de medias bovino:", error);
+//     next(error);
+//   }
+// };
+
 const obtenerCantidadMediasBovino = async (req, res, next) => {
-  console.log("obtener cantidades....");
+  console.log("Obteniendo cantidades desde Producto...");
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
 
@@ -383,31 +481,21 @@ const obtenerCantidadMediasBovino = async (req, res, next) => {
       return res.status(400).json({ error: "Faltan parámetros requeridos." });
     }
 
-    const ordenes = await Orden.findAll({
+    // Buscar directamente en Producto
+    const productos = await Producto.findAll({
       where: {
         fecha: {
           [Op.between]: [fechaDesde, fechaHasta],
         },
         sucursal_id: sucursalId,
+        categoria_producto: "bovino",
       },
-      include: [
-        {
-          model: Producto,
-          as: "Productos",
-          where: {
-            categoria_producto: "bovino",
-          },
-          attributes: ["num_media"],
-        },
-      ],
+      attributes: ["num_media"],
     });
 
-    let sumaMedias = 0;
-    ordenes.forEach((orden) => {
-      sumaMedias += orden.Productos.length;
-    });
+    let cantidadMedias = productos.length;
 
-    res.json({ cantidadMedias: sumaMedias });
+    res.json({ cantidadMedias });
   } catch (error) {
     console.error("Error al obtener cantidad de medias bovino:", error);
     next(error);
@@ -422,32 +510,22 @@ const obtenerCostoPromedio = async (req, res, next) => {
       return res.status(400).json({ error: "Faltan parámetros requeridos." });
     }
 
-    const ordenes = await Orden.findAll({
+    const productos = await Producto.findAll({
       where: {
         fecha: {
           [Op.between]: [fechaDesde, fechaHasta],
         },
         sucursal_id: sucursalId,
+        categoria_producto: "bovino",
       },
-      include: [
-        {
-          model: Producto,
-          as: "Productos",
-          where: {
-            categoria_producto: "bovino",
-          },
-          attributes: ["kg", "costo"],
-        },
-      ],
+      attributes: ["kg", "costo"],
     });
 
     let sumaCostoTotal = 0;
-    ordenes.forEach((orden) => {
-      orden.Productos.forEach((producto) => {
-        const kg = parseFloat(producto.kg) || 0;
-        const costo = parseFloat(producto.costo) || 0;
-        sumaCostoTotal += kg * costo;
-      });
+    productos.forEach((producto) => {
+      const kg = parseFloat(producto.kg) || 0;
+      const costo = parseFloat(producto.costo) || 0;
+      sumaCostoTotal += kg * costo;
     });
 
     const costoPromedio = sumaCostoTotal / parseFloat(totalKg || 1);
@@ -459,6 +537,52 @@ const obtenerCostoPromedio = async (req, res, next) => {
   }
 };
 
+
+// const obtenerCostoPromedio = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId, totalKg } = req.body;
+
+//     if (!fechaDesde || !fechaHasta || !sucursalId || !totalKg) {
+//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
+//     }
+
+//     const ordenes = await Orden.findAll({
+//       where: {
+//         fecha: {
+//           [Op.between]: [fechaDesde, fechaHasta],
+//         },
+//         sucursal_id: sucursalId,
+//       },
+//       include: [
+//         {
+//           model: Producto,
+//           as: "Productos",
+//           where: {
+//             categoria_producto: "bovino",
+//           },
+//           attributes: ["kg", "costo"],
+//         },
+//       ],
+//     });
+
+//     let sumaCostoTotal = 0;
+//     ordenes.forEach((orden) => {
+//       orden.Productos.forEach((producto) => {
+//         const kg = parseFloat(producto.kg) || 0;
+//         const costo = parseFloat(producto.costo) || 0;
+//         sumaCostoTotal += kg * costo;
+//       });
+//     });
+
+//     const costoPromedio = sumaCostoTotal / parseFloat(totalKg || 1);
+
+//     res.json({ costoPromedio });
+//   } catch (error) {
+//     console.error("Error al calcular costo promedio:", error);
+//     next(error);
+//   }
+// };
+
 const obtenerCostoVacunoTotal = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -467,32 +591,22 @@ const obtenerCostoVacunoTotal = async (req, res, next) => {
       return res.status(400).json({ error: "Faltan parámetros requeridos." });
     }
 
-    const ordenes = await Orden.findAll({
+    const productos = await Producto.findAll({
       where: {
         fecha: {
           [Op.between]: [fechaDesde, fechaHasta],
         },
         sucursal_id: sucursalId,
+        categoria_producto: "bovino",
       },
-      include: [
-        {
-          model: Producto,
-          as: "Productos",
-          where: {
-            categoria_producto: "bovino",
-          },
-          attributes: ["kg", "costo"],
-        },
-      ],
+      attributes: ["kg", "costo"],
     });
 
     let costoTotalVacuno = 0;
-    ordenes.forEach((orden) => {
-      orden.Productos.forEach((producto) => {
-        const kg = parseFloat(producto.kg) || 0;
-        const costo = parseFloat(producto.costo) || 0;
-        costoTotalVacuno += kg * costo;
-      });
+    productos.forEach((producto) => {
+      const kg = parseFloat(producto.kg) || 0;
+      const costo = parseFloat(producto.costo) || 0;
+      costoTotalVacuno += kg * costo;
     });
 
     res.json({ costoTotalVacuno });
@@ -503,6 +617,93 @@ const obtenerCostoVacunoTotal = async (req, res, next) => {
 };
 
 
+// const obtenerCostoVacunoTotal = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     if (!fechaDesde || !fechaHasta || !sucursalId) {
+//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
+//     }
+
+//     const ordenes = await Orden.findAll({
+//       where: {
+//         fecha: {
+//           [Op.between]: [fechaDesde, fechaHasta],
+//         },
+//         sucursal_id: sucursalId,
+//       },
+//       include: [
+//         {
+//           model: Producto,
+//           as: "Productos",
+//           where: {
+//             categoria_producto: "bovino",
+//           },
+//           attributes: ["kg", "costo"],
+//         },
+//       ],
+//     });
+
+//     let costoTotalVacuno = 0;
+//     ordenes.forEach((orden) => {
+//       orden.Productos.forEach((producto) => {
+//         const kg = parseFloat(producto.kg) || 0;
+//         const costo = parseFloat(producto.costo) || 0;
+//         costoTotalVacuno += kg * costo;
+//       });
+//     });
+
+//     res.json({ costoTotalVacuno });
+//   } catch (error) {
+//     console.error("Error al obtener costo vacuno total:", error);
+//     next(error);
+//   }
+// };
+
+
+// const obtenerCostoPorcinoTotal = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     if (!fechaDesde || !fechaHasta || !sucursalId) {
+//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
+//     }
+
+//     const ordenes = await Orden.findAll({
+//       where: {
+//         fecha: {
+//           [Op.between]: [fechaDesde, fechaHasta],
+//         },
+//         sucursal_id: sucursalId,
+//       },
+//       include: [
+//         {
+//           model: Producto,
+//           as: "Productos",
+//           where: {
+//             categoria_producto: "porcino",
+//           },
+//           attributes: ["kg", "costo"],
+//         },
+//       ],
+//     });
+
+//     let costoTotalPorcino = 0;
+//     ordenes.forEach((orden) => {
+//       orden.Productos.forEach((producto) => {
+//         const kg = parseFloat(producto.kg) || 0;
+//         const costo = parseFloat(producto.costo) || 0;
+//         costoTotalPorcino += kg * costo;
+//       });
+//     });
+
+//     res.json({ costoTotalPorcino });
+//   } catch (error) {
+//     console.error("Error al obtener costo porcino total:", error);
+//     next(error);
+//   }
+// };
+
 const obtenerCostoPorcinoTotal = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -511,32 +712,22 @@ const obtenerCostoPorcinoTotal = async (req, res, next) => {
       return res.status(400).json({ error: "Faltan parámetros requeridos." });
     }
 
-    const ordenes = await Orden.findAll({
+    const productos = await Producto.findAll({
       where: {
         fecha: {
           [Op.between]: [fechaDesde, fechaHasta],
         },
         sucursal_id: sucursalId,
+        categoria_producto: "porcino",
       },
-      include: [
-        {
-          model: Producto,
-          as: "Productos",
-          where: {
-            categoria_producto: "porcino",
-          },
-          attributes: ["kg", "costo"],
-        },
-      ],
+      attributes: ["kg", "costo"],
     });
 
     let costoTotalPorcino = 0;
-    ordenes.forEach((orden) => {
-      orden.Productos.forEach((producto) => {
-        const kg = parseFloat(producto.kg) || 0;
-        const costo = parseFloat(producto.costo) || 0;
-        costoTotalPorcino += kg * costo;
-      });
+    productos.forEach((producto) => {
+      const kg = parseFloat(producto.kg) || 0;
+      const costo = parseFloat(producto.costo) || 0;
+      costoTotalPorcino += kg * costo;
     });
 
     res.json({ costoTotalPorcino });
@@ -545,7 +736,6 @@ const obtenerCostoPorcinoTotal = async (req, res, next) => {
     next(error);
   }
 };
-
 
 // Función para convertir fechas desde Excel a 'YYYY-MM-DD'
 const convertirFechaExcel = (valorFecha) => {
@@ -707,5 +897,6 @@ export {
   obtenerCostoPromedio,
   obtenerCostoVacunoTotal,
   obtenerCostoPorcinoTotal,
-  crearOrdenesDesdeExcel
+  crearOrdenesDesdeExcel,
+  obtenerProductosFiltradosOrdenes
 };
