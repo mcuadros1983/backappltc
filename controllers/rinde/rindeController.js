@@ -20,6 +20,7 @@ import AjusteRinde from "../../models/rinde/ajusteRindeModel.js";
 import InventarioMovimientoOtro from "../../models/rinde/inventarioMovimientoOtroModel.js";
 import xlsx from "xlsx";
 import fs from "fs";
+import RindeGeneral from "../../models/rinde/rindeGeneral.js";
 
 const obtenerMovimientosFiltrados = async (req, res, next) => {
   try {
@@ -1611,6 +1612,53 @@ const eliminarMovimientoOtro = async (req, res, next) => {
   }
 };
 
+// const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     if (sucursalId) {
+//       filters.sucursaldestino_id = sucursalId;
+//     }
+
+//     const movimientos = await InventarioMovimientoOtro.findAll({
+//       where: filters,
+//     });
+
+//     const preciosArticulos = new Map();
+//     let montoTotalMovimientos = 0;
+
+//     for (const movimiento of movimientos) {
+//       let precioArticulo = preciosArticulos.get(movimiento.articulocodigo);
+
+//       if (!precioArticulo) {
+//         const precio = await buscarPrecioArticulo(movimiento.articulocodigo);
+//         if (precio) {
+//           preciosArticulos.set(movimiento.articulocodigo, precio);
+//           precioArticulo = precio;
+//         }
+//       }
+
+//       if (precioArticulo) {
+//         const cantidad = parseFloat(movimiento.cantidad) || 0;
+//         montoTotalMovimientos += cantidad * precioArticulo;
+//       }
+//     }
+
+//     console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
+
+//     res.status(200).json({ montoTotalMovimientos });
+//   } catch (error) {
+//     console.error("Error al calcular monto de movimientos OTRO:", error);
+//     next(error);
+//   }
+// };
+
 const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -1621,7 +1669,16 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
       },
     };
 
+    let nombreSucursal = null;
+
     if (sucursalId) {
+      const sucursal = await Sucursal.findByPk(sucursalId);
+      nombreSucursal = sucursal?.nombre?.toUpperCase();
+    }
+
+    if (nombreSucursal === "FABRICA") {
+      filters.sucursal_id = sucursalId;
+    } else if (sucursalId) {
       filters.sucursaldestino_id = sucursalId;
     }
 
@@ -1647,6 +1704,11 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
         const cantidad = parseFloat(movimiento.cantidad) || 0;
         montoTotalMovimientos += cantidad * precioArticulo;
       }
+    }
+
+    // Si la sucursal es FABRICA, el monto se envía como negativo
+    if (nombreSucursal === "FABRICA") {
+      montoTotalMovimientos = -Math.abs(montoTotalMovimientos);
     }
 
     console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
@@ -2033,6 +2095,46 @@ const agregarArticuloInventario = async (req, res, next) => {
   }
 };
 
+const obtenerRindesGeneralesPorMesAnio = async (req, res, next) => {
+  try {
+    // const { mes, anio } = req.body;
+    const rindes = await RindeGeneral.findAll();
+    res.status(200).json({ rindes });
+  } catch (error) {
+    console.error("Error al obtener rindes generales:", error);
+    next(error);
+  }
+};
+
+const guardarRindeGeneral = async (req, res, next) => {
+  try {
+    const rinde = await RindeGeneral.create(req.body);
+    res.status(201).json(rinde);
+  } catch (error) {
+    console.error("Error al guardar rinde general:", error);
+    next(error);
+  }
+};
+
+const eliminarRindeGeneral = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const rinde = await RindeGeneral.findByPk(id);
+
+    if (!rinde) {
+      return res.status(404).json({ message: "Rinde general no encontrado" });
+    }
+
+    await rinde.destroy();
+
+    return res.json({ message: "Rinde general eliminado correctamente" });
+  } catch (error) {
+    console.error("Error al eliminar el rinde general:", error);
+    return res.status(500).json({ message: "Error interno del servidor" });
+  }
+};
+
 
 export {
   obtenerMovimientosFiltrados,
@@ -2067,5 +2169,8 @@ export {
   obtenerAchurasTotales,
   editarArticuloInventario,
   eliminarArticuloInventario,
-  agregarArticuloInventario
+  agregarArticuloInventario,
+  obtenerRindesGeneralesPorMesAnio,
+  guardarRindeGeneral,
+  eliminarRindeGeneral
 };

@@ -51,6 +51,11 @@ rindeRouter.post(
   "/obtenerrindefiltrado",
   rindeController.obtenerRindePorSucursalMesAnio
 );
+rindeRouter.get("/general", rindeController.obtenerRindesGeneralesPorMesAnio);
+rindeRouter.post("/general/guardar", rindeController.guardarRindeGeneral);
+rindeRouter.delete("/general/:id", rindeController.eliminarRindeGeneral);
+
+
 rindeRouter.delete("/eliminarrinde/:rindeId", rindeController.eliminarRinde);
 rindeRouter.post("/crearformula", rindeController.crearFormula);
 rindeRouter.get("/obtenerformulas", rindeController.obtenerFormulas);
