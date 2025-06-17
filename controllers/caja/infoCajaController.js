@@ -62,46 +62,109 @@ const obtenerCajasFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearCajas = async (req, res, next) => {
+//   try {
+//     // Obtener los datos de las cajas desde el cuerpo de la solicitud
+//     const cajasData = req.body;
+
+//     // Filtrar los datos para omitir los que ya existen en la base de datos
+//     const cajasFiltradas = await Promise.all(
+//       cajasData.map(async (caja) => {
+//         // const fechaFormatoDateOnly = format(new Date(caja.fecha), 'yyyy-MM-dd'); // Asegurar formato DATEONLY
+//         const existeCaja = await Caja.findOne({
+//           where: {
+//             cajaId: caja.id,
+//             sucursal_id: caja.sucursal_id,
+//             // fecha:fechaFormatoDateOnly
+//           },
+//         });
+//         return existeCaja ? null : caja;
+//       })
+//     );
+
+//     // Eliminar los elementos nulos del array
+//     const cajasParaCrear = cajasFiltradas.filter((caja) => caja !== null);
+
+//     // Iterar sobre los datos de las cajas y asignar el id como cajaId
+//     const cajasConId = cajasParaCrear.map((caja) => ({
+//       ...caja,
+//       cajaId: caja.id, // Asignamos el valor del id existente como cajaId
+//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Crear las cajas en la base de datos
+//     const nuevasCajas = await Caja.bulkCreate(cajasConId);
+
+//     // Retornar los nuevos gastos creados como respuesta
+//     res.status(201).json(nuevasCajas);
+//   } catch (error) {
+//     console.error("Error al crear las cajas:", error);
+//     next(error);
+//   }
+// };
+
 const crearCajas = async (req, res, next) => {
   try {
-    // Obtener los datos de las cajas desde el cuerpo de la solicitud
     const cajasData = req.body;
 
-    // Filtrar los datos para omitir los que ya existen en la base de datos
-    const cajasFiltradas = await Promise.all(
-      cajasData.map(async (caja) => {
-        // const fechaFormatoDateOnly = format(new Date(caja.fecha), 'yyyy-MM-dd'); // Asegurar formato DATEONLY
-        const existeCaja = await Caja.findOne({
-          where: {
-            cajaId: caja.id,
-            sucursal_id: caja.sucursal_id,
-            // fecha:fechaFormatoDateOnly
-          },
-        });
-        return existeCaja ? null : caja;
-      })
-    );
+    if (!Array.isArray(cajasData)) {
+      return res.status(400).json({ error: "Los datos deben ser un array." });
+    }
 
-    // Eliminar los elementos nulos del array
-    const cajasParaCrear = cajasFiltradas.filter((caja) => caja !== null);
+    const sucursalId = cajasData[0].sucursal_id;
 
-    // Iterar sobre los datos de las cajas y asignar el id como cajaId
+    // Obtener todas las cajas existentes para esa sucursal
+    const cajasExistentes = await Caja.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["cajaId", "sucursal_id", "fechainicio", "fechafin"],
+      raw: true,
+    });
+
+    // Crear un Set con claves únicas: "cajaId_sucursalId_fechainicio_fechafin"
+    const clavesExistentes = new Set();
+    cajasExistentes.forEach(({ cajaId, sucursal_id, fechainicio, fechafin }) => {
+      try {
+        const fi = new Date(fechainicio).toISOString().split("T")[0];
+        const ff = new Date(fechafin).toISOString().split("T")[0];
+        const clave = `${cajaId}_${sucursal_id}_${fi}_${ff}`;
+        clavesExistentes.add(clave);
+      } catch (e) {
+        console.warn(`Fechas inválidas en BD para cajaId ${cajaId}`);
+      }
+    });
+
+    // Filtrar las cajas que no están en la base
+    const cajasParaCrear = cajasData.filter((caja) => {
+      try {
+        const fi = new Date(caja.fechainicio).toISOString().split("T")[0];
+        const ff = new Date(caja.fechafin).toISOString().split("T")[0];
+        const clave = `${caja.id}_${caja.sucursal_id}_${fi}_${ff}`;
+        return !clavesExistentes.has(clave);
+      } catch (e) {
+        console.warn(`Fechas inválidas en body para cajaId ${caja.id}`);
+        return false;
+      }
+    });
+
     const cajasConId = cajasParaCrear.map((caja) => ({
       ...caja,
-      cajaId: caja.id, // Asignamos el valor del id existente como cajaId
-      id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      cajaId: caja.id,
+      id: undefined,
     }));
 
-    // Crear las cajas en la base de datos
-    const nuevasCajas = await Caja.bulkCreate(cajasConId);
+    if (cajasConId.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas cajas para insertar." });
+    }
 
-    // Retornar los nuevos gastos creados como respuesta
+    const nuevasCajas = await Caja.bulkCreate(cajasConId);
+    console.log("Registros de cajas creados exitosamente.");
     res.status(201).json(nuevasCajas);
   } catch (error) {
     console.error("Error al crear las cajas:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todos los gastos
 const obtenerGastos = async (req, res, next) => {
@@ -152,50 +215,119 @@ const obtenerGastosFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearGastos = async (req, res, next) => {
+//   try {
+//     console.log("req.gastos", req.body)
+//     const gastosData = req.body;
+//     const fechasFormateadas = gastosData.map(gasto => ({
+//       ...gasto,
+//       fecha: format(new Date(gasto.fecha), "yyyy-MM-dd") // Asegurar formato DATEONLY
+//     }));
+
+//     // Obtiene todos los gastos que podrían ser duplicados en una única consulta
+//     const posiblesDuplicados = await Gasto.findAll({
+//       where: {
+//         [Op.or]: fechasFormateadas.map(gasto => ({
+//           gastoId: gasto.id,
+//           sucursal_id: gasto.sucursal_id,
+//           fecha: gasto.fecha
+//         }))
+//       }
+//     });
+
+//     console.log("posibles duplicados", posiblesDuplicados)
+
+//     // Crear un conjunto de claves de duplicados para comparación rápida
+//     const duplicadosSet = new Set(posiblesDuplicados.map(gasto => `${gasto.gastoId}-${gasto.sucursal_id}-${gasto.fecha}`));
+
+//     // Filtrar los gastos para omitir los que ya existen en la base de datos
+//     const gastosParaCrear = fechasFormateadas.filter(gasto => {
+//       const clave = `${gasto.id}-${gasto.sucursal_id}-${gasto.fecha}`;
+//       return !duplicadosSet.has(clave);
+//     });
+
+//     // Preparar gastos con los campos correctos para la inserción
+//     const gastosConId = gastosParaCrear.map(gasto => ({
+//       ...gasto,
+//       gastoId: gasto.id, // Asignar gasto.id a gastoId
+//       id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     console.log("gastos a crear", gastosConId)
+
+//     // Crear los gastos en la base de datos usando bulkCreate
+//     const nuevosGastos = await Gasto.bulkCreate(gastosConId);
+
+//     res.status(201).json(nuevosGastos);
+//   } catch (error) {
+//     console.error("Error al crear los gastos:", error);
+//     next(error);
+//   }
+// };
 const crearGastos = async (req, res, next) => {
   try {
     const gastosData = req.body;
-    const fechasFormateadas = gastosData.map(gasto => ({
+
+    // Paso 1: Formatear fechas y estandarizar gastoId
+    const gastosPreparados = gastosData.map(gasto => ({
       ...gasto,
-      fecha: format(new Date(gasto.fecha), "yyyy-MM-dd") // Asegurar formato DATEONLY
+      gastoId: gasto.id,
+      fecha: format(new Date(gasto.fecha), "yyyy-MM-dd"),
     }));
 
-    // Obtiene todos los gastos que podrían ser duplicados en una única consulta
+    console.log("gastospreparados", gastosPreparados)
+
+    // Paso 2: Consultar posibles duplicados con exacta combinación gastoId + sucursal_id + fecha
     const posiblesDuplicados = await Gasto.findAll({
       where: {
-        [Op.or]: fechasFormateadas.map(gasto => ({
-          gastoId: gasto.id,
+        [Op.or]: gastosPreparados.map(gasto => ({
+          gastoId: gasto.gastoId,
           sucursal_id: gasto.sucursal_id,
-          fecha: gasto.fecha
-        }))
-      }
+          fecha: gasto.fecha,
+        })),
+      },
+      raw: true, // Muy importante para comparar strings directamente
     });
 
-    // Crear un conjunto de claves de duplicados para comparación rápida
-    const duplicadosSet = new Set(posiblesDuplicados.map(gasto => `${gasto.gastoId}-${gasto.sucursal_id}-${gasto.fecha}`));
+    console.log("posiblesDuplicados", posiblesDuplicados)
 
-    // Filtrar los gastos para omitir los que ya existen en la base de datos
-    const gastosParaCrear = fechasFormateadas.filter(gasto => {
-      const clave = `${gasto.id}-${gasto.sucursal_id}-${gasto.fecha}`;
+    // Paso 3: Crear Set de claves únicas: gastoId-sucursalId-fecha (en formato string exacto)
+    const duplicadosSet = new Set(
+      posiblesDuplicados.map(
+        g => `${g.gastoId}-${g.sucursal_id}-${g.fecha}` // No usar format() acá
+      )
+    );
+
+    console.log("duplicadosSet", duplicadosSet)
+
+    // Paso 4: Filtrar los gastos que aún no existen
+    const gastosParaCrear = gastosPreparados.filter(gasto => {
+      const clave = `${gasto.gastoId}-${gasto.sucursal_id}-${gasto.fecha}`;
       return !duplicadosSet.has(clave);
     });
 
-    // Preparar gastos con los campos correctos para la inserción
+    console.log("gastosParaCrear", gastosParaCrear)
+
+    // Paso 5: Preparar para inserción
     const gastosConId = gastosParaCrear.map(gasto => ({
       ...gasto,
-      gastoId: gasto.id, // Asignar gasto.id a gastoId
-      id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+      id: undefined,
     }));
 
-    // Crear los gastos en la base de datos usando bulkCreate
-    const nuevosGastos = await Gasto.bulkCreate(gastosConId);
+    console.log("Gastos a crear:", gastosConId);
 
+    if (gastosConId.length === 0) {
+      return res.status(200).json({ mensaje: "No hay gastos nuevos para insertar." });
+    }
+
+    const nuevosGastos = await Gasto.bulkCreate(gastosConId);
     res.status(201).json(nuevosGastos);
   } catch (error) {
     console.error("Error al crear los gastos:", error);
     next(error);
   }
 };
+
 
 // Controlador para obtener todos los retiros
 const obtenerRetiros = async (req, res, next) => {
@@ -247,40 +379,89 @@ const obtenerRetirosFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearRetiros = async (req, res, next) => {
+//   try {
+//     const retirosData = req.body;
+
+//     const fechasFormateadas = retirosData.map(retiro => ({
+//       ...retiro,
+//       fecha: format(new Date(retiro.fecha), "yyyy-MM-dd")
+//     }));
+
+//     // Obtiene todos los retiros que podrían ser duplicados en una única consulta
+//     const posiblesDuplicados = await Retiro.findAll({
+//       where: {
+//         [Op.or]: fechasFormateadas.map(retiro => ({
+//           retiroId: retiro.id,
+//           sucursal_id: retiro.sucursal_id,
+//           fecha: retiro.fecha
+//         }))
+//       }
+//     });
+
+//     const duplicadosSet = new Set(posiblesDuplicados.map(retiro => `${retiro.retiroId}-${retiro.sucursal_id}-${retiro.fecha}`));
+
+//     const retirosParaCrear = fechasFormateadas.filter(retiro => {
+//       const clave = `${retiro.id}-${retiro.sucursal_id}-${retiro.fecha}`;
+//       return !duplicadosSet.has(clave);
+//     });
+
+//     const retirosConId = retirosParaCrear.map(retiro => ({
+//       ...retiro,
+//       retiroId: retiro.id,
+//       id: undefined
+//     }));
+
+//     // Crear los retiros en la base de datos usando bulkCreate para eficiencia
+//     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
+
+//     res.status(201).json(nuevosRetiros);
+//   } catch (error) {
+//     console.error("Error al crear los retiros:", error);
+//     next(error);
+//   }
+// };
+
 const crearRetiros = async (req, res, next) => {
   try {
     const retirosData = req.body;
 
-    const fechasFormateadas = retirosData.map(retiro => ({
+    // Formatear fechas y asignar retiroId
+    const datosFormateados = retirosData.map(retiro => ({
       ...retiro,
-      fecha: format(new Date(retiro.fecha), "yyyy-MM-dd")
+      retiroId: retiro.id,
+      fecha: format(new Date(retiro.fecha), "yyyy-MM-dd") // Garantiza coincidencia con DATEONLY
     }));
 
-    // Obtiene todos los retiros que podrían ser duplicados en una única consulta
+    // Buscar posibles duplicados en una sola consulta
     const posiblesDuplicados = await Retiro.findAll({
       where: {
-        [Op.or]: fechasFormateadas.map(retiro => ({
-          retiroId: retiro.id,
+        [Op.or]: datosFormateados.map(retiro => ({
+          retiroId: retiro.retiroId,
           sucursal_id: retiro.sucursal_id,
           fecha: retiro.fecha
         }))
       }
     });
 
-    const duplicadosSet = new Set(posiblesDuplicados.map(retiro => `${retiro.retiroId}-${retiro.sucursal_id}-${retiro.fecha}`));
+    // Crear set de claves únicas para comparación
+    const duplicadosSet = new Set(
+      posiblesDuplicados.map(r => `${r.retiroId}-${r.sucursal_id}-${format(new Date(r.fecha), "yyyy-MM-dd")}`)
+    );
 
-    const retirosParaCrear = fechasFormateadas.filter(retiro => {
-      const clave = `${retiro.id}-${retiro.sucursal_id}-${retiro.fecha}`;
+    // Filtrar los que no son duplicados
+    const retirosParaCrear = datosFormateados.filter(retiro => {
+      const clave = `${retiro.retiroId}-${retiro.sucursal_id}-${retiro.fecha}`;
       return !duplicadosSet.has(clave);
     });
 
+    // Preparar objetos para inserción
     const retirosConId = retirosParaCrear.map(retiro => ({
       ...retiro,
-      retiroId: retiro.id,
-      id: undefined
+      id: undefined // dejar que lo genere automáticamente
     }));
 
-    // Crear los retiros en la base de datos usando bulkCreate para eficiencia
+    // Insertar los nuevos retiros
     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
 
     res.status(201).json(nuevosRetiros);
@@ -289,6 +470,7 @@ const crearRetiros = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 // Controlador para obtener todos los vales
@@ -1406,29 +1588,6 @@ const eliminarClienteOneshot = async (req, res, next) => {
   }
 };
 
-// Filtrar clientes oneshot por fechas y otros criterios
-// const obtenerClientesOneshotFiltrados = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, usuario_id } = req.body;
-
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//     };
-
-//     if (usuario_id) {
-//       filters.usuario_id = usuario_id;
-//     }
-
-//     const clientesFiltrados = await Clienteoneshot.findAll({ where: filters });
-
-//     res.json(clientesFiltrados);
-//   } catch (error) {
-//     console.error("Error al filtrar los clientes oneshot:", error);
-//     next(error);
-//   }
-// };
 // Filtrar clientes oneshot por fechas y otros criterios
 const obtenerClientesOneshotFiltrados = async (req, res, next) => {
   try {

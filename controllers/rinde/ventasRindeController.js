@@ -127,61 +127,133 @@ const obtenerUltimoIdTablaPorSucursal = async (
   }
 };
 
+// const crearVentaTotal = async (req, res, next) => {
+//   try {
+//     // Extraer los datos del cuerpo de la solicitud
+//     const ventasTotales = req.body;
+//     console.log("req.body.ventas", req.body)
+//     // Validar si se recibieron datos
+//     if (!Array.isArray(ventasTotales)) {
+//       return res
+//         .status(400)
+//         .json({ error: "Los datos deben estar en formato de matriz." });
+//     }
+
+//     // Obtener el último ID de la tabla VentaTotal para la sucursal correspondiente
+//     const ultimoId = await obtenerUltimoIdTablaPorSucursal(
+//       VentaTotal,
+//       "cierreventa_id",
+//       ventasTotales[0].sucursal_id
+//     );
+//     // console.log("ultimo", ultimoId);
+
+//     // Mapear los datos para prepararlos para la inserción
+//     const nuevasVentasTotalesBulk = ventasTotales.map((venta) => {
+//       const { id, fecha } = venta.data;
+//       const { monto_total, sucursal_id } = venta;
+
+//       // Verificar si el ID actual es mayor que el último ID en la tabla
+//       if (id > ultimoId) {
+//         return {
+//           fecha: fecha,
+//           cierreventa_id: id,
+//           monto: parseFloat(monto_total),
+//           sucursal_id: parseInt(sucursal_id),
+//         };
+//       } else {
+//         // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
+//         return null;
+//       }
+//     });
+
+//     // Filtrar los elementos nulos del array
+//     const nuevasVentasTotalesFiltradas = nuevasVentasTotalesBulk.filter(
+//       (venta) => venta !== null
+//     );
+
+//     // console.log("nuevasVentasTotalesFiltradas", nuevasVentasTotalesFiltradas);
+
+//     // Insertar las nuevas ventas totales en la base de datos en lotes (bulk)
+//     const nuevasVentasTotales = await VentaTotal.bulkCreate(
+//       nuevasVentasTotalesFiltradas
+//     );
+
+//     // Enviar las nuevas ventas totales creadas como respuesta
+//     res.status(201).json(nuevasVentasTotales);
+//   } catch (error) {
+//     // Manejar errores
+//     console.error("Error al crear las ventas totales:", error);
+//     next(error);
+//   }
+// };
+
 const crearVentaTotal = async (req, res, next) => {
   try {
-    // Extraer los datos del cuerpo de la solicitud
     const ventasTotales = req.body;
-    console.log("req.body", req.body)
-    // Validar si se recibieron datos
     if (!Array.isArray(ventasTotales)) {
       return res
         .status(400)
         .json({ error: "Los datos deben estar en formato de matriz." });
     }
 
-    // Obtener el último ID de la tabla VentaTotal para la sucursal correspondiente
-    const ultimoId = await obtenerUltimoIdTablaPorSucursal(
-      VentaTotal,
-      "cierreventa_id",
-      ventasTotales[0].sucursal_id
-    );
-    // console.log("ultimo", ultimoId);
+    const sucursalId = ventasTotales[0].sucursal_id;
 
-    // Mapear los datos para prepararlos para la inserción
-    const nuevasVentasTotalesBulk = ventasTotales.map((venta) => {
-      const { id, fecha } = venta.data;
-      const { monto_total, sucursal_id } = venta;
+    // Traer todos los cierres existentes para esa sucursal
+    const cierresExistentes = await VentaTotal.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ['cierreventa_id', 'fecha'],
+      raw: true,
+    });
 
-      // Verificar si el ID actual es mayor que el último ID en la tabla
-      if (id > ultimoId) {
-        return {
-          fecha: fecha,
-          cierreventa_id: id,
-          monto: parseFloat(monto_total),
-          sucursal_id: parseInt(sucursal_id),
-        };
-      } else {
-        // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
-        return null;
+    // Crear un mapa para búsqueda rápida: { cierreventa_id: fechaISO }
+    const mapaCierres = new Map();
+    cierresExistentes.forEach(({ cierreventa_id, fecha }) => {
+      try {
+        const fechaObj = new Date(fecha);
+        const fechaISO = fechaObj.toISOString().split("T")[0];
+        mapaCierres.set(cierreventa_id, fechaISO);
+      } catch (e) {
+        console.warn(`Fecha inválida encontrada en la base: ${fecha}`);
+        mapaCierres.set(cierreventa_id, null);
       }
     });
 
-    // Filtrar los elementos nulos del array
-    const nuevasVentasTotalesFiltradas = nuevasVentasTotalesBulk.filter(
-      (venta) => venta !== null
-    );
+    // Mapear y filtrar solo ventas nuevas o con fecha distinta
+    const nuevasVentasTotales = ventasTotales
+      .map((venta) => {
+        const { id, fecha } = venta.data;
+        const { monto_total, sucursal_id } = venta;
 
-    // console.log("nuevasVentasTotalesFiltradas", nuevasVentasTotalesFiltradas);
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida recibida en el body: ${fecha}`);
+          return null;
+        }
 
-    // Insertar las nuevas ventas totales en la base de datos en lotes (bulk)
-    const nuevasVentasTotales = await VentaTotal.bulkCreate(
-      nuevasVentasTotalesFiltradas
-    );
+        const fechaExistente = mapaCierres.get(id);
+        const yaExisteMismoDia = fechaExistente === fechaISO;
 
-    // Enviar las nuevas ventas totales creadas como respuesta
-    res.status(201).json(nuevasVentasTotales);
+        if (!fechaExistente || !yaExisteMismoDia) {
+          return {
+            fecha: fecha,
+            cierreventa_id: id,
+            monto: parseFloat(monto_total),
+            sucursal_id: parseInt(sucursal_id),
+          };
+        }
+        return null;
+      })
+      .filter((venta) => venta !== null);
+
+    if (nuevasVentasTotales.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas para insertar." });
+    }
+
+    const ventasCreadas = await VentaTotal.bulkCreate(nuevasVentasTotales);
+    res.status(201).json(ventasCreadas);
   } catch (error) {
-    // Manejar errores
     console.error("Error al crear las ventas totales:", error);
     next(error);
   }
@@ -222,67 +294,139 @@ const obtenerVentasAnuladasFiltradas = async (req, res, next) => {
   }
 };
 
+// const crearVentasAnuladas = async (req, res, next) => {
+//   try {
+//     // Obtener las ventas anuladas del cuerpo de la solicitud
+//     const ventasAnuladas = req.body;
+
+//     // Validar si se recibieron datos en formato de matriz
+//     if (!Array.isArray(ventasAnuladas)) {
+//       return res
+//         .status(400)
+//         .json({ error: "Los datos deben estar en formato de matriz." });
+//     }
+
+//     // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
+//     const ultimoId = await obtenerUltimoIdTablaPorSucursal(
+//       VentasAnuladas,
+//       "ventaanuladoId",
+//       ventasAnuladas[0].sucursal_id
+//     );
+
+//     // Iterar sobre las ventas anuladas y asignar el id existente como ventaanuladoId
+//     const ventasAnuladasConId = ventasAnuladas.map((venta) => ({
+//       ...venta,
+//       ventaanuladoId: venta.id, // Asignamos el valor del id existente como ventaanuladoId
+//       id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Mapear los datos para prepararlos para la inserción
+//     const nuevasVentasAnuladasBulk = ventasAnuladasConId
+//       .map((ventaAnulada) => {
+//         // Verificar si el ID actual es mayor que el último ID en la tabla
+//         if (ventaAnulada.ventaanuladoId > ultimoId) {
+//           return {
+//             id: ventaAnulada.id,
+//             ventaanuladoId: ventaAnulada.ventaanuladoId,
+//             fecha: ventaAnulada.fecha,
+//             monto: parseFloat(ventaAnulada.monto),
+//             numeroticket: ventaAnulada.numeroticket,
+//             sucursal_id: parseInt(ventaAnulada.sucursal_id),
+//           };
+//         } else {
+//           // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
+//           return null;
+//         }
+//       })
+//       .filter((ventaAnulada) => ventaAnulada !== null);
+
+//     // Insertar las nuevas ventas anuladas en la base de datos en lotes (bulk)
+//     const nuevasVentasAnuladas = await VentasAnuladas.bulkCreate(
+//       nuevasVentasAnuladasBulk
+//     );
+
+//     console.log("Registros de Ventas Anuladas creados exitosamente.");
+
+//     // Enviar las nuevas ventas anuladas creadas como respuesta
+//     res.status(201).json(nuevasVentasAnuladas);
+//   } catch (error) {
+//     // Manejar errores
+//     console.error("Error al crear los registros de Ventas Anuladas:", error);
+//     next(error);
+//   }
+// };
+
 const crearVentasAnuladas = async (req, res, next) => {
   try {
-    // Obtener las ventas anuladas del cuerpo de la solicitud
     const ventasAnuladas = req.body;
 
-    // Validar si se recibieron datos en formato de matriz
     if (!Array.isArray(ventasAnuladas)) {
       return res
         .status(400)
         .json({ error: "Los datos deben estar en formato de matriz." });
     }
 
-    // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
-    const ultimoId = await obtenerUltimoIdTablaPorSucursal(
-      VentasAnuladas,
-      "ventaanuladoId",
-      ventasAnuladas[0].sucursal_id
-    );
+    const sucursalId = ventasAnuladas[0].sucursal_id;
 
-    // Iterar sobre las ventas anuladas y asignar el id existente como ventaanuladoId
-    const ventasAnuladasConId = ventasAnuladas.map((venta) => ({
-      ...venta,
-      ventaanuladoId: venta.id, // Asignamos el valor del id existente como ventaanuladoId
-      id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-    }));
+    // Traer los registros existentes para esa sucursal
+    const anuladasExistentes = await VentasAnuladas.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ['ventaanuladoId', 'fecha'],
+      raw: true,
+    });
 
-    // Mapear los datos para prepararlos para la inserción
-    const nuevasVentasAnuladasBulk = ventasAnuladasConId
-      .map((ventaAnulada) => {
-        // Verificar si el ID actual es mayor que el último ID en la tabla
-        if (ventaAnulada.ventaanuladoId > ultimoId) {
-          return {
-            id: ventaAnulada.id,
-            ventaanuladoId: ventaAnulada.ventaanuladoId,
-            fecha: ventaAnulada.fecha,
-            monto: parseFloat(ventaAnulada.monto),
-            numeroticket: ventaAnulada.numeroticket,
-            sucursal_id: parseInt(ventaAnulada.sucursal_id),
-          };
-        } else {
-          // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
+    // Crear un mapa para buscar por ID+fecha
+    const mapaAnuladas = new Map();
+    anuladasExistentes.forEach(({ ventaanuladoId, fecha }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        mapaAnuladas.set(`${ventaanuladoId}_${fechaISO}`, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para ventaanuladoId ${ventaanuladoId}`);
+      }
+    });
+
+    // Preparar nuevas ventas anuladas
+    const nuevasVentasAnuladas = ventasAnuladas
+      .map((venta) => {
+        const ventaanuladoId = venta.id;
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida recibida para ventaanuladoId ${venta.id}`);
           return null;
         }
+
+        const clave = `${ventaanuladoId}_${fechaISO}`;
+        if (!mapaAnuladas.has(clave)) {
+          return {
+            id: null, // para autoincrement
+            ventaanuladoId: ventaanuladoId,
+            fecha: venta.fecha,
+            monto: parseFloat(venta.monto),
+            numeroticket: venta.numeroticket,
+            sucursal_id: parseInt(venta.sucursal_id),
+          };
+        }
+
+        return null;
       })
-      .filter((ventaAnulada) => ventaAnulada !== null);
+      .filter((venta) => venta !== null);
 
-    // Insertar las nuevas ventas anuladas en la base de datos en lotes (bulk)
-    const nuevasVentasAnuladas = await VentasAnuladas.bulkCreate(
-      nuevasVentasAnuladasBulk
-    );
+    if (nuevasVentasAnuladas.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas anuladas para insertar." });
+    }
 
+    const insertadas = await VentasAnuladas.bulkCreate(nuevasVentasAnuladas);
     console.log("Registros de Ventas Anuladas creados exitosamente.");
-
-    // Enviar las nuevas ventas anuladas creadas como respuesta
-    res.status(201).json(nuevasVentasAnuladas);
+    res.status(201).json(insertadas);
   } catch (error) {
-    // Manejar errores
     console.error("Error al crear los registros de Ventas Anuladas:", error);
     next(error);
   }
 };
+
 
 const obtenerVentasConDescuento = async (req, res, next) => {
   try {
@@ -327,70 +471,143 @@ const obtenerVentasConDescuentoFiltradas = async (req, res, next) => {
   }
 };
 
+// const crearVentasConDescuento = async (req, res, next) => {
+//   try {
+//     const ventasConDescuento = req.body; // Suponiendo que las ventas con descuento vienen en req.body
+//     // console.log("descuento", ventasConDescuento)
+
+//     // Validar si se recibieron datos
+//     if (!Array.isArray(ventasConDescuento)) {
+//       return res
+//         .status(400)
+//         .json({ error: "Los datos deben estar en formato de matriz." });
+//     }
+
+//     // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
+//     const ultimoId = await obtenerUltimoIdTablaPorSucursal(
+//       VentasDescuento,
+//       "ventadescuentoId",
+//       ventasConDescuento[0].sucursal_id
+//     );
+//     // console.log("ultimo", ultimoId);
+
+//     // Iterar sobre los datos de las cajas y asignar el id como cajaId
+//     const ventasConDescuentoConId = ventasConDescuento.map((venta) => ({
+//       ...venta,
+//       ventadescuentoId: venta.id, // Asignamos el valor del id existente como cajaId
+//       id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Mapear los datos para prepararlos para la inserción
+//     const nuevasVentasConDescuentoBulk = ventasConDescuentoConId
+//       .map((venta) => {
+//         // Verificar si el ID actual es mayor que el último ID en la tabla
+//         if (venta.ventadescuentoId > ultimoId) {
+//           return {
+//             id: venta.id,
+//             ventadescuentoId: venta.ventadescuentoId,
+//             fecha: venta.fecha,
+//             descuento: parseFloat(venta.descuento),
+//             monto: parseFloat(venta.monto),
+//             numeroticket: venta.numeroticket,
+//             sucursal_id: parseInt(venta.sucursal_id),
+//           };
+//         } else {
+//           // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
+//           return null;
+//         }
+//       })
+//       .filter((venta) => venta !== null);
+
+//     // Insertar las nuevas ventas con descuento en la base de datos en lotes (bulk)
+//     const nuevasVentasConDescuento = await VentasDescuento.bulkCreate(
+//       nuevasVentasConDescuentoBulk
+//     );
+
+//     console.log("Registros de Ventas con Descuento creados exitosamente.");
+//     // Enviar las nuevas ventas con descuento creadas como respuesta
+//     res.status(201).json(nuevasVentasConDescuento);
+//   } catch (error) {
+//     console.error(
+//       "Error al crear los registros de Ventas con Descuento:",
+//       error
+//     );
+//     next(error);
+//   }
+// };
+
+
 const crearVentasConDescuento = async (req, res, next) => {
   try {
-    const ventasConDescuento = req.body; // Suponiendo que las ventas con descuento vienen en req.body
-    // console.log("descuento", ventasConDescuento)
+    const ventasConDescuento = req.body;
 
-    // Validar si se recibieron datos
     if (!Array.isArray(ventasConDescuento)) {
       return res
         .status(400)
         .json({ error: "Los datos deben estar en formato de matriz." });
     }
 
-    // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
-    const ultimoId = await obtenerUltimoIdTablaPorSucursal(
-      VentasDescuento,
-      "ventadescuentoId",
-      ventasConDescuento[0].sucursal_id
-    );
-    // console.log("ultimo", ultimoId);
+    const sucursalId = ventasConDescuento[0].sucursal_id;
 
-    // Iterar sobre los datos de las cajas y asignar el id como cajaId
-    const ventasConDescuentoConId = ventasConDescuento.map((venta) => ({
-      ...venta,
-      ventadescuentoId: venta.id, // Asignamos el valor del id existente como cajaId
-      id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-    }));
+    // Buscar registros existentes en la base para esa sucursal
+    const descuentosExistentes = await VentasDescuento.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ['ventadescuentoId', 'fecha'],
+      raw: true,
+    });
 
-    // Mapear los datos para prepararlos para la inserción
-    const nuevasVentasConDescuentoBulk = ventasConDescuentoConId
+    // Crear mapa: { ventadescuentoId_fechaISO => true }
+    const mapaDescuentos = new Map();
+    descuentosExistentes.forEach(({ ventadescuentoId, fecha }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        mapaDescuentos.set(`${ventadescuentoId}_${fechaISO}`, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para ventadescuentoId ${ventadescuentoId}`);
+      }
+    });
+
+    // Preparar nuevas ventas con descuento
+    const nuevasVentasConDescuento = ventasConDescuento
       .map((venta) => {
-        // Verificar si el ID actual es mayor que el último ID en la tabla
-        if (venta.ventadescuentoId > ultimoId) {
+        const ventadescuentoId = venta.id;
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida recibida para ventadescuentoId ${venta.id}`);
+          return null;
+        }
+
+        const clave = `${ventadescuentoId}_${fechaISO}`;
+        if (!mapaDescuentos.has(clave)) {
           return {
-            id: venta.id,
-            ventadescuentoId: venta.ventadescuentoId,
+            id: null,
+            ventadescuentoId: ventadescuentoId,
             fecha: venta.fecha,
             descuento: parseFloat(venta.descuento),
             monto: parseFloat(venta.monto),
             numeroticket: venta.numeroticket,
             sucursal_id: parseInt(venta.sucursal_id),
           };
-        } else {
-          // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
-          return null;
         }
+        return null;
       })
       .filter((venta) => venta !== null);
 
-    // Insertar las nuevas ventas con descuento en la base de datos en lotes (bulk)
-    const nuevasVentasConDescuento = await VentasDescuento.bulkCreate(
-      nuevasVentasConDescuentoBulk
-    );
+    if (nuevasVentasConDescuento.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas con descuento para insertar." });
+    }
 
+    const insertadas = await VentasDescuento.bulkCreate(nuevasVentasConDescuento);
     console.log("Registros de Ventas con Descuento creados exitosamente.");
-    // Enviar las nuevas ventas con descuento creadas como respuesta
-    res.status(201).json(nuevasVentasConDescuento);
+    res.status(201).json(insertadas);
   } catch (error) {
-    console.error(
-      "Error al crear los registros de Ventas con Descuento:",
-      error
-    );
+    console.error("Error al crear los registros de Ventas con Descuento:", error);
     next(error);
   }
 };
+
 
 const obtenerVentasPorCliente = async (req, res, next) => {
   try {
@@ -427,15 +644,81 @@ const obtenerVentasPorClienteFiltradas = async (req, res, next) => {
   }
 };
 
+// const crearVentasPorCliente = async (req, res, next) => {
+//   try {
+//     const ventasPorClienteData = req.body;
+
+//     // Validar los datos recibidos
+//     if (!Array.isArray(ventasPorClienteData)) {
+//       throw new Error(
+//         "Los datos de ventas por cliente deben ser proporcionados en forma de array."
+//       );
+//     }
+
+//     for (const venta of ventasPorClienteData) {
+//       if (
+//         typeof venta !== "object" ||
+//         !venta.cliente ||
+//         !venta.fecha ||
+//         !venta.total_monto ||
+//         !venta.sucursal_id
+//       ) {
+//         throw new Error(
+//           "Los datos de cada venta por cliente deben incluir los campos 'cliente', 'fecha', 'total_monto' y 'sucursal_id'."
+//         );
+//       }
+//     }
+
+//     // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
+//     const ultimoId = await obtenerUltimoIdTablaPorSucursal(
+//       VentasCliente,
+//       "cierreventas_id",
+//       ventasPorClienteData[0].sucursal_id
+//     );
+
+//     // Mapear los datos para prepararlos para la inserción
+//     const ventasPorClienteBulk = ventasPorClienteData
+//       .map((venta) => {
+//         // Verificar si el ID actual es mayor que el último ID en la tabla
+//         if (venta.cierreventas_id > ultimoId) {
+//           return {
+//             cierreventas_id: venta.cierreventas_id,
+//             cliente: venta.cliente,
+//             fecha: venta.fecha,
+//             monto: parseFloat(venta.total_monto),
+//             sucursal_id: venta.sucursal_id,
+//           };
+//         } else {
+//           // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
+//           return null;
+//         }
+//       })
+//       .filter((venta) => venta !== null);
+
+//     // Realizar la inserción en lotes (batch)
+//     const nuevasVentasPorCliente = await VentasCliente.bulkCreate(
+//       ventasPorClienteBulk
+//     );
+
+//     console.log("Registros de VentaCliente creados exitosamente.");
+//     res.status(201).json(nuevasVentasPorCliente);
+//   } catch (error) {
+//     console.error(
+//       "Error al crear los registros de VentaCliente:",
+//       error.message
+//     );
+//     res.status(400).json({ error: error.message });
+//     next(error);
+//   }
+// };
+
+
 const crearVentasPorCliente = async (req, res, next) => {
   try {
     const ventasPorClienteData = req.body;
 
-    // Validar los datos recibidos
     if (!Array.isArray(ventasPorClienteData)) {
-      throw new Error(
-        "Los datos de ventas por cliente deben ser proporcionados en forma de array."
-      );
+      throw new Error("Los datos deben ser proporcionados en forma de array.");
     }
 
     for (const venta of ventasPorClienteData) {
@@ -447,49 +730,67 @@ const crearVentasPorCliente = async (req, res, next) => {
         !venta.sucursal_id
       ) {
         throw new Error(
-          "Los datos de cada venta por cliente deben incluir los campos 'cliente', 'fecha', 'total_monto' y 'sucursal_id'."
+          "Cada venta debe incluir: cliente, fecha, total_monto y sucursal_id."
         );
       }
     }
 
-    // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
-    const ultimoId = await obtenerUltimoIdTablaPorSucursal(
-      VentasCliente,
-      "cierreventas_id",
-      ventasPorClienteData[0].sucursal_id
-    );
+    const sucursalId = ventasPorClienteData[0].sucursal_id;
 
-    // Mapear los datos para prepararlos para la inserción
+    // Obtener registros existentes de la sucursal
+    const ventasExistentes = await VentasCliente.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["cierreventas_id", "fecha"],
+      raw: true,
+    });
+
+    // Crear mapa de existencia: cierreventas_id + fechaISO
+    const mapaVentas = new Map();
+    ventasExistentes.forEach(({ cierreventas_id, fecha }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        mapaVentas.set(`${cierreventas_id}_${fechaISO}`, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para cierreventas_id ${cierreventas_id}`);
+      }
+    });
+
+    // Filtrar e insertar solo nuevas ventas (id+fecha no repetido)
     const ventasPorClienteBulk = ventasPorClienteData
       .map((venta) => {
-        // Verificar si el ID actual es mayor que el último ID en la tabla
-        if (venta.cierreventas_id > ultimoId) {
+        const cierreventas_id = venta.cierreventas_id;
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida en body para cierreventas_id ${cierreventas_id}`);
+          return null;
+        }
+
+        const clave = `${cierreventas_id}_${fechaISO}`;
+        if (!mapaVentas.has(clave)) {
           return {
-            cierreventas_id: venta.cierreventas_id,
+            cierreventas_id: cierreventas_id,
             cliente: venta.cliente,
             fecha: venta.fecha,
             monto: parseFloat(venta.total_monto),
-            sucursal_id: venta.sucursal_id,
+            sucursal_id: parseInt(venta.sucursal_id),
           };
-        } else {
-          // Si el ID actual es menor o igual al último ID, retornar null para excluirlo de la creación
-          return null;
         }
+        return null;
       })
       .filter((venta) => venta !== null);
 
-    // Realizar la inserción en lotes (batch)
-    const nuevasVentasPorCliente = await VentasCliente.bulkCreate(
-      ventasPorClienteBulk
-    );
+    if (ventasPorClienteBulk.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas para insertar." });
+    }
+
+    const nuevasVentasPorCliente = await VentasCliente.bulkCreate(ventasPorClienteBulk);
 
     console.log("Registros de VentaCliente creados exitosamente.");
     res.status(201).json(nuevasVentasPorCliente);
   } catch (error) {
-    console.error(
-      "Error al crear los registros de VentaCliente:",
-      error.message
-    );
+    console.error("Error al crear los registros de VentaCliente:", error.message);
     res.status(400).json({ error: error.message });
     next(error);
   }
@@ -657,54 +958,127 @@ const obtenerCantidadPorArticulo = async (
   }
 };
 
+// const crearVentasConArticulo = async (req, res, next) => {
+//   try {
+//     const ventas = req.body;
+
+//     // Validar si se recibieron datos
+//     if (!Array.isArray(ventas)) {
+//       return res
+//         .status(400)
+//         .json({ error: "Los datos deben estar en formato de matriz." });
+//     }
+
+//     // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
+//     const ultimoId = await obtenerUltimoIdTablaPorSucursal(
+//       VentasArticulo,
+//       "ventaarticuloId",
+//       ventas[0].sucursal_id
+//     );
+//     // console.log("ultimo------------------", ultimoId);
+
+//     const ventasConId = ventas.map((venta) => ({
+//       ...venta,
+//       ventaarticuloId: venta.id, // Asignamos el valor del id existente como cajaId
+//       id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
+//     }));
+
+//     // Filtrar los datos para excluir aquellos con ventaarticuloId menor o igual a ultimoId
+//     const nuevasVentasConArticuloBulk = ventasConId
+//       .filter(venta => venta.ventaarticuloId > ultimoId)
+//       .map((venta) => ({
+//         id: venta.id,
+//         ventaarticuloId: venta.ventaarticuloId,
+//         fecha: venta.fecha,
+//         sucursal_id: venta.sucursal_id,
+//         articuloCodigo: venta.codigo,
+//         articuloDescripcion: venta.descripcion,
+//         cantidad: parseFloat(venta.cantidad.toFixed(3)),
+//         monto_lista: venta.preciolista,
+//       }));
+
+//     // console.log("ventasbul", nuevasVentasConArticuloBulk);
+
+//     // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
+//     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
+//       nuevasVentasConArticuloBulk
+//     );
+
+//     console.log("Registros de VentaArticulo creados exitosamente.");
+//     // Enviar las nuevas ventas con artículo creadas como respuesta
+//     res.status(201).json(nuevasVentasConArticulo);
+//   } catch (error) {
+//     console.error("Error al crear los registros de VentaArticulo:", error);
+//     next(error);
+//   }
+// };
+
 const crearVentasConArticulo = async (req, res, next) => {
   try {
     const ventas = req.body;
 
-    // Validar si se recibieron datos
     if (!Array.isArray(ventas)) {
       return res
         .status(400)
         .json({ error: "Los datos deben estar en formato de matriz." });
     }
 
-    // Obtener el último ID de la tabla VentasAnuladas para la sucursal correspondiente
-    const ultimoId = await obtenerUltimoIdTablaPorSucursal(
-      VentasArticulo,
-      "ventaarticuloId",
-      ventas[0].sucursal_id
-    );
-    // console.log("ultimo------------------", ultimoId);
+    const sucursalId = ventas[0].sucursal_id;
 
-    const ventasConId = ventas.map((venta) => ({
-      ...venta,
-      ventaarticuloId: venta.id, // Asignamos el valor del id existente como cajaId
-      id: null, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-    }));
+    // Obtener registros existentes para esa sucursal
+    const ventasExistentes = await VentasArticulo.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["ventaarticuloId", "fecha"],
+      raw: true,
+    });
 
-    // Filtrar los datos para excluir aquellos con ventaarticuloId menor o igual a ultimoId
-    const nuevasVentasConArticuloBulk = ventasConId
-      .filter(venta => venta.ventaarticuloId > ultimoId)
-      .map((venta) => ({
-        id: venta.id,
-        ventaarticuloId: venta.ventaarticuloId,
-        fecha: venta.fecha,
-        sucursal_id: venta.sucursal_id,
-        articuloCodigo: venta.codigo,
-        articuloDescripcion: venta.descripcion,
-        cantidad: parseFloat(venta.cantidad.toFixed(3)),
-        monto_lista: venta.preciolista,
-      }));
+    // Crear mapa de combinación ID + fecha
+    const mapaVentas = new Map();
+    ventasExistentes.forEach(({ ventaarticuloId, fecha }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        mapaVentas.set(`${ventaarticuloId}_${fechaISO}`, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para ventaarticuloId ${ventaarticuloId}`);
+      }
+    });
 
-    // console.log("ventasbul", nuevasVentasConArticuloBulk);
+    // Armar array de nuevas ventas que no estén duplicadas por ID+fecha
+    const nuevasVentasConArticuloBulk = ventas
+      .map((venta) => {
+        const ventaarticuloId = venta.id;
+        let fechaISO = null;
 
-    // Insertar las nuevas ventas con artículo en la base de datos en lotes (bulk)
-    const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
-      nuevasVentasConArticuloBulk
-    );
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida recibida para ventaarticuloId ${venta.id}`);
+          return null;
+        }
 
+        const clave = `${ventaarticuloId}_${fechaISO}`;
+        if (!mapaVentas.has(clave)) {
+          return {
+            id: null,
+            ventaarticuloId: ventaarticuloId,
+            fecha: venta.fecha,
+            sucursal_id: venta.sucursal_id,
+            articuloCodigo: venta.codigo,
+            articuloDescripcion: venta.descripcion,
+            cantidad: parseFloat(venta.cantidad.toFixed(3)),
+            monto_lista: venta.preciolista,
+          };
+        }
+        return null;
+      })
+      .filter((venta) => venta !== null);
+
+    if (nuevasVentasConArticuloBulk.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas con artículo para insertar." });
+    }
+
+    const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(nuevasVentasConArticuloBulk);
     console.log("Registros de VentaArticulo creados exitosamente.");
-    // Enviar las nuevas ventas con artículo creadas como respuesta
     res.status(201).json(nuevasVentasConArticulo);
   } catch (error) {
     console.error("Error al crear los registros de VentaArticulo:", error);
@@ -727,33 +1101,100 @@ const obtenerUltimaFechaRegistroPorSucursal = async (sucursalId) => {
   }
 };
 
+// const crearVentasPorUsuario = async (req, res, next) => {
+//   try {
+//     const ventasPorUsuarioData = req.body;
+
+//     // Validar los datos recibidos
+//     if (!Array.isArray(ventasPorUsuarioData)) {
+//       throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
+//     }
+
+//     // Obtener la sucursal_id de los datos
+//     const sucursalId = ventasPorUsuarioData[0].sucursal_id;
+
+//     // Obtener la fecha del último registro para la sucursal específica
+//     const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursal(sucursalId);
+
+//     // Filtrar los datos para incluir solo los registros posteriores a la última fecha
+//     const nuevasVentasPorUsuario = ventasPorUsuarioData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+
+//     // Mapear los datos para prepararlos para la inserción
+//     const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
+//       fecha: venta.fecha,
+//       sucursal_id: venta.sucursal_id,
+//       total_monto: parseFloat(venta.total_monto),
+//       usuario_id: venta.usuario_id,
+//     }));
+
+//     // Insertar los nuevos registros en la base de datos en lotes (bulk)
+//     const nuevasVentasPorUsuarioCreadas = await VentasPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+
+//     console.log("Registros de VentasPorUsuario creados exitosamente.");
+//     res.status(201).json(nuevasVentasPorUsuarioCreadas);
+//   } catch (error) {
+//     console.error("Error al crear los registros de VentasPorUsuario:", error);
+//     res.status(400).json({ error: error.message });
+//     next(error);
+//   }
+// };
+
 const crearVentasPorUsuario = async (req, res, next) => {
   try {
     const ventasPorUsuarioData = req.body;
 
-    // Validar los datos recibidos
     if (!Array.isArray(ventasPorUsuarioData)) {
       throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
     }
 
-    // Obtener la sucursal_id de los datos
     const sucursalId = ventasPorUsuarioData[0].sucursal_id;
 
-    // Obtener la fecha del último registro para la sucursal específica
-    const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursal(sucursalId);
+    // Traer registros existentes de esa sucursal
+    const registrosExistentes = await VentasPorUsuario.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["fecha", "usuario_id"],
+      raw: true,
+    });
 
-    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
-    const nuevasVentasPorUsuario = ventasPorUsuarioData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+    // Crear un mapa con clave: fechaISO_usuarioId
+    const mapaExistentes = new Map();
+    registrosExistentes.forEach(({ fecha, usuario_id }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        mapaExistentes.set(`${fechaISO}_${usuario_id}`, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para usuario_id ${usuario_id}`);
+      }
+    });
 
-    // Mapear los datos para prepararlos para la inserción
-    const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
-      fecha: venta.fecha,
-      sucursal_id: venta.sucursal_id,
-      total_monto: parseFloat(venta.total_monto),
-      usuario_id: venta.usuario_id,
-    }));
+    // Filtrar datos que no existan aún
+    const ventasPorUsuarioBulk = ventasPorUsuarioData
+      .map((venta) => {
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida en body para usuario_id ${venta.usuario_id}`);
+          return null;
+        }
 
-    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+        const clave = `${fechaISO}_${venta.usuario_id}`;
+        if (!mapaExistentes.has(clave)) {
+          return {
+            fecha: venta.fecha,
+            sucursal_id: venta.sucursal_id,
+            total_monto: parseFloat(venta.total_monto),
+            usuario_id: venta.usuario_id,
+          };
+        }
+        return null;
+      })
+      .filter((venta) => venta !== null);
+
+    if (ventasPorUsuarioBulk.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas por usuario para insertar." });
+    }
+
     const nuevasVentasPorUsuarioCreadas = await VentasPorUsuario.bulkCreate(ventasPorUsuarioBulk);
 
     console.log("Registros de VentasPorUsuario creados exitosamente.");
@@ -780,57 +1221,129 @@ const obtenerUltimaFechaRegistroPorSucursalPorUsuario = async (sucursalId) => {
   }
 };
 
+// const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
+//   try {
+//     const ventasArticulosData = req.body;
+
+//     // Validar los datos recibidos
+//     if (!Array.isArray(ventasArticulosData)) {
+//       throw new Error("Los datos de ventas de artículos por usuario deben ser proporcionados en forma de array.");
+//     }
+
+//     // Obtener la sucursal_id de los datos
+//     const sucursalId = ventasArticulosData[0].sucursal_id;
+
+//     // Obtener la fecha del último registro para la sucursal específica
+//     const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursalPorUsuario(sucursalId);
+
+//     // console.log("ventasArticulosData", ventasArticulosData)
+
+//     // Filtrar los datos para incluir solo los registros posteriores a la última fecha
+//     const nuevasVentasArticulos = ventasArticulosData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+
+//     // console.log("nuevasventas", nuevasVentasArticulos)
+
+//     // Agrupar los artículos por articulocodigo y sumar total_cantidadpeso
+//     const articulosAgrupados = {};
+
+//     nuevasVentasArticulos.forEach((venta) => {
+//       const fecha = venta.fecha;
+//       const sucursal_id = venta.sucursal_id;
+//       const usuario_id = venta.usuario_id;
+
+//       venta.articulos.forEach((articulo) => {
+//         const key = `${fecha}-${sucursal_id}-${usuario_id}-${articulo.articulocodigo}`;
+
+//         if (!articulosAgrupados[key]) {
+//           articulosAgrupados[key] = {
+//             articulocodigo: articulo.articulocodigo,
+//             total_cantidadpeso: 0,
+//             fecha,
+//             sucursal_id,
+//             usuario_id,
+//           };
+//         }
+
+//         articulosAgrupados[key].total_cantidadpeso += parseFloat(articulo.total_cantidadpeso);
+//       });
+//     });
+
+//     // Convertir el objeto de artículos agrupados a un array
+//     const ventasArticulosBulk = Object.values(articulosAgrupados);
+//     // console.log("ventasarticulos", ventasArticulosBulk)
+//     // Insertar los nuevos registros en la base de datos en lotes (bulk)
+//     const nuevasVentasArticulosCreadas = await VentasArticulosKgPorUsuario.bulkCreate(ventasArticulosBulk);
+
+//     console.log("Registros de VentasArticulosKgPorUsuario creados exitosamente.");
+//     res.status(201).json(nuevasVentasArticulosCreadas);
+//   } catch (error) {
+//     console.error("Error al crear los registros de VentasArticulosKgPorUsuario:", error);
+//     res.status(400).json({ error: error.message });
+//     next(error);
+//   }
+// };
+
 const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
   try {
     const ventasArticulosData = req.body;
 
-    // Validar los datos recibidos
     if (!Array.isArray(ventasArticulosData)) {
-      throw new Error("Los datos de ventas de artículos por usuario deben ser proporcionados en forma de array.");
+      throw new Error("Los datos deben ser proporcionados en forma de array.");
     }
 
-    // Obtener la sucursal_id de los datos
     const sucursalId = ventasArticulosData[0].sucursal_id;
 
-    // Obtener la fecha del último registro para la sucursal específica
-    const ultimaFecha = await obtenerUltimaFechaRegistroPorSucursalPorUsuario(sucursalId);
+    // Obtener todos los registros existentes de esa sucursal
+    const registrosExistentes = await VentasArticulosKgPorUsuario.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["fecha", "sucursal_id", "usuario_id", "articulocodigo"],
+      raw: true,
+    });
 
-    // console.log("ventasArticulosData", ventasArticulosData)
+    // Crear mapa con claves únicas: fechaISO-sucursal-usuario-articulo
+    const mapaExistentes = new Map();
+    registrosExistentes.forEach(({ fecha, sucursal_id, usuario_id, articulocodigo }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        const clave = `${fechaISO}-${sucursal_id}-${usuario_id}-${articulocodigo}`;
+        mapaExistentes.set(clave, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para usuario ${usuario_id} - artículo ${articulocodigo}`);
+      }
+    });
 
-    // Filtrar los datos para incluir solo los registros posteriores a la última fecha
-    const nuevasVentasArticulos = ventasArticulosData.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
-
-    // console.log("nuevasventas", nuevasVentasArticulos)
-
-    // Agrupar los artículos por articulocodigo y sumar total_cantidadpeso
+    // Agrupar los artículos y sumar cantidad
     const articulosAgrupados = {};
 
-    nuevasVentasArticulos.forEach((venta) => {
-      const fecha = venta.fecha;
-      const sucursal_id = venta.sucursal_id;
-      const usuario_id = venta.usuario_id;
+    ventasArticulosData.forEach((venta) => {
+      const fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+      const { sucursal_id, usuario_id } = venta;
 
       venta.articulos.forEach((articulo) => {
-        const key = `${fecha}-${sucursal_id}-${usuario_id}-${articulo.articulocodigo}`;
+        const clave = `${fechaISO}-${sucursal_id}-${usuario_id}-${articulo.articulocodigo}`;
 
-        if (!articulosAgrupados[key]) {
-          articulosAgrupados[key] = {
-            articulocodigo: articulo.articulocodigo,
-            total_cantidadpeso: 0,
-            fecha,
-            sucursal_id,
-            usuario_id,
-          };
+        // Solo si no existe en base
+        if (!mapaExistentes.has(clave)) {
+          if (!articulosAgrupados[clave]) {
+            articulosAgrupados[clave] = {
+              articulocodigo: articulo.articulocodigo,
+              total_cantidadpeso: 0,
+              fecha: venta.fecha,
+              sucursal_id,
+              usuario_id,
+            };
+          }
+          articulosAgrupados[clave].total_cantidadpeso += parseFloat(articulo.total_cantidadpeso);
         }
-
-        articulosAgrupados[key].total_cantidadpeso += parseFloat(articulo.total_cantidadpeso);
       });
     });
 
-    // Convertir el objeto de artículos agrupados a un array
     const ventasArticulosBulk = Object.values(articulosAgrupados);
-    // console.log("ventasarticulos", ventasArticulosBulk)
-    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+
+    if (ventasArticulosBulk.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas de artículos para insertar." });
+    }
+
     const nuevasVentasArticulosCreadas = await VentasArticulosKgPorUsuario.bulkCreate(ventasArticulosBulk);
 
     console.log("Registros de VentasArticulosKgPorUsuario creados exitosamente.");
@@ -955,50 +1468,119 @@ const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
   }
 };
 
-const crearCantidadTicketPorUsuario = async (req,res,next) => {
-  try {
+// const crearCantidadTicketPorUsuario = async (req,res,next) => {
+//   try {
 
-    const cantidadPorUsuario = req.body;
-    // console.log("cantidadporusuario", req.body)
+//     const cantidadPorUsuario = req.body;
+//     // console.log("cantidadporusuario", req.body)
 
-    // Validar los datos recibidos
-    if (!Array.isArray(cantidadPorUsuario)) {
-      throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
-    }
+//     // Validar los datos recibidos
+//     if (!Array.isArray(cantidadPorUsuario)) {
+//       throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
+//     }
 
-    // Obtener la sucursal_id de los datos
-    const sucursalId = cantidadPorUsuario[0].sucursal_id;
+//     // Obtener la sucursal_id de los datos
+//     const sucursalId = cantidadPorUsuario[0].sucursal_id;
 
   
-    const ultimoRegistro = await CantidadTicketPorUsuario.findOne({
-      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
-      where: { sucursal_id: sucursalId }
+//     const ultimoRegistro = await CantidadTicketPorUsuario.findOne({
+//       attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
+//       where: { sucursal_id: sucursalId }
+//     });
+
+//     // console.log("ultimoregistro", ultimoRegistro)
+
+//     const ultimaFecha = ultimoRegistro.dataValues.ultimaFecha
+//     const nuevasVentasPorUsuario = cantidadPorUsuario.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
+//     // console.log("nuevasventas", nuevasVentasPorUsuario)
+//     // Mapear los datos para prepararlos para la inserción
+//     const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
+//       fecha: venta.fecha,
+//       sucursal_id: venta.sucursal_id,
+//       total_monto: parseFloat(venta.monto_total),
+//       usuario_id: venta.usuario_id,
+//       cantidad: venta.cantidad,
+//     }));
+
+//     // Insertar los nuevos registros en la base de datos en lotes (bulk)
+//     const nuevasCantidadPorUsuario = await CantidadTicketPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+
+//     console.log("Registros de CantidadTicketPorUsuario creados exitosamente.");
+//     res.status(201).json(nuevasCantidadPorUsuario);
+//   } catch (error) {
+//     console.error("Error al crear los registros de CantidadTicketPorUsuario:", error);
+//     throw error;
+//   }
+// };
+
+const crearCantidadTicketPorUsuario = async (req, res, next) => {
+  try {
+    const cantidadPorUsuario = req.body;
+
+    if (!Array.isArray(cantidadPorUsuario)) {
+      throw new Error("Los datos deben ser proporcionados en forma de array.");
+    }
+
+    const sucursalId = cantidadPorUsuario[0].sucursal_id;
+
+    // Obtener todos los registros existentes para esa sucursal
+    const registrosExistentes = await CantidadTicketPorUsuario.findAll({
+      where: { sucursal_id: sucursalId },
+      attributes: ["fecha", "usuario_id"],
+      raw: true,
     });
 
-    // console.log("ultimoregistro", ultimoRegistro)
+    // Crear mapa para verificar existencia por fecha y usuario_id
+    const mapaExistentes = new Map();
+    registrosExistentes.forEach(({ fecha, usuario_id }) => {
+      try {
+        const fechaISO = new Date(fecha).toISOString().split("T")[0];
+        const clave = `${fechaISO}_${usuario_id}`;
+        mapaExistentes.set(clave, true);
+      } catch (e) {
+        console.warn(`Fecha inválida en BD para usuario_id ${usuario_id}`);
+      }
+    });
 
-    const ultimaFecha = ultimoRegistro.dataValues.ultimaFecha
-    const nuevasVentasPorUsuario = cantidadPorUsuario.filter(venta => new Date(venta.fecha) > new Date(ultimaFecha));
-    // console.log("nuevasventas", nuevasVentasPorUsuario)
-    // Mapear los datos para prepararlos para la inserción
-    const ventasPorUsuarioBulk = nuevasVentasPorUsuario.map((venta) => ({
-      fecha: venta.fecha,
-      sucursal_id: venta.sucursal_id,
-      total_monto: parseFloat(venta.monto_total),
-      usuario_id: venta.usuario_id,
-      cantidad: venta.cantidad,
-    }));
+    // Filtrar solo registros nuevos que no existen ya por fecha + usuario
+    const ventasPorUsuarioBulk = cantidadPorUsuario
+      .map((venta) => {
+        let fechaISO = null;
+        try {
+          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+        } catch (e) {
+          console.warn(`Fecha inválida en body para usuario_id ${venta.usuario_id}`);
+          return null;
+        }
 
-    // Insertar los nuevos registros en la base de datos en lotes (bulk)
+        const clave = `${fechaISO}_${venta.usuario_id}`;
+        if (!mapaExistentes.has(clave)) {
+          return {
+            fecha: venta.fecha,
+            sucursal_id: venta.sucursal_id,
+            total_monto: parseFloat(venta.monto_total),
+            usuario_id: venta.usuario_id,
+            cantidad: venta.cantidad,
+          };
+        }
+        return null;
+      })
+      .filter((venta) => venta !== null);
+
+    if (ventasPorUsuarioBulk.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevos registros para insertar." });
+    }
+
     const nuevasCantidadPorUsuario = await CantidadTicketPorUsuario.bulkCreate(ventasPorUsuarioBulk);
 
     console.log("Registros de CantidadTicketPorUsuario creados exitosamente.");
     res.status(201).json(nuevasCantidadPorUsuario);
   } catch (error) {
     console.error("Error al crear los registros de CantidadTicketPorUsuario:", error);
-    throw error;
+    next(error);
   }
 };
+
 
 const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
   try {
