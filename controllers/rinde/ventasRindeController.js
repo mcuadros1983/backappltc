@@ -190,6 +190,8 @@ const obtenerUltimoIdTablaPorSucursal = async (
 const crearVentaTotal = async (req, res, next) => {
   try {
     const ventasTotales = req.body;
+    console.log("ventastotales")
+
     if (!Array.isArray(ventasTotales)) {
       return res
         .status(400)
@@ -198,57 +200,65 @@ const crearVentaTotal = async (req, res, next) => {
 
     const sucursalId = ventasTotales[0].sucursal_id;
 
-    // Traer todos los cierres existentes para esa sucursal
+    // Traer todos los cierres existentes con sus fechas
     const cierresExistentes = await VentaTotal.findAll({
       where: { sucursal_id: sucursalId },
       attributes: ['cierreventa_id', 'fecha'],
       raw: true,
     });
 
-    // Crear un mapa para búsqueda rápida: { cierreventa_id: fechaISO }
+    // Función para normalizar fechas al formato YYYY-MM-DD
+    const normalizarFecha = (f) => {
+      if (typeof f === "string") return f.slice(0, 10);
+      if (f instanceof Date) return f.toISOString().split("T")[0];
+      return null;
+    };
+
+    // Crear un mapa con clave: cierreventa_id (como number), valor: fecha
     const mapaCierres = new Map();
     cierresExistentes.forEach(({ cierreventa_id, fecha }) => {
-      try {
-        const fechaObj = new Date(fecha);
-        const fechaISO = fechaObj.toISOString().split("T")[0];
-        mapaCierres.set(cierreventa_id, fechaISO);
-      } catch (e) {
-        console.warn(`Fecha inválida encontrada en la base: ${fecha}`);
-        mapaCierres.set(cierreventa_id, null);
-      }
+      const fechaNorm = normalizarFecha(fecha);
+      mapaCierres.set(Number(cierreventa_id), fechaNorm);
     });
 
-    // Mapear y filtrar solo ventas nuevas o con fecha distinta
+    // Armar las nuevas ventas a insertar
+    const tablaComparacion = [];
     const nuevasVentasTotales = ventasTotales
       .map((venta) => {
         const { id, fecha } = venta.data;
         const { monto_total, sucursal_id } = venta;
 
-        let fechaISO = null;
-        try {
-          fechaISO = new Date(fecha).toISOString().split("T")[0];
-        } catch (e) {
-          console.warn(`Fecha inválida recibida en el body: ${fecha}`);
-          return null;
-        }
-
-        const fechaExistente = mapaCierres.get(id);
+        const fechaISO = normalizarFecha(fecha);
+        const fechaExistente = mapaCierres.get(Number(id));
         const yaExisteMismoDia = fechaExistente === fechaISO;
+
+        tablaComparacion.push({
+          cierreventa_id: id,
+          fechaEnviada: fechaISO,
+          fechaExistente,
+          duplicada: yaExisteMismoDia,
+        });
 
         if (!fechaExistente || !yaExisteMismoDia) {
           return {
-            fecha: fecha,
+            fecha: fechaISO,
             cierreventa_id: id,
             monto: parseFloat(monto_total),
             sucursal_id: parseInt(sucursal_id),
           };
         }
+
         return null;
       })
       .filter((venta) => venta !== null);
 
+    // Mostrar tabla de comparación
+    console.table(tablaComparacion);
+
     if (nuevasVentasTotales.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas para insertar." });
     }
 
     const ventasCreadas = await VentaTotal.bulkCreate(nuevasVentasTotales);
@@ -258,6 +268,9 @@ const crearVentaTotal = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
 
 const obtenerVentasAnuladas = async (req, res, next) => {
   try {
