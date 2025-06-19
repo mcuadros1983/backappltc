@@ -82,7 +82,8 @@ const obtenerVentasFiltradas = async (req, res, next) => {
       if (!montosARestarPorFechaYSucursal[key]) {
         montosARestarPorFechaYSucursal[key] = 0;
       }
-      montosARestarPorFechaYSucursal[key] += Number(venta.cantidad) * Number(venta.monto_lista);
+      montosARestarPorFechaYSucursal[key] +=
+        Number(venta.cantidad) * Number(venta.monto_lista);
     });
     // console.log("montosARestarPorFechaYSucursal", montosARestarPorFechaYSucursal);
 
@@ -190,7 +191,7 @@ const obtenerUltimoIdTablaPorSucursal = async (
 const crearVentaTotal = async (req, res, next) => {
   try {
     const ventasTotales = req.body;
-    console.log("ventastotales")
+    console.log("ventastotales");
 
     if (!Array.isArray(ventasTotales)) {
       return res
@@ -203,7 +204,7 @@ const crearVentaTotal = async (req, res, next) => {
     // Traer todos los cierres existentes con sus fechas
     const cierresExistentes = await VentaTotal.findAll({
       where: { sucursal_id: sucursalId },
-      attributes: ['cierreventa_id', 'fecha'],
+      attributes: ["cierreventa_id", "fecha"],
       raw: true,
     });
 
@@ -261,16 +262,15 @@ const crearVentaTotal = async (req, res, next) => {
         .json({ mensaje: "No hay nuevas ventas para insertar." });
     }
 
-    const ventasCreadas = await VentaTotal.bulkCreate(nuevasVentasTotales);
+    const ventasCreadas = await VentaTotal.bulkCreate(nuevasVentasTotales, {
+      fields: ["fecha", "monto", "cierreventa_id", "sucursal_id"],
+    });
     res.status(201).json(ventasCreadas);
   } catch (error) {
     console.error("Error al crear las ventas totales:", error);
     next(error);
   }
 };
-
-
-
 
 const obtenerVentasAnuladas = async (req, res, next) => {
   try {
@@ -384,7 +384,7 @@ const crearVentasAnuladas = async (req, res, next) => {
     // Traer los registros existentes para esa sucursal
     const anuladasExistentes = await VentasAnuladas.findAll({
       where: { sucursal_id: sucursalId },
-      attributes: ['ventaanuladoId', 'fecha'],
+      attributes: ["ventaanuladoId", "fecha"],
       raw: true,
     });
 
@@ -395,7 +395,9 @@ const crearVentasAnuladas = async (req, res, next) => {
         const fechaISO = new Date(fecha).toISOString().split("T")[0];
         mapaAnuladas.set(`${ventaanuladoId}_${fechaISO}`, true);
       } catch (e) {
-        console.warn(`Fecha inválida en BD para ventaanuladoId ${ventaanuladoId}`);
+        console.warn(
+          `Fecha inválida en BD para ventaanuladoId ${ventaanuladoId}`
+        );
       }
     });
 
@@ -407,7 +409,9 @@ const crearVentasAnuladas = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida recibida para ventaanuladoId ${venta.id}`);
+          console.warn(
+            `Fecha inválida recibida para ventaanuladoId ${venta.id}`
+          );
           return null;
         }
 
@@ -428,7 +432,9 @@ const crearVentasAnuladas = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (nuevasVentasAnuladas.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas anuladas para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas anuladas para insertar." });
     }
 
     const insertadas = await VentasAnuladas.bulkCreate(nuevasVentasAnuladas);
@@ -439,7 +445,6 @@ const crearVentasAnuladas = async (req, res, next) => {
     next(error);
   }
 };
-
 
 const obtenerVentasConDescuento = async (req, res, next) => {
   try {
@@ -549,7 +554,6 @@ const obtenerVentasConDescuentoFiltradas = async (req, res, next) => {
 //   }
 // };
 
-
 const crearVentasConDescuento = async (req, res, next) => {
   try {
     const ventasConDescuento = req.body;
@@ -565,7 +569,7 @@ const crearVentasConDescuento = async (req, res, next) => {
     // Buscar registros existentes en la base para esa sucursal
     const descuentosExistentes = await VentasDescuento.findAll({
       where: { sucursal_id: sucursalId },
-      attributes: ['ventadescuentoId', 'fecha'],
+      attributes: ["ventadescuentoId", "fecha"],
       raw: true,
     });
 
@@ -576,7 +580,9 @@ const crearVentasConDescuento = async (req, res, next) => {
         const fechaISO = new Date(fecha).toISOString().split("T")[0];
         mapaDescuentos.set(`${ventadescuentoId}_${fechaISO}`, true);
       } catch (e) {
-        console.warn(`Fecha inválida en BD para ventadescuentoId ${ventadescuentoId}`);
+        console.warn(
+          `Fecha inválida en BD para ventadescuentoId ${ventadescuentoId}`
+        );
       }
     });
 
@@ -588,7 +594,9 @@ const crearVentasConDescuento = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida recibida para ventadescuentoId ${venta.id}`);
+          console.warn(
+            `Fecha inválida recibida para ventadescuentoId ${venta.id}`
+          );
           return null;
         }
 
@@ -609,18 +617,24 @@ const crearVentasConDescuento = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (nuevasVentasConDescuento.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas con descuento para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas con descuento para insertar." });
     }
 
-    const insertadas = await VentasDescuento.bulkCreate(nuevasVentasConDescuento);
+    const insertadas = await VentasDescuento.bulkCreate(
+      nuevasVentasConDescuento
+    );
     console.log("Registros de Ventas con Descuento creados exitosamente.");
     res.status(201).json(insertadas);
   } catch (error) {
-    console.error("Error al crear los registros de Ventas con Descuento:", error);
+    console.error(
+      "Error al crear los registros de Ventas con Descuento:",
+      error
+    );
     next(error);
   }
 };
-
 
 const obtenerVentasPorCliente = async (req, res, next) => {
   try {
@@ -725,7 +739,6 @@ const obtenerVentasPorClienteFiltradas = async (req, res, next) => {
 //   }
 // };
 
-
 const crearVentasPorCliente = async (req, res, next) => {
   try {
     const ventasPorClienteData = req.body;
@@ -764,7 +777,9 @@ const crearVentasPorCliente = async (req, res, next) => {
         const fechaISO = new Date(fecha).toISOString().split("T")[0];
         mapaVentas.set(`${cierreventas_id}_${fechaISO}`, true);
       } catch (e) {
-        console.warn(`Fecha inválida en BD para cierreventas_id ${cierreventas_id}`);
+        console.warn(
+          `Fecha inválida en BD para cierreventas_id ${cierreventas_id}`
+        );
       }
     });
 
@@ -776,7 +791,9 @@ const crearVentasPorCliente = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida en body para cierreventas_id ${cierreventas_id}`);
+          console.warn(
+            `Fecha inválida en body para cierreventas_id ${cierreventas_id}`
+          );
           return null;
         }
 
@@ -795,15 +812,22 @@ const crearVentasPorCliente = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (ventasPorClienteBulk.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas para insertar." });
     }
 
-    const nuevasVentasPorCliente = await VentasCliente.bulkCreate(ventasPorClienteBulk);
+    const nuevasVentasPorCliente = await VentasCliente.bulkCreate(
+      ventasPorClienteBulk
+    );
 
     console.log("Registros de VentaCliente creados exitosamente.");
     res.status(201).json(nuevasVentasPorCliente);
   } catch (error) {
-    console.error("Error al crear los registros de VentaCliente:", error.message);
+    console.error(
+      "Error al crear los registros de VentaCliente:",
+      error.message
+    );
     res.status(400).json({ error: error.message });
     next(error);
   }
@@ -1052,7 +1076,9 @@ const crearVentasConArticulo = async (req, res, next) => {
         const fechaISO = new Date(fecha).toISOString().split("T")[0];
         mapaVentas.set(`${ventaarticuloId}_${fechaISO}`, true);
       } catch (e) {
-        console.warn(`Fecha inválida en BD para ventaarticuloId ${ventaarticuloId}`);
+        console.warn(
+          `Fecha inválida en BD para ventaarticuloId ${ventaarticuloId}`
+        );
       }
     });
 
@@ -1065,7 +1091,9 @@ const crearVentasConArticulo = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida recibida para ventaarticuloId ${venta.id}`);
+          console.warn(
+            `Fecha inválida recibida para ventaarticuloId ${venta.id}`
+          );
           return null;
         }
 
@@ -1087,10 +1115,14 @@ const crearVentasConArticulo = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (nuevasVentasConArticuloBulk.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas con artículo para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas con artículo para insertar." });
     }
 
-    const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(nuevasVentasConArticuloBulk);
+    const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
+      nuevasVentasConArticuloBulk
+    );
     console.log("Registros de VentaArticulo creados exitosamente.");
     res.status(201).json(nuevasVentasConArticulo);
   } catch (error) {
@@ -1103,13 +1135,18 @@ const crearVentasConArticulo = async (req, res, next) => {
 const obtenerUltimaFechaRegistroPorSucursal = async (sucursalId) => {
   try {
     const ultimoRegistro = await VentasPorUsuario.findOne({
-      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
-      where: { sucursal_id: sucursalId }
+      attributes: [
+        [sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"],
+      ],
+      where: { sucursal_id: sucursalId },
     });
 
     return ultimoRegistro ? ultimoRegistro.dataValues.ultimaFecha : null;
   } catch (error) {
-    console.error("Error al obtener la fecha del último registro por sucursal:", error);
+    console.error(
+      "Error al obtener la fecha del último registro por sucursal:",
+      error
+    );
     throw error;
   }
 };
@@ -1157,7 +1194,9 @@ const crearVentasPorUsuario = async (req, res, next) => {
     const ventasPorUsuarioData = req.body;
 
     if (!Array.isArray(ventasPorUsuarioData)) {
-      throw new Error("Los datos de ventas por usuario deben ser proporcionados en forma de array.");
+      throw new Error(
+        "Los datos de ventas por usuario deben ser proporcionados en forma de array."
+      );
     }
 
     const sucursalId = ventasPorUsuarioData[0].sucursal_id;
@@ -1187,7 +1226,9 @@ const crearVentasPorUsuario = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida en body para usuario_id ${venta.usuario_id}`);
+          console.warn(
+            `Fecha inválida en body para usuario_id ${venta.usuario_id}`
+          );
           return null;
         }
 
@@ -1205,10 +1246,14 @@ const crearVentasPorUsuario = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (ventasPorUsuarioBulk.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas por usuario para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas por usuario para insertar." });
     }
 
-    const nuevasVentasPorUsuarioCreadas = await VentasPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+    const nuevasVentasPorUsuarioCreadas = await VentasPorUsuario.bulkCreate(
+      ventasPorUsuarioBulk
+    );
 
     console.log("Registros de VentasPorUsuario creados exitosamente.");
     res.status(201).json(nuevasVentasPorUsuarioCreadas);
@@ -1223,13 +1268,18 @@ const crearVentasPorUsuario = async (req, res, next) => {
 const obtenerUltimaFechaRegistroPorSucursalPorUsuario = async (sucursalId) => {
   try {
     const ultimoRegistro = await VentasArticulosKgPorUsuario.findOne({
-      attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
-      where: { sucursal_id: sucursalId }
+      attributes: [
+        [sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"],
+      ],
+      where: { sucursal_id: sucursalId },
     });
 
     return ultimoRegistro ? ultimoRegistro.dataValues.ultimaFecha : null;
   } catch (error) {
-    console.error("Error al obtener la fecha del último registro por sucursal:", error);
+    console.error(
+      "Error al obtener la fecha del último registro por sucursal:",
+      error
+    );
     throw error;
   }
 };
@@ -1315,15 +1365,19 @@ const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
 
     // Crear mapa con claves únicas: fechaISO-sucursal-usuario-articulo
     const mapaExistentes = new Map();
-    registrosExistentes.forEach(({ fecha, sucursal_id, usuario_id, articulocodigo }) => {
-      try {
-        const fechaISO = new Date(fecha).toISOString().split("T")[0];
-        const clave = `${fechaISO}-${sucursal_id}-${usuario_id}-${articulocodigo}`;
-        mapaExistentes.set(clave, true);
-      } catch (e) {
-        console.warn(`Fecha inválida en BD para usuario ${usuario_id} - artículo ${articulocodigo}`);
+    registrosExistentes.forEach(
+      ({ fecha, sucursal_id, usuario_id, articulocodigo }) => {
+        try {
+          const fechaISO = new Date(fecha).toISOString().split("T")[0];
+          const clave = `${fechaISO}-${sucursal_id}-${usuario_id}-${articulocodigo}`;
+          mapaExistentes.set(clave, true);
+        } catch (e) {
+          console.warn(
+            `Fecha inválida en BD para usuario ${usuario_id} - artículo ${articulocodigo}`
+          );
+        }
       }
-    });
+    );
 
     // Agrupar los artículos y sumar cantidad
     const articulosAgrupados = {};
@@ -1346,7 +1400,9 @@ const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
               usuario_id,
             };
           }
-          articulosAgrupados[clave].total_cantidadpeso += parseFloat(articulo.total_cantidadpeso);
+          articulosAgrupados[clave].total_cantidadpeso += parseFloat(
+            articulo.total_cantidadpeso
+          );
         }
       });
     });
@@ -1354,15 +1410,23 @@ const crearVentasArticulosKgPorUsuario = async (req, res, next) => {
     const ventasArticulosBulk = Object.values(articulosAgrupados);
 
     if (ventasArticulosBulk.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevas ventas de artículos para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevas ventas de artículos para insertar." });
     }
 
-    const nuevasVentasArticulosCreadas = await VentasArticulosKgPorUsuario.bulkCreate(ventasArticulosBulk);
+    const nuevasVentasArticulosCreadas =
+      await VentasArticulosKgPorUsuario.bulkCreate(ventasArticulosBulk);
 
-    console.log("Registros de VentasArticulosKgPorUsuario creados exitosamente.");
+    console.log(
+      "Registros de VentasArticulosKgPorUsuario creados exitosamente."
+    );
     res.status(201).json(nuevasVentasArticulosCreadas);
   } catch (error) {
-    console.error("Error al crear los registros de VentasArticulosKgPorUsuario:", error);
+    console.error(
+      "Error al crear los registros de VentasArticulosKgPorUsuario:",
+      error
+    );
     res.status(400).json({ error: error.message });
     next(error);
   }
@@ -1383,7 +1447,7 @@ const obtenerVentasPorUsuarioFiltradas = async (req, res, next) => {
     }
 
     const ventasFiltradas = await VentasPorUsuario.findAll({ where: filters });
-    
+
     res.json(ventasFiltradas);
   } catch (error) {
     console.error("Error al obtener las ventas por usuario filtradas:", error);
@@ -1408,7 +1472,9 @@ const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
       filters.sucursal_id = sucursalId;
     }
 
-    const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({ where: filters });
+    const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
+      where: filters,
+    });
 
     // Agrupar los datos por fecha, usuario y sucursal
     const agrupados = ventasFiltradas.reduce((acc, venta) => {
@@ -1429,7 +1495,10 @@ const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
 
     res.json({ ventasFiltradas, ventasAgrupadas });
   } catch (error) {
-    console.error("Error al obtener las ventas en kg por usuario filtradas:", error);
+    console.error(
+      "Error al obtener las ventas en kg por usuario filtradas:",
+      error
+    );
     next(error);
   }
 };
@@ -1450,12 +1519,15 @@ const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
       where: filters,
       attributes: [
-        'fecha',
-        'sucursal_id',
-        'articulocodigo',
-        [sequelize.fn('SUM', sequelize.col('total_cantidadpeso')), 'total_cantidadpeso']
+        "fecha",
+        "sucursal_id",
+        "articulocodigo",
+        [
+          sequelize.fn("SUM", sequelize.col("total_cantidadpeso")),
+          "total_cantidadpeso",
+        ],
       ],
-      group: ['fecha', 'sucursal_id', 'articulocodigo']
+      group: ["fecha", "sucursal_id", "articulocodigo"],
     });
 
     // Agrupar los datos por fecha y sucursal
@@ -1476,7 +1548,10 @@ const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
 
     res.json({ ventasFiltradas, ventasAgrupadas });
   } catch (error) {
-    console.error("Error al obtener las ventas en kg por sucursal filtradas:", error);
+    console.error(
+      "Error al obtener las ventas en kg por sucursal filtradas:",
+      error
+    );
     next(error);
   }
 };
@@ -1495,7 +1570,6 @@ const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
 //     // Obtener la sucursal_id de los datos
 //     const sucursalId = cantidadPorUsuario[0].sucursal_id;
 
-  
 //     const ultimoRegistro = await CantidadTicketPorUsuario.findOne({
 //       attributes: [[sequelize.fn("MAX", sequelize.col("fecha")), "ultimaFecha"]],
 //       where: { sucursal_id: sucursalId }
@@ -1562,7 +1636,9 @@ const crearCantidadTicketPorUsuario = async (req, res, next) => {
         try {
           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
         } catch (e) {
-          console.warn(`Fecha inválida en body para usuario_id ${venta.usuario_id}`);
+          console.warn(
+            `Fecha inválida en body para usuario_id ${venta.usuario_id}`
+          );
           return null;
         }
 
@@ -1581,19 +1657,25 @@ const crearCantidadTicketPorUsuario = async (req, res, next) => {
       .filter((venta) => venta !== null);
 
     if (ventasPorUsuarioBulk.length === 0) {
-      return res.status(200).json({ mensaje: "No hay nuevos registros para insertar." });
+      return res
+        .status(200)
+        .json({ mensaje: "No hay nuevos registros para insertar." });
     }
 
-    const nuevasCantidadPorUsuario = await CantidadTicketPorUsuario.bulkCreate(ventasPorUsuarioBulk);
+    const nuevasCantidadPorUsuario = await CantidadTicketPorUsuario.bulkCreate(
+      ventasPorUsuarioBulk
+    );
 
     console.log("Registros de CantidadTicketPorUsuario creados exitosamente.");
     res.status(201).json(nuevasCantidadPorUsuario);
   } catch (error) {
-    console.error("Error al crear los registros de CantidadTicketPorUsuario:", error);
+    console.error(
+      "Error al crear los registros de CantidadTicketPorUsuario:",
+      error
+    );
     next(error);
   }
 };
-
 
 const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
   try {
@@ -1613,13 +1695,18 @@ const obtenerCantidadTicketPorUsuario = async (req, res, next) => {
       filters.usuario_id = usuarioId;
     }
 
-    const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll({ where: filters });
+    const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll({
+      where: filters,
+    });
     // const cantidadesTicketFiltrados = await CantidadTicketPorUsuario.findAll();
     // console.log("cantidades", cantidadesTicketFiltrados)
-    
+
     res.json(cantidadesTicketFiltrados);
   } catch (error) {
-    console.error("Error al obtener la cantidad de ticket por usuario filtradas:", error);
+    console.error(
+      "Error al obtener la cantidad de ticket por usuario filtradas:",
+      error
+    );
     next(error);
   }
 };
@@ -1639,9 +1726,7 @@ const obtenerCantidadDiasConVentas = async (req, res, next) => {
     }
 
     const diasConVentas = await VentaTotal.findAll({
-      attributes: [
-        [sequelize.fn("DATE", sequelize.col("fecha")), "fecha"],
-      ],
+      attributes: [[sequelize.fn("DATE", sequelize.col("fecha")), "fecha"]],
       where: filters,
       group: ["fecha"],
     });
@@ -1652,7 +1737,6 @@ const obtenerCantidadDiasConVentas = async (req, res, next) => {
     next(error);
   }
 };
-
 
 export {
   obtenerVentasTotales,
@@ -1681,5 +1765,5 @@ export {
   obtenerKgPorSucursalFiltradas,
   crearCantidadTicketPorUsuario,
   obtenerCantidadTicketPorUsuario,
-  obtenerCantidadDiasConVentas
+  obtenerCantidadDiasConVentas,
 };

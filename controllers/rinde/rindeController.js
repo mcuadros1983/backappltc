@@ -22,32 +22,78 @@ import xlsx from "xlsx";
 import fs from "fs";
 import RindeGeneral from "../../models/rinde/rindeGeneral.js";
 
-const obtenerMovimientosFiltrados = async (req, res, next) => {
+// const obtenerMovimientosFiltrados = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+//     // Define los filtros para la consulta
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     // Consultar los movimientos internos desde la base de datos
+//     const movimientos = await InventarioMovimientoInterno.findAll({
+//       where: filters,
+//     });
+
+//     // Retornar los movimientos como respuesta
+//     res.status(200).json(movimientos);
+//   } catch (error) {
+//     console.error("Error al listar los movimientos filtrados:", error);
+//     next(error);
+//   }
+// };
+
+const obtenerMovimientosFiltrados = async (req, res) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
 
-    // Define los filtros para la consulta
-    const filters = {
-      fecha: {
-        [Op.between]: [fechaDesde, fechaHasta],
-      },
-    };
-
-    // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-    if (sucursalId) {
-      filters.sucursal_id = sucursalId;
+    if (!fechaDesde || !fechaHasta || !sucursalId) {
+      return res.status(400).json({ error: "Faltan datos para el filtrado." });
     }
 
-    // Consultar los movimientos internos desde la base de datos
-    const movimientos = await InventarioMovimientoInterno.findAll({
-      where: filters,
+    // Paso 1: lotes asociados a la sucursal
+    const movimientosSucursal = await InventarioMovimientoInterno.findAll({
+      where: {
+        sucursal_id: sucursalId,
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta]
+        }
+      },
+      attributes: ['numerolote'],
+      raw: true
     });
 
-    // Retornar los movimientos como respuesta
-    res.status(200).json(movimientos);
+    const lotesAsociados = [...new Set(movimientosSucursal.map(m => m.numerolote))];
+
+    if (lotesAsociados.length === 0) {
+      return res.status(200).json([]); // No hay nada
+    }
+
+    // Paso 2: movimientos por esos lotes
+    const movimientosRelacionados = await InventarioMovimientoInterno.findAll({
+      where: {
+        numerolote: {
+          [Op.in]: lotesAsociados
+        },
+        fecha: {
+          [Op.between]: [fechaDesde, fechaHasta]
+        }
+      },
+      order: [['fecha', 'DESC']],
+    });
+
+    res.status(200).json(movimientosRelacionados);
   } catch (error) {
-    console.error("Error al listar los movimientos filtrados:", error);
-    next(error);
+    console.error("Error al obtener movimientos relacionados:", error);
+    res.status(500).json({ error: "Error interno del servidor." });
   }
 };
 
