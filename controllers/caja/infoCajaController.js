@@ -13,6 +13,8 @@ import Caja from "../../models/caja/cajaModel.js";
 import Cierre from "../../models/caja/cierreModel.js";
 import { format } from "date-fns";
 import Clienteoneshot from "../../models/caja/clienteOneShotModel.js";
+import CierreZ from '../../models/caja/cierreZModel.js';
+
 
 const obtenerCajas = async (req, res, next) => {
   try {
@@ -1646,7 +1648,128 @@ const obtenerSumaGastosFiltrados = async (req, res, next) => {
   }
 };
 
+/**
+ * Obtiene todos los registros de cierres Z
+ */
+export async function getAllCierresZ(req, res) {
+  try {
+    const cierres = await CierreZ.findAll();
+    res.status(200).json(cierres);
+  } catch (error) {
+    console.error('❌ Error al obtener cierresZ:', error);
+    res.status(500).json({ error: 'Error al obtener los cierresZ' });
+  }
+}
 
+/**
+ * Crea un nuevo cierre Z
+ */
+export async function createCierreZ(req, res) {
+  try {
+    const nuevoCierre = await CierreZ.create(req.body);
+    res.status(201).json(nuevoCierre);
+  } catch (error) {
+    console.error('❌ Error al crear cierreZ:', error);
+    res.status(500).json({ error: 'Error al crear el cierreZ' });
+  }
+}
+
+/**
+ * Elimina un cierre Z por ID
+ */
+export async function deleteCierreZ(req, res) {
+  try {
+    const { id } = req.params;
+    const deleted = await CierreZ.destroy({ where: { id } });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'CierreZ no encontrado' });
+    }
+
+    res.status(200).json({ message: 'CierreZ eliminado correctamente' });
+  } catch (error) {
+    console.error('❌ Error al eliminar cierreZ:', error);
+    res.status(500).json({ error: 'Error al eliminar el cierreZ' });
+  }
+}
+
+/**
+ * Actualiza un cierre Z por ID
+ */
+export async function updateCierreZ(req, res) {
+  try {
+    const { id } = req.params;
+    const [updated] = await CierreZ.update(req.body, { where: { id } });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'CierreZ no encontrado' });
+    }
+
+    const cierreActualizado = await CierreZ.findByPk(id);
+    res.status(200).json(cierreActualizado);
+  } catch (error) {
+    console.error('❌ Error al actualizar cierreZ:', error);
+    res.status(500).json({ error: 'Error al actualizar el cierreZ' });
+  }
+}
+
+export async function getUltimoZetaPorFiltros(req, res) {
+  try {
+    const { cuit, puntoVenta, fechaJornada } = req.body;
+
+    const where = {};
+
+    if (cuit) {
+      where.cuit = cuit;
+    }
+
+    if (puntoVenta !== undefined && puntoVenta !== null && puntoVenta !== '') {
+      const puntoVentaInt = parseInt(puntoVenta, 10);
+      if (isNaN(puntoVentaInt)) {
+        return res.status(400).json({ error: 'Punto de venta debe ser un número válido' });
+      }
+      where.puntoVenta = puntoVentaInt;
+    }
+
+    if (fechaJornada) {
+      where.fechaJornada = fechaJornada; // se espera formato YYYY-MM-DD
+    }
+
+    const ultimoZeta = await CierreZ.findOne({
+      where,
+      order: [['numeroZeta', 'DESC']],
+    });
+
+    if (!ultimoZeta) {
+      return res.status(404).json({ error: 'No se encontró ningún cierre Z con esos filtros' });
+    }
+
+    res.status(200).json({ numeroZeta: ultimoZeta.numeroZeta });
+  } catch (error) {
+    console.error('❌ Error al obtener último Zeta:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+export async function getCierresZFiltrados(req, res) {
+  try {
+    const { fechaDesde, fechaHasta, cuit } = req.body;
+
+    const where = {};
+    if (fechaDesde && fechaHasta) {
+      where.fechaJornada = { [Op.between]: [fechaDesde, fechaHasta] };
+    }
+    if (cuit) {
+      where.cuit = cuit;
+    }
+
+    const cierres = await CierreZ.findAll({ where });
+    res.json(cierres);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al filtrar cierres Z' });
+  }
+}
 export {
   obtenerCajas,
   obtenerCajasPorCajaId,
@@ -1704,5 +1827,6 @@ export {
   actualizarClienteOneshot,
   eliminarClienteOneshot,
   obtenerClientesOneshotFiltrados,
-  obtenerSumaGastosFiltrados
+  obtenerSumaGastosFiltrados,
+  
 };

@@ -1,0 +1,41 @@
+  DB_DATABASE=ventas
+  DB_USER=postgres
+  DB_PASSWORD=latradicion123
+  DB_HOST=localhost
+  DB_PORT=5454
+  PORT=5000
+  DB_DIALECT=postgres
+  ADMIN_USERNAME=admin
+  ADMIN_PASSWORD=admin
+  JWT_SECRET_TOKEN=mysecretykey
+
+
+  --------------
+
+
+  # JWT secret token
+JWT_SECRET_TOKEN="jwttoken"
+# DB_LOCALDATABASE=sincro
+# DB_LOCALUSER=postgres
+# DB_LOCALPASSWORD=latradicion123
+LOCALHOST='http://localhost:3000'
+# DB_LOCALPORT=5432
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin
+# DB_LOCALDIALECT=postgres
+PORT=5000
+
+
+DB_DATABASE="postgres"
+DB_USER="postgres"
+DB_PASSWORD="latradicion123"
+DB_HOST=localhost
+DB_PORT=5432
+DB_DIALECT=postgres
+
+# DB_DATABASE="railway"
+# DB_USER="postgres"
+# DB_PASSWORD="SREHCLpjnkmHsHuwyqiZGugPMlwmCVwO"
+# DB_HOST='roundhouse.proxy.rlwy.net'
+# DB_PORT=14155
+# DB_DIALECT=postgres

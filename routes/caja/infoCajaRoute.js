@@ -58,5 +58,14 @@ infoCajaRouter.put('/caja/clientesoneshot/:id', infoCajaRindeController.actualiz
 infoCajaRouter.delete('/caja/clientesoneshot/:id', infoCajaRindeController.eliminarClienteOneshot); // Eliminar un cliente por ID
 infoCajaRouter.post('/caja/clientesoneshot_filtrados', infoCajaRindeController.obtenerClientesOneshotFiltrados); // Filtrar clientes por fechas o usuario
 
+//Rutas CierreZ
+
+infoCajaRouter.get('/caja/cierrez', infoCajaRindeController.getAllCierresZ);
+infoCajaRouter.post('/caja/cierrez', infoCajaRindeController.createCierreZ);
+infoCajaRouter.put('/caja/cierrez/:id', infoCajaRindeController.updateCierreZ);  // <-- esta línea
+infoCajaRouter.delete('/caja/cierrez/:id', infoCajaRindeController.deleteCierreZ);
+// Antes: router.get('/ultimo/:cuit/:puntoVenta', getUltimoZetaPorCuitYPV);
+infoCajaRouter.post('/caja/cierrez/ultimo', infoCajaRindeController.getUltimoZetaPorFiltros);
+infoCajaRouter.post('/caja/cierrez/filtrados', infoCajaRindeController.getCierresZFiltrados);
 
 export default infoCajaRouter;
