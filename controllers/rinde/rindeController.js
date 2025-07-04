@@ -52,32 +52,55 @@ import RindeGeneral from "../../models/rinde/rindeGeneral.js";
 // };
 
 const obtenerMovimientosFiltrados = async (req, res) => {
+  console.log("🔍 Iniciando función obtenerMovimientosFiltrados");
+
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
+    console.log("📥 Datos recibidos:", { fechaDesde, fechaHasta, sucursalId });
 
-    if (!fechaDesde || !fechaHasta || !sucursalId) {
-      return res.status(400).json({ error: "Faltan datos para el filtrado." });
+    if (!fechaDesde || !fechaHasta) {
+      console.log("⚠️ Faltan fechas para el filtrado");
+      return res.status(400).json({ error: "Debe proporcionar fechaDesde y fechaHasta." });
     }
 
-    // Paso 1: lotes asociados a la sucursal
-    const movimientosSucursal = await InventarioMovimientoInterno.findAll({
-      where: {
-        sucursal_id: sucursalId,
-        fecha: {
-          [Op.between]: [fechaDesde, fechaHasta]
-        }
-      },
-      attributes: ['numerolote'],
-      raw: true
-    });
+    let movimientosSucursal = [];
+
+    if (sucursalId) {
+      console.log("🔄 Filtrando por sucursal y fechas...");
+      movimientosSucursal = await InventarioMovimientoInterno.findAll({
+        where: {
+          sucursal_id: sucursalId,
+          fecha: {
+            [Op.between]: [fechaDesde, fechaHasta]
+          }
+        },
+        attributes: ['numerolote'],
+        raw: true
+      });
+    } else {
+      console.log("🔄 Filtrando solo por fechas (sin sucursal)...");
+      movimientosSucursal = await InventarioMovimientoInterno.findAll({
+        where: {
+          fecha: {
+            [Op.between]: [fechaDesde, fechaHasta]
+          }
+        },
+        attributes: ['numerolote'],
+        raw: true
+      });
+    }
+
+    console.log("✅ Movimientos obtenidos para búsqueda de lotes:", movimientosSucursal.length);
 
     const lotesAsociados = [...new Set(movimientosSucursal.map(m => m.numerolote))];
+    console.log("📦 Lotes únicos asociados:", lotesAsociados);
 
     if (lotesAsociados.length === 0) {
-      return res.status(200).json([]); // No hay nada
+      console.log("ℹ️ No hay lotes, devolviendo array vacío");
+      return res.status(200).json([]);
     }
 
-    // Paso 2: movimientos por esos lotes
+    console.log("🔄 Buscando movimientos relacionados a los lotes...");
     const movimientosRelacionados = await InventarioMovimientoInterno.findAll({
       where: {
         numerolote: {
@@ -90,9 +113,12 @@ const obtenerMovimientosFiltrados = async (req, res) => {
       order: [['fecha', 'DESC']],
     });
 
+    console.log("✅ Movimientos relacionados encontrados:", movimientosRelacionados.length);
+
     res.status(200).json(movimientosRelacionados);
+
   } catch (error) {
-    console.error("Error al obtener movimientos relacionados:", error);
+    console.error("❌ Error al obtener movimientos relacionados:", error);
     res.status(500).json({ error: "Error interno del servidor." });
   }
 };
