@@ -1666,13 +1666,30 @@ export async function getAllCierresZ(req, res) {
  */
 export async function createCierreZ(req, res) {
   try {
-    const nuevoCierre = await CierreZ.create(req.body);
+    const data = { ...req.body };
+
+    const camposMontos = ["iva105", "iva21", "neto", "ivaTotal", "total"];
+
+    camposMontos.forEach((campo) => {
+      if (data[campo] != null && /^\d+$/.test(String(data[campo]))) {
+        const str = String(data[campo]);
+        if (str.length >= 8 && str.length % 2 === 0) {
+          const half = str.slice(0, str.length / 2);
+          if (half.repeat(2) === str) {
+            data[campo] = Number(half);
+          }
+        }
+      }
+    });
+
+    const nuevoCierre = await CierreZ.create(data);
     res.status(201).json(nuevoCierre);
   } catch (error) {
-    console.error('❌ Error al crear cierreZ:', error);
-    res.status(500).json({ error: 'Error al crear el cierreZ' });
+    console.error("❌ Error al crear cierreZ:", error);
+    res.status(500).json({ error: "Error al crear el cierreZ" });
   }
 }
+
 
 /**
  * Elimina un cierre Z por ID
