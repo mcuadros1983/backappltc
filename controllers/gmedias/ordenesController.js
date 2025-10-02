@@ -772,6 +772,10 @@ const generarCodigoUnico = async () => {
 
 const crearOrdenesDesdeExcel = async (req, res, next) => {
   try {
+    console.log("== Iniciando crearOrdenesDesdeExcel ==");
+    console.log("req.file:", req.file);
+    console.log("req.body:", req.body);
+
     if (!req.file) {
       return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
     }
@@ -779,18 +783,22 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
     const { categoria, subcategoria } = req.body;
 
     if (!categoria || !subcategoria) {
+      console.warn("Faltan datos en el body:", { categoria, subcategoria });
       return res.status(400).json({ mensaje: "Faltan 'categoria' o 'subcategoria' en el body." });
     }
 
+    console.log("Leyendo archivo Excel:", req.file.path);
     const workbook = xlsx.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(sheet);
+    console.log("Filas leídas del Excel:", data.length);
 
     const camposEsperados = ["fecha", "sucursaldestino_codigo", "tropa", "kg", "costo"];
     const errores = [];
 
     for (let i = 0; i < data.length; i++) {
       const fila = data[i];
+      console.log(`Fila ${i + 2}:`, fila);
       for (const campo of camposEsperados) {
         if (!fila[campo]) {
           errores.push(`Fila ${i + 2} sin campo obligatorio: ${campo}`);
@@ -799,13 +807,14 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
     }
 
     if (errores.length > 0) {
+      console.error("Errores encontrados en el archivo:", errores);
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       return res.status(400).json({ mensaje: "Errores en el archivo", errores });
     }
 
     // Agrupar por fecha+codigoSucursal
     const productosPorGrupo = {};
-    data.forEach((item) => {
+    data.forEach((item, idx) => {
       const fecha = convertirFechaExcel(item.fecha);
       const clave = `${fecha}_${item.sucursaldestino_codigo}`;
       if (!productosPorGrupo[clave]) {
@@ -813,38 +822,52 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
       }
       productosPorGrupo[clave].push({ ...item, fechaConvertida: fecha });
     });
+    console.log("Grupos generados:", Object.keys(productosPorGrupo).length);
 
     const ordenesCreadas = [];
 
     for (const clave in productosPorGrupo) {
       const grupo = productosPorGrupo[clave];
+      console.log("Procesando grupo:", clave, "Cantidad filas:", grupo.length);
+
       const { fechaConvertida, sucursaldestino_codigo } = grupo[0];
       const codigoSucursal = String(sucursaldestino_codigo).trim();
 
       const sucursal = await Sucursal.findOne({ where: { codigo: codigoSucursal } });
-      if (!sucursal) continue;
+      if (!sucursal) {
+        console.warn("Sucursal no encontrada para código:", codigoSucursal);
+        continue;
+      }
+      console.log("Sucursal encontrada:", sucursal.id, sucursal.nombre);
 
       let peso_total = 0;
       const productos = [];
 
       for (const fila of grupo) {
-        const codigo = await generarCodigoUnico();
+        try {
+          const codigo = await generarCodigoUnico();
+          console.log("Generando producto con código:", codigo);
 
-        const producto = await Producto.create({
-          categoria_producto: categoria,
-          subcategoria: subcategoria,
-          costo: parseFloat(fila.costo),
-          kg: parseFloat(fila.kg),
-          tropa: fila.tropa.toString(),
-          sucursal_id: sucursal.id,
-          fecha: fila.fechaConvertida,
-          codigo_de_barra: codigo,
-          num_media: codigo,
-        });
+          const producto = await Producto.create({
+            categoria_producto: categoria,
+            subcategoria: subcategoria,
+            costo: parseFloat(fila.costo),
+            kg: parseFloat(fila.kg),
+            tropa: fila.tropa.toString(),
+            sucursal_id: sucursal.id,
+            fecha: fila.fechaConvertida,
+            codigo_de_barra: codigo,
+            num_media: codigo,
+          });
 
-        productos.push(producto);
-        peso_total += parseFloat(fila.kg);
+          productos.push(producto);
+          peso_total += parseFloat(fila.kg);
+        } catch (e) {
+          console.error("Error al crear producto:", e, "Fila:", fila);
+        }
       }
+
+      console.log(`Total productos creados en grupo ${clave}:`, productos.length);
 
       const nuevaOrden = await Orden.create({
         cantidad_total: productos.length,
@@ -852,6 +875,7 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
         sucursal_id: sucursal.id,
         fecha: grupo[0].fechaConvertida,
       });
+      console.log("Orden creada:", nuevaOrden.id);
 
       await Promise.all(
         productos.map(async (p) => {
@@ -870,6 +894,7 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
 
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
+    console.log("Órdenes creadas:", ordenesCreadas.length);
     return res.status(200).json({
       mensaje: "Órdenes y productos creados correctamente.",
       ordenes: ordenesCreadas,
@@ -878,9 +903,10 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
   } catch (error) {
     console.error("Error en crearOrdenesDesdeExcel:", error);
     if (fs.existsSync(req.file?.path)) fs.unlinkSync(req.file.path);
-    return res.status(500).json({ mensaje: "Error al procesar archivo Excel." });
+    return res.status(500).json({ mensaje: "Error al procesar archivo Excel.", detalle: error.message });
   }
 };
+
 
 
 export {
