@@ -798,8 +798,7 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
 
     for (let i = 0; i < data.length; i++) {
       const fila = data[i];
-      console.log(`Fila ${i + 2}:`, fila);
-      for (const campo of camposEsperados) {
+       for (const campo of camposEsperados) {
         if (!fila[campo]) {
           errores.push(`Fila ${i + 2} sin campo obligatorio: ${campo}`);
         }
