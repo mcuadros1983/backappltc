@@ -18,12 +18,22 @@ const Cobranza = sequelize.define("Cobranza", {
   fecha: {
     type: DataTypes.DATEONLY,
     defaultValue: sequelize.literal('CURRENT_DATE') // Establece la fecha actual por defecto
-  }
+  },
+  formacobro_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  movimiento_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+
 },
-{
-  // timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
-  freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
-});
+  {
+    // timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
+    freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
+  });
 
 Cobranza.hasMany(DetalleCobranza, {
   foreignKey: "cobranza_id",

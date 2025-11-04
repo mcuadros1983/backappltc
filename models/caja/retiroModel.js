@@ -32,6 +32,11 @@ const Retiro = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    conciliado: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+    },
   },
   {
     // tableName: "retiro",
@@ -40,4 +45,4 @@ const Retiro = sequelize.define(
   }
 );
 
-export default  Retiro;
+export default Retiro;

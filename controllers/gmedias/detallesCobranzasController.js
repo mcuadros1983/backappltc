@@ -2,17 +2,17 @@
 import DetalleCobranza from "../../models/gmedias/detalleCobranzaModel.js";
 import respuesta from "../../utils/respuesta.js";
 
-export const registrarDetalleCobranza = async (cobranzaId, monto) => {  
+export const registrarDetalleCobranza = async (cobranzaId, monto) => {
   try {
     // Crear el detalle de la cobranza
-    const detalleCobranza = await DetalleCobranza.create({ monto_total:monto });
+    const detalleCobranza = await DetalleCobranza.create({ monto_total: monto });
 
     // Asociar el detalle de la cobranza con la cobranza
     await detalleCobranza.setCobranza(cobranzaId);
 
     return detalleCobranza
   } catch (error) {
-    next(error);
+    return error
   }
 };
 

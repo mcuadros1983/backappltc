@@ -8,6 +8,7 @@ const loginMiddleware = (req, res, next) => {
     { session: false },
     async (err, user, info) => {
       try {
+        console.log("loginMiddleware - user:", user);
         // Se verifica si hay un error o si el usuario no está presente
         if (err || !user) {
 
@@ -19,9 +20,9 @@ const loginMiddleware = (req, res, next) => {
 
         // Si no hay errores, se realiza el inicio de sesión y se genera el token JWT
         req.login(user, { session: false }, async (err) => {
-      
+
           if (err) {
-     
+
             return next(err);
           }
 
@@ -29,7 +30,7 @@ const loginMiddleware = (req, res, next) => {
           const body = {
             id: user.id,
             usuario: user.usuario,
-
+            rol_id: user.rol_id,
           };
 
 
@@ -50,18 +51,19 @@ const loginMiddleware = (req, res, next) => {
             token,
           };
 
-          // Configuración de la cookie con el token JWT
-          res.cookie("jwtToken", token, {
-            // httpOnly: true,
-            // domain: "localhost",
-            // path: "/",
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Usa 'secure' en producción
-            sameSite: 'strict', // Configura el mismo sitio según tus necesidades
-            domain: process.env.NODE_ENV === 'production' ? process.env.REACT_APP_API : 'localhost',
-            path: '/',
+          const isProd = process.env.NODE_ENV === 'production';
 
+          // Configuración de la cookie con el token JWT
+          res.cookie('jwtToken', token, {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? 'Strict' : 'Lax',
+            path: '/',
+            ...(isProd && process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
           });
+          console.log("✅ Cookie seteada jwtToken:", token.slice(0, 20)); // no imprimir completa
+          console.log("✅ Headers que se envían:", res.getHeaders());
+          console.log("✅ Respuesta enviada al cliente:", { success: true, user: userWithToken });
           res.json({ success: true, user: userWithToken });
         });
       } catch (e) {
@@ -72,4 +74,4 @@ const loginMiddleware = (req, res, next) => {
   )(req, res, next);
 };
 
-export default loginMiddleware;
+export default loginMiddleware; 

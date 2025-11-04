@@ -8,52 +8,96 @@ import { actualizarCuentaCorrienteIdCliente } from "./cuentasCorrientesControlle
 import { registrarDetalleCobranza } from "./detallesCobranzasController.js";
 import { sequelize } from "../../config/database.js";
 
+
 export const registrarCobranza = async (req, res, next) => {
+  const t = await sequelize.transaction();
   try {
-    // Obtener datos de la solicitud
-    const { clienteId, detallesCobranza, descripcionCobranza, formaCobro, montoTotal, fecha } = req.body;
-
-    // Crear la cobranza
-
-    const cobranza = await Cobranza.create({ monto_total: montoTotal, descripcion_cobro: descripcionCobranza, forma_cobro: formaCobro, fecha });
-
-    const detalleCobranza = await registrarDetalleCobranza(
-      cobranza.id,
+    const {
+      clienteId,
+      detallesCobranza = [], // opcional: array de detalles
+      descripcionCobranza,
+      formaCobro,
       montoTotal,
-      fecha
-    );
+      fecha,
+    } = req.body;
 
-
-
-    // Obtener el cliente y su cuenta corriente
-    const cliente = await Cliente.findByPk(clienteId, {
-      include: [
-        {
-          model: CuentaCorriente,
-          as: "cuentaCorriente",
-        },
-      ],
-    });
-
-
-    // Verificar que el cliente y su cuenta corriente existan
-    if (cliente && cliente.cuentaCorriente) {
-      // Actualizar el saldo en la cuenta corriente
-      const nuevoSaldo = cliente.cuentaCorriente.saldoActual - montoTotal;
-      await cliente.cuentaCorriente.update({ saldoActual: nuevoSaldo });
-
-      // Asociar la cobranza con la cuenta corriente
-      await cobranza.setCuentaCorriente(cliente.cuentaCorriente);
-    
-    } else {
-      console.error("Cliente o cuenta corriente no encontrados");
+    const monto = Number(montoTotal);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      await t.rollback();
+      return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    res.json(cobranza);
+    // 1) Cliente (lock para concurrencia)
+    const cliente = await Cliente.findByPk(clienteId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!cliente) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    // 2) Cuenta Corriente: si no existe, crearla con saldo 0
+    const [cc] = await CuentaCorriente.findOrCreate({
+      where: { cliente_id: cliente.id },
+      defaults: { cliente_id: cliente.id, saldoActual: 0, fecha },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // Si NO querés permitir saldo negativo, validá antes de descontar:
+    // if ((cc.saldoActual ?? 0) - monto < 0) {
+    //   await t.rollback();
+    //   return res.status(409).json({ error: 'La cobranza excede el saldo de la cuenta corriente' });
+    // }
+
+    // 3) Crear Cobranza vinculada a la CC
+    const cobranza = await Cobranza.create(
+      {
+        monto_total: monto,
+        descripcion_cobro: descripcionCobranza,
+        forma_cobro: formaCobro,
+        fecha,
+        cuentaCorriente_id: cc.id, // FK directa
+      },
+      { transaction: t }
+    );
+
+    // 4) Detalles de cobranza
+    if (Array.isArray(detallesCobranza) && detallesCobranza.length > 0) {
+      for (const det of detallesCobranza) {
+        const m = Number(det.monto ?? monto);
+        if (!Number.isFinite(m) || m <= 0) {
+          await t.rollback();
+          return res.status(400).json({ error: 'Monto de detalle inválido' });
+        }
+        await registrarDetalleCobranza(cobranza.id, m, det.fecha ?? fecha, t);
+      }
+    } else {
+      // un solo detalle por el total si no mandaron array
+      await registrarDetalleCobranza(cobranza.id, monto, fecha, t);
+    }
+
+    // 5) Descontar saldo (paga deuda → saldo baja)
+    await cc.decrement('saldoActual', { by: monto, transaction: t });
+
+    // Refrescamos el saldo para responder con el valor actualizado
+    await cc.reload({ transaction: t });
+
+    await t.commit();
+    return res.json({
+      cobranza,
+      cuentaCorriente: {
+        id: cc.id,
+        saldoActual: cc.saldoActual,
+      },
+    });
   } catch (error) {
+    await t.rollback();
     next(error);
   }
 };
+
 
 export const obtenerCobranzas = async (req, res, next) => {
   try {

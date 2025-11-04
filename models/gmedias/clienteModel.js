@@ -1,31 +1,39 @@
-import { DataTypes } from 'sequelize'; 
-import {sequelize} from '../../config/database.js';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../../config/database.js';
 import { Venta } from './ventaModel.js';
 import CuentaCorriente from './cuentaCorrienteModel.js';
 import Producto from './productoModel.js';
 
-const Cliente = sequelize.define('Cliente', {
+const Cliente = sequelize.define('Cliente', { 
   nombre: {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  nro_doc: {
+    type: DataTypes.STRING,
+  },
+  telefono: {
+    type: DataTypes.STRING,
+  },
+  email: {
+    type: DataTypes.STRING,
+  },
+  observaciones: {
+    type: DataTypes.TEXT,
+  },
   margen: {
     type: DataTypes.FLOAT,
-    defaultValue: 0, // Valor predeterminado para margen
+    defaultValue: 0,
   },
-  // Otros campos del cliente
-},
-{
-  // timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
-  freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
+}, {
+  freezeTableName: true,
 });
 
-Cliente.hasMany(Venta, {   
-  foreignKey: "cliente_id",
-  sourceKey: "id",
-  as:"ventas",
-  allowNull: true, // Esta opción indica que la relación no es obligatoria
-  onDelete: "RESTRICT",
+// ✅ Cliente → Venta (alias "ventas")
+Cliente.hasMany(Venta, {
+  as: 'ventas',
+  foreignKey: { name: 'cliente_id', allowNull: true },
+  onDelete: 'RESTRICT',
 });
 
 Venta.belongsTo(Cliente, {
@@ -51,10 +59,10 @@ CuentaCorriente.belongsTo(Cliente, {
   onDelete: "RESTRICT",
 });
 
-Cliente.hasMany(Producto, { 
+Cliente.hasMany(Producto, {
   foreignKey: "cliente_id",
   sourceKey: "id",
-  as:"productos",
+  as: "productos",
   allowNull: true, // Esta opción indica que la relación no es obligatoria
 });
 

@@ -10,6 +10,7 @@ const ventasRouter = Router()
 ventasRouter.get('/ventas', ventasController.obtenerVentas);
 ventasRouter.get('/ventas/:ventaId', ventasController.obtenerVentaPorId); 
 ventasRouter.post('/ventas', ventasController.crearVenta); 
+ventasRouter.post('/ventas/cerdo', ventasController.crearVentaCerdo); // porcino nuevo
 ventasRouter.get('/ventas/:id/productos', ventasController.obtenerProductosVenta);  
 ventasRouter.delete('/ventas/:ventaId', ventasController.eliminarVenta);
 ventasRouter.put('/ventas/:ventaId', ventasController.actualizarVenta);

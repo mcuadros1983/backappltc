@@ -19,22 +19,24 @@ const Producto = sequelize.define(
     },
     codigo_de_barra: {
       type: DataTypes.STRING,
-      unique: true, // Agregamos esta línea para el índice único
+      // unique: true, // Agregamos esta línea para el índice único
+      allowNull: true,
     },
     num_media: {
       type: DataTypes.STRING,
-      unique: true, // Agregamos esta línea para el índice único
+      // unique: true, // Agregamos esta línea para el índice único
+      allowNull: true,
     },
     garron: {
       type: DataTypes.BIGINT,
     },
     precio: {
       type: DataTypes.FLOAT,
-      // allowNull: false,
+      allowNull: true,
     },
     costo: {
       type: DataTypes.FLOAT,
-      // allowNull: false,
+      defaultValue: 0,
     },
     kg: {
       type: DataTypes.DECIMAL,
@@ -52,18 +54,18 @@ const Producto = sequelize.define(
       defaultValue: sequelize.literal("CURRENT_DATE"), // Establece la fecha actual por defecto
     },
   },
-  {
-    indexes: [
-      {
-        fields: ["codigo_de_barra"], // Índice explícito para optimizar búsquedas
-      },
-      {
-        fields: ["num_media"], // Índice explícito para optimizar búsquedas
-      },
-    ],
-    freezeTableName: true,
-  }
-  ,
+  // {
+  //   indexes: [
+  //     {
+  //       fields: ["codigo_de_barra"], // Índice explícito para optimizar búsquedas
+  //     },
+  //     {
+  //       fields: ["num_media"], // Índice explícito para optimizar búsquedas
+  //     },
+  //   ],
+  //   freezeTableName: true,
+  // }
+  // ,
   {
     //timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
     freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla

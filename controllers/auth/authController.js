@@ -10,12 +10,13 @@ const generateToken = (user) => {
   const payload = {
     id: user.id,
     usuario: user.usuario,
+    rol_id: user.rol_id,
     // Puedes incluir más información en el token según tus necesidades
   };
 
-  return jwt.sign(payload, process.env.JWT_SECRET, 
+  return jwt.sign(payload, process.env.JWT_SECRET_TOKEN,
     // { expiresIn: "1h" }
-    )
+  )
     ;
 };
 
@@ -37,6 +38,7 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { usuario, password } = req.body;
+    console.log("login ", req.user);
     // console.log("credenciales", usuario, password);
 
     const user = await Usuario.findOne({ where: { usuario } });
@@ -62,14 +64,19 @@ export const login = async (req, res) => {
 };
 
 export const logout = (req, res) => {
-  // Elimina la cookie del lado del servidor
-  res.clearCookie("jwtToken", {
+  const isProd = process.env.NODE_ENV === "production";
+  const opts = {
     httpOnly: true,
-    domain: "localhost",
+    secure: isProd,
+    sameSite: isProd ? "Strict" : "Lax",
     path: "/",
-  });
+  };
+  // en dev: NO pongas domain. En prod, si usaste domain al setear, repetilo:
+  if (isProd && process.env.COOKIE_DOMAIN) {
+    opts.domain = process.env.COOKIE_DOMAIN;
+  }
 
-  // Puedes realizar otras acciones necesarias, como invalidar la sesión en el servidor
-
-  res.status(200).json({ success: true });
+  res.clearCookie("jwtToken", opts);
+  res.cookie("jwtToken", "", { ...opts, maxAge: 0 });
+  return res.status(200).json({ success: true });
 };

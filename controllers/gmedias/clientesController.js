@@ -97,7 +97,14 @@ const crearCliente = async (req, res, next) => {
 
 const actualizarCliente = async (req, res, next) => {
   const clienteId = req.params.clienteId;
-  const { nombre, margen } = req.body;
+  const {
+    nombre,
+    margen,
+    nro_doc,
+    telefono,
+    email,
+    observaciones,
+  } = req.body;
 
   try {
     const cliente = await Cliente.findByPk(clienteId);
@@ -106,10 +113,13 @@ const actualizarCliente = async (req, res, next) => {
       return res.status(404).json({ error: "Cliente no encontrado" });
     }
 
-    cliente.nombre = nombre;
-    if (margen !== undefined) {
-      cliente.margen = margen;
-    }
+    // Actualiza los campos si fueron enviados
+    if (nombre !== undefined) cliente.nombre = nombre;
+    if (margen !== undefined) cliente.margen = margen;
+    if (nro_doc !== undefined) cliente.nro_doc = nro_doc;
+    if (telefono !== undefined) cliente.telefono = telefono;
+    if (email !== undefined) cliente.email = email;
+    if (observaciones !== undefined) cliente.observaciones = observaciones;
 
     await cliente.save();
 
@@ -118,6 +128,7 @@ const actualizarCliente = async (req, res, next) => {
     next(error);
   }
 };
+
 
 const eliminarCliente = async (req, res, next) => {
   const clienteId = req.params.clienteId;

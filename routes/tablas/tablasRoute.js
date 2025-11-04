@@ -102,6 +102,7 @@ tablasRouter.post(
 // Rutas para obtener los empleados
 tablasRouter.get("/obtenerempleados", tablasController.obtenerEmpleados);
 tablasRouter.post("/crearempleados", tablasController.crearEmpleados);
+tablasRouter.get("/obtenerempleado/:id", tablasController.getEmpleado);
 
 // Rutas para obtener los planes de tarjeta
 tablasRouter.get("/obtenerplantarjeta", tablasController.obtenerPlanTarjeta);

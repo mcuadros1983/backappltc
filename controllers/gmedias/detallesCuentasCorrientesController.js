@@ -34,7 +34,7 @@ const obtenerDetalleCuentaCorrientePorId = async (req, res, next) => {
   }
 };
 
-const crearDetalleCuentaCorriente = async (cuentaCorriente_id, monto) => {
+const crearDetalleCuentaCorriente = async (cuentaCorriente_id, monto, next) => {
 
   try {
     const nuevoDetalleCuentaCorriente = await DetalleCuentaCorriente.create({

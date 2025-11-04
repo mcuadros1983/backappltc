@@ -253,6 +253,13 @@ const obtenerEmpleados = async (req, res, next) => {
   }
 };
 
+export const getEmpleado = async (req, res) => {
+  const { id } = req.params;
+  const row = await EmpleadoTabla.findByPk(id);
+  if (!row) return res.status(404).json({ error: "No encontrado" });
+  res.json(row);
+};
+
 const obtenerPlanTarjeta = async (req, res, next) => {
   try {
     const planTarjeta = await PlanTarjetaTabla.findAll();

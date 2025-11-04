@@ -19,6 +19,7 @@ ordenesRouter.post('/ordenesfiltradas', ordenesController.obtenerOrdenesFiltrada
 ordenesRouter.post('/productosordenesfiltradas', ordenesController.obtenerProductosFiltradosOrdenes);
 ordenesRouter.get('/ordenes/:id', ordenesController.obtenerOrden);
 ordenesRouter.post('/ordenes', ordenesController.crearOrden); 
+ordenesRouter.post('/ordenes/cerdo', ordenesController.crearOrdenCerdo);
 ordenesRouter.get('/ordenes/:id/productos', ordenesController.obtenerProductosOrden);
 ordenesRouter.put('/ordenes/:id', ordenesController.actualizarOrden);
 ordenesRouter.delete('/ordenes/:id', ordenesController.eliminarOrden);

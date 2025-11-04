@@ -1,5 +1,5 @@
 import { DataTypes } from 'sequelize';
-import {sequelize} from '../../config/database.js';
+import { sequelize } from '../../config/database.js';
 import Producto from "./productoModel.js";
 import Orden from './ordenModel.js';
 import { Venta } from "./ventaModel.js";
@@ -8,7 +8,7 @@ import { Venta } from "./ventaModel.js";
 
 const Sucursal = sequelize.define("Sucursal", {
     id: {
-        type: DataTypes.INTEGER, 
+        type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: false,
     },
@@ -22,16 +22,19 @@ const Sucursal = sequelize.define("Sucursal", {
     //     type: DataTypes.BIGINT,
     //     defaultValue: null
     // }
+    lat: { type: DataTypes.DOUBLE, allowNull: true },
+    lon: { type: DataTypes.DOUBLE, allowNull: true },
+    geofence_m: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 80 }
 },
-{
-  timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
-  freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
-})
+    {
+        timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
+        freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
+    })
 
-Sucursal.hasMany(Venta, { 
+Sucursal.hasMany(Venta, {
     foreignKey: "sucursal_id",
     sourceKey: "id",
-    as:"ventas",
+    as: "ventas",
     allowNull: true, // Esta opción indica que la relación no es obligatoria
     onDelete: "RESTRICT",
 });
@@ -43,25 +46,25 @@ Venta.belongsTo(Sucursal, {
     onDelete: "RESTRICT",
 });
 
-Sucursal.hasMany(Producto, { 
+Sucursal.hasMany(Producto, {
     foreignKey: "sucursal_id",
-    as:"productos",
+    as: "productos",
     sourceKey: "id",
     allowNull: true, // Esta opción indica que la relación no es obligatoria
     onDelete: 'SET NULL', // Esta opción establecerá el campo "sucursal_id" en los registros de productos a nulo al eliminar una orden.
 });
 
-Producto.belongsTo(Sucursal, { 
+Producto.belongsTo(Sucursal, {
     foreignKey: "sucursal_id",
     targetKey: "id",
     allowNull: true, // Esta opción indica que la relación no es obligatoria
     onDelete: 'SET NULL', // Esta opción establecerá el campo "sucursal_id" en los registros de productos a nulo al eliminar una orden.
 });
 
-Sucursal.hasMany(Orden, { 
+Sucursal.hasMany(Orden, {
     foreignKey: "sucursal_id",
     sourceKey: "id",
-    as:"ordenes",
+    as: "ordenes",
     allowNull: true, // Esta opción indica que la relación no es obligatoria
     onDelete: 'SET NULL', // Esta opción establecerá el campo "sucursal_id" en los registros de productos a nulo al eliminar una orden.
 });

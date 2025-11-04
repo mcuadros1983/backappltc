@@ -123,6 +123,7 @@ const obtenerMovimientosFiltrados = async (req, res) => {
   }
 };
 
+
 const obtenerMontoMovimientosFiltrados = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;

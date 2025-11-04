@@ -41,6 +41,20 @@ const obtenerProductos = async (req, res, next) => {
   }
 };
 
+const obtenerNumMediaPorcino = async (req, res, next) => {
+   try {
+    const productos = await Producto.findAll({
+      where: { categoria_producto: "porcino" },
+      attributes: ["num_media"],
+    });
+    res.json(productos);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al obtener num_media porcinos" });
+  }
+};
+
+
 const obtenerProductosPorFecha = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta } = req.body;
@@ -1158,9 +1172,75 @@ const actualizarProductosPorTropa = async (req, res, next) => {
   }
 };
 
+// controllers/productosController.js (o donde tengas los handlers de productos)
+
+const obtenerTropasPorCategoria = async (req, res, next) => {
+  try {
+    const { categoria } = req.query; // "bovino" | "porcino"
+
+    if (!categoria) {
+      return res.status(400).json({ message: "Falta la categoría" });
+    }
+
+    // Traemos solo tropa y categoría para esa categoría
+    const productos = await Producto.findAll({
+      where: { categoria_producto: categoria },
+      attributes: ["tropa", "categoria_producto"],
+    });
+
+    // Sacar tropas únicas no nulas / no vacías
+    const tropasSet = new Set();
+    for (const p of productos) {
+      if (p.tropa && p.tropa !== "") {
+        tropasSet.add(p.tropa);
+      }
+    }
+
+    const tropasUnicas = Array.from(tropasSet);
+
+    // Orden:
+    // 1. Tropas puramente numéricas => orden numérico DESC
+    // 2. Tropas que no son numéricas puras => van al final, orden alfabético ASC
+    const numericTropas = [];
+    const nonNumericTropas = [];
+
+    tropasUnicas.forEach((t) => {
+      // es estrictamente número? (por ej "806" -> sí | "806-4" -> no)
+      if (/^\d+$/.test(t)) {
+        numericTropas.push(Number(t));
+      } else {
+        nonNumericTropas.push(t);
+      }
+    });
+
+    // ordenar numéricas desc
+    numericTropas.sort((a, b) => b - a);
+
+    // ordenar no numéricas asc alfabético (o como prefieras)
+    nonNumericTropas.sort((a, b) => {
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    });
+
+    // recombinar: primero numéricas (convertir a string otra vez), luego no numéricas
+    const tropasOrdenadas = [
+      ...numericTropas.map((n) => n.toString()),
+      ...nonNumericTropas,
+    ];
+
+    console.log("tropasOrdenadas", tropasOrdenadas);
+
+    return res.json({ tropas: tropasOrdenadas });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 export {
   obtenerProductos,
+  obtenerNumMediaPorcino,
   obtenerProductosPorFecha,
   obtenerProductoPorId,
   obtenerProductoCodigoBarra,
@@ -1173,5 +1253,6 @@ export {
   eliminarProducto,
   procesarDesdeExcel,
   generarCodigos,
-  actualizarProductosPorTropa
+  actualizarProductosPorTropa,
+  obtenerTropasPorCategoria
 };

@@ -2,6 +2,7 @@ import app from "./app.js";
 // import { db } from "./config/config.js";
 import { PORT, LOCAL_HOST } from "./config/config.js";
 import { sequelize } from "./config/database.js";
+import "./models/index.js"; // Este define las relaciones
 // import "./models/gmedias/clienteModel.js";
 // import "./models/gmedias/productoModel.js";
 // import "./models/gmedias/productoIdModel.js";
@@ -44,7 +45,7 @@ async function main() {
 
     // Sincroniza las tablas después de que el servidor esté escuchando
     // await sequelize.sync({ force: true });
-    //await sequelize.sync({ alter: true }); // alter: true evita que se borren las tablas para recrearlas pero crea las nuevas
+    await sequelize.sync({ alter: true }); // alter: true evita que se borren las tablas para recrearlas pero crea las nuevas
   } catch (error) {
     console.error("Unable to connect to the database:", error);
   }

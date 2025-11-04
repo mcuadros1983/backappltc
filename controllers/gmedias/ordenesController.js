@@ -1,10 +1,10 @@
+import { Op } from "sequelize";
 import Ingreso from "../../models/gmedias/ingresoModel.js";
 import Orden from "../../models/gmedias/ordenModel.js";
 import Producto from "../../models/gmedias/productoModel.js";
 import Sucursal from "../../models/gmedias/sucursalModel.js";
 import { actualizarDatosProducto } from "./productosController.js";
 import { sequelize } from "../../config/database.js";
-import { Op } from "sequelize";
 import xlsx from "xlsx"; // Importa la librería para leer archivos Excel
 import fs from "fs"; // Importa el módulo fs para manipulación de archivos
 
@@ -297,120 +297,207 @@ const actualizarOrden = async (req, res, next) => {
   }
 };
 
+// const eliminarOrden = async (req, res, next) => {
+//   try {
+//     const { id } = req.params;
+//     const productos = await Producto.findAll({
+//       where: { orden_id: id },
+//     });
+
+//     const productosActualizados = await Promise.all(
+//       productos.map(async (product) => {
+//         // Buscar el producto para obtener el ingreso_id
+//         const producto = await Producto.findByPk(product.id);
+
+//         // Verificar si el producto y el ingreso existen y si la categoría del producto es porcino
+//         if (
+//           producto &&
+//           producto.ingreso_id !== null &&
+//           producto.categoria_producto == "porcino"
+//         ) {
+//           const ingreso = await Ingreso.findByPk(producto.ingreso_id);
+//           // Actualizar el producto con los nuevos valores
+//           return await actualizarDatosProducto(
+//             product.id,
+//             null,
+//             product.ingreso_id === null ? 32 : 18,
+//             null,
+//             null,
+//             product.precio ? product.precio : 0,
+//             product.kg ? product.kg : 0,
+//             product.tropa ? product.tropa : 0,
+//             product.fecha
+
+        
+//           );
+//         } else {
+//           // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
+//           return await actualizarDatosProducto(
+//             product.id,
+//             null,
+//             producto.ingreso_id === null ? 32 : 18,
+//             null,
+//             null,
+//             product.precio ? product.precio : 0,
+//             product.kg ? product.kg : 0,
+//             product.tropa ? product.tropa : 0,
+//             product.fecha
+
+//           );
+//         }
+//       })
+//     );
+
+//     // Eliminar la orden después de actualizar los productos
+//     await Orden.destroy({
+//       where: { id },
+//     });
+
+//     // Respuesta de éxito indicando que la orden se eliminó correctamente
+//     res.sendStatus(204);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const eliminarOrden = async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    // Traemos todos los productos asociados a la orden
     const productos = await Producto.findAll({
       where: { orden_id: id },
     });
 
-    const productosActualizados = await Promise.all(
+    // Procesamos cada producto
+    await Promise.all(
       productos.map(async (product) => {
-        // Buscar el producto para obtener el ingreso_id
+        // Recuperamos el producto completo por si necesitamos ingreso_id, etc.
         const producto = await Producto.findByPk(product.id);
 
-        // Verificar si el producto y el ingreso existen y si la categoría del producto es porcino
-        if (
-          producto &&
-          producto.ingreso_id !== null &&
-          producto.categoria_producto == "porcino"
-        ) {
-          const ingreso = await Ingreso.findByPk(producto.ingreso_id);
-          // if (ingreso) {
-          //   ingreso.peso_total -= product.kg; // Restar el peso del producto
-          //   await ingreso.save();
-          // }
-          // Actualizar el producto con los nuevos valores
-          return await actualizarDatosProducto(
-            product.id,
-            null,
-            product.ingreso_id === null ? 32 : 18,
-            null,
-            null,
-            product.precio ? product.precio : 0,
-            product.kg ? product.kg : 0,
-            product.tropa ? product.tropa : 0,
-            product.fecha
+        if (!producto) return;
 
-            // producto_id,
-            // orden_id,
-            // sucursal_id,
-            // cliente_id,
-            // venta_id,
-            // precio,
-            // kg,
-            // tropa
-          );
-        } else {
-          // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
-          return await actualizarDatosProducto(
-            product.id,
-            null,
-            producto.ingreso_id === null ? 32 : 18,
-            null,
-            null,
-            product.precio ? product.precio : 0,
-            product.kg ? product.kg : 0,
-            product.tropa ? product.tropa : 0,
-            product.fecha
-
-          );
+        // Caso 1: producto porcino => se elimina directamente
+        if (producto.categoria_producto === "porcino") {
+          await producto.destroy();
+          return;
         }
+
+        // Caso 2: producto NO porcino => lo "liberamos"
+        // Acá seguimos usando tu helper actualizarDatosProducto
+        // para dejar el producto sin orden y en la sucursal correcta
+        return await actualizarDatosProducto(
+          product.id,                      // producto_id
+          null,                            // orden_id -> null
+          producto.ingreso_id === null ? 32 : 18, // sucursal_id destino
+          null,                            // cliente_id
+          null,                            // venta_id
+          product.precio ? product.precio : 0, // precio
+          product.kg ? product.kg : 0,         // kg
+          product.tropa ? product.tropa : 0,   // tropa
+          product.fecha                        // fecha
+        );
       })
     );
 
-    // Eliminar la orden después de actualizar los productos
+    // Finalmente, eliminamos la orden
     await Orden.destroy({
       where: { id },
     });
 
-    // Respuesta de éxito indicando que la orden se eliminó correctamente
+    // 204 No Content
     res.sendStatus(204);
   } catch (error) {
     next(error);
   }
 };
 
+
+// const eliminarProductoOrden = async (req, res, next) => {
+//   try {
+//     // const { id } = req.params;
+//     const { productId } = req.body;
+//     // Buscar el producto por su ID
+//     const producto = await Producto.findByPk(productId);
+
+//     // Verificar si la orden existe
+//     if (!producto) {
+//       return res.status(404).json({ message: "el producto no existe" });
+//     }
+
+//     // Buscar la orden por su ID
+//     const orden = await Orden.findByPk(producto.orden_id);
+
+//     // Verificar si la orden existe
+//     if (!orden) {
+//       return res.status(404).json({ message: "La orden no existe" });
+//     }
+//     orden.peso_total = Number(orden.peso_total) - Number(producto.kg);
+//     orden.cantidad_total = Number(orden.cantidad_total) - 1;
+
+//     if (orden.cantidad_total == 0) {
+//       await orden.destroy();
+//     } else {
+//       await orden.save();
+//     }
+
+//     if (producto.categoria_producto === "porcino") {
+//       producto.kg = 0;
+//     }
+//     producto.orden_id = null;
+//     producto.sucursal_id = producto.ingreso_id ? 18 : 32;
+//     await producto.save();
+
+//     res.json(orden);
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const eliminarProductoOrden = async (req, res, next) => {
   try {
-    // const { id } = req.params;
     const { productId } = req.body;
-    // Buscar el producto por su ID
-    const producto = await Producto.findByPk(productId);
 
-    // Verificar si la orden existe
+    // Buscar el producto
+    const producto = await Producto.findByPk(productId);
     if (!producto) {
-      return res.status(404).json({ message: "el producto no existe" });
+      return res.status(404).json({ message: "El producto no existe" });
     }
 
-    // Buscar la orden por su ID
+    // Buscar la orden asociada
     const orden = await Orden.findByPk(producto.orden_id);
-
-    // Verificar si la orden existe
     if (!orden) {
       return res.status(404).json({ message: "La orden no existe" });
     }
+
+    // Actualizar los totales de la orden
     orden.peso_total = Number(orden.peso_total) - Number(producto.kg);
     orden.cantidad_total = Number(orden.cantidad_total) - 1;
 
-    if (orden.cantidad_total == 0) {
+    // Si no quedan productos, eliminamos la orden
+    if (orden.cantidad_total === 0) {
       await orden.destroy();
     } else {
       await orden.save();
     }
 
+    // Si el producto es porcino, lo eliminamos directamente
     if (producto.categoria_producto === "porcino") {
-      producto.kg = 0;
+      await producto.destroy();
+      return res.json({ message: "Producto porcino eliminado correctamente" });
     }
+
+    // Para los demás productos (bovino, etc.), se reasigna el stock
     producto.orden_id = null;
     producto.sucursal_id = producto.ingreso_id ? 18 : 32;
     await producto.save();
 
-    res.json(orden);
+    res.json({ message: "Producto eliminado de la orden correctamente", orden });
   } catch (error) {
     next(error);
   }
 };
+
 
 const fetchOrderCreatedAt = async (req, res) => {
   const { ordenId } = req.params;
@@ -431,46 +518,6 @@ const fetchOrderCreatedAt = async (req, res) => {
     throw error;
   }
 };
-
-// const obtenerCantidadMediasBovino = async (req, res, next) => {
-//   console.log("obtener cantidades....");
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     if (!fechaDesde || !fechaHasta || !sucursalId) {
-//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
-//     }
-
-//     const ordenes = await Orden.findAll({
-//       where: {
-//         fecha: {
-//           [Op.between]: [fechaDesde, fechaHasta],
-//         },
-//         sucursal_id: sucursalId,
-//       },
-//       include: [
-//         {
-//           model: Producto,
-//           as: "Productos",
-//           where: {
-//             categoria_producto: "bovino",
-//           },
-//           attributes: ["num_media"],
-//         },
-//       ],
-//     });
-
-//     let sumaMedias = 0;
-//     ordenes.forEach((orden) => {
-//       sumaMedias += orden.Productos.length;
-//     });
-
-//     res.json({ cantidadMedias: sumaMedias });
-//   } catch (error) {
-//     console.error("Error al obtener cantidad de medias bovino:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerCantidadMediasBovino = async (req, res, next) => {
   console.log("Obteniendo cantidades desde Producto...");
@@ -538,51 +585,6 @@ const obtenerCostoPromedio = async (req, res, next) => {
 };
 
 
-// const obtenerCostoPromedio = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId, totalKg } = req.body;
-
-//     if (!fechaDesde || !fechaHasta || !sucursalId || !totalKg) {
-//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
-//     }
-
-//     const ordenes = await Orden.findAll({
-//       where: {
-//         fecha: {
-//           [Op.between]: [fechaDesde, fechaHasta],
-//         },
-//         sucursal_id: sucursalId,
-//       },
-//       include: [
-//         {
-//           model: Producto,
-//           as: "Productos",
-//           where: {
-//             categoria_producto: "bovino",
-//           },
-//           attributes: ["kg", "costo"],
-//         },
-//       ],
-//     });
-
-//     let sumaCostoTotal = 0;
-//     ordenes.forEach((orden) => {
-//       orden.Productos.forEach((producto) => {
-//         const kg = parseFloat(producto.kg) || 0;
-//         const costo = parseFloat(producto.costo) || 0;
-//         sumaCostoTotal += kg * costo;
-//       });
-//     });
-
-//     const costoPromedio = sumaCostoTotal / parseFloat(totalKg || 1);
-
-//     res.json({ costoPromedio });
-//   } catch (error) {
-//     console.error("Error al calcular costo promedio:", error);
-//     next(error);
-//   }
-// };
-
 const obtenerCostoVacunoTotal = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -617,92 +619,6 @@ const obtenerCostoVacunoTotal = async (req, res, next) => {
 };
 
 
-// const obtenerCostoVacunoTotal = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     if (!fechaDesde || !fechaHasta || !sucursalId) {
-//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
-//     }
-
-//     const ordenes = await Orden.findAll({
-//       where: {
-//         fecha: {
-//           [Op.between]: [fechaDesde, fechaHasta],
-//         },
-//         sucursal_id: sucursalId,
-//       },
-//       include: [
-//         {
-//           model: Producto,
-//           as: "Productos",
-//           where: {
-//             categoria_producto: "bovino",
-//           },
-//           attributes: ["kg", "costo"],
-//         },
-//       ],
-//     });
-
-//     let costoTotalVacuno = 0;
-//     ordenes.forEach((orden) => {
-//       orden.Productos.forEach((producto) => {
-//         const kg = parseFloat(producto.kg) || 0;
-//         const costo = parseFloat(producto.costo) || 0;
-//         costoTotalVacuno += kg * costo;
-//       });
-//     });
-
-//     res.json({ costoTotalVacuno });
-//   } catch (error) {
-//     console.error("Error al obtener costo vacuno total:", error);
-//     next(error);
-//   }
-// };
-
-
-// const obtenerCostoPorcinoTotal = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     if (!fechaDesde || !fechaHasta || !sucursalId) {
-//       return res.status(400).json({ error: "Faltan parámetros requeridos." });
-//     }
-
-//     const ordenes = await Orden.findAll({
-//       where: {
-//         fecha: {
-//           [Op.between]: [fechaDesde, fechaHasta],
-//         },
-//         sucursal_id: sucursalId,
-//       },
-//       include: [
-//         {
-//           model: Producto,
-//           as: "Productos",
-//           where: {
-//             categoria_producto: "porcino",
-//           },
-//           attributes: ["kg", "costo"],
-//         },
-//       ],
-//     });
-
-//     let costoTotalPorcino = 0;
-//     ordenes.forEach((orden) => {
-//       orden.Productos.forEach((producto) => {
-//         const kg = parseFloat(producto.kg) || 0;
-//         const costo = parseFloat(producto.costo) || 0;
-//         costoTotalPorcino += kg * costo;
-//       });
-//     });
-
-//     res.json({ costoTotalPorcino });
-//   } catch (error) {
-//     console.error("Error al obtener costo porcino total:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerCostoPorcinoTotal = async (req, res, next) => {
   try {
@@ -772,10 +688,6 @@ const generarCodigoUnico = async () => {
 
 const crearOrdenesDesdeExcel = async (req, res, next) => {
   try {
-    console.log("== Iniciando crearOrdenesDesdeExcel ==");
-    console.log("req.file:", req.file);
-    console.log("req.body:", req.body);
-
     if (!req.file) {
       return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
     }
@@ -783,22 +695,19 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
     const { categoria, subcategoria } = req.body;
 
     if (!categoria || !subcategoria) {
-      console.warn("Faltan datos en el body:", { categoria, subcategoria });
       return res.status(400).json({ mensaje: "Faltan 'categoria' o 'subcategoria' en el body." });
     }
 
-    console.log("Leyendo archivo Excel:", req.file.path);
     const workbook = xlsx.readFile(req.file.path);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(sheet);
-    console.log("Filas leídas del Excel:", data.length);
 
     const camposEsperados = ["fecha", "sucursaldestino_codigo", "tropa", "kg", "costo"];
     const errores = [];
 
     for (let i = 0; i < data.length; i++) {
       const fila = data[i];
-       for (const campo of camposEsperados) {
+      for (const campo of camposEsperados) {
         if (!fila[campo]) {
           errores.push(`Fila ${i + 2} sin campo obligatorio: ${campo}`);
         }
@@ -806,14 +715,13 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
     }
 
     if (errores.length > 0) {
-      console.error("Errores encontrados en el archivo:", errores);
       if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       return res.status(400).json({ mensaje: "Errores en el archivo", errores });
     }
 
     // Agrupar por fecha+codigoSucursal
     const productosPorGrupo = {};
-    data.forEach((item, idx) => {
+    data.forEach((item) => {
       const fecha = convertirFechaExcel(item.fecha);
       const clave = `${fecha}_${item.sucursaldestino_codigo}`;
       if (!productosPorGrupo[clave]) {
@@ -821,52 +729,38 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
       }
       productosPorGrupo[clave].push({ ...item, fechaConvertida: fecha });
     });
-    console.log("Grupos generados:", Object.keys(productosPorGrupo).length);
 
     const ordenesCreadas = [];
 
     for (const clave in productosPorGrupo) {
       const grupo = productosPorGrupo[clave];
-      console.log("Procesando grupo:", clave, "Cantidad filas:", grupo.length);
-
       const { fechaConvertida, sucursaldestino_codigo } = grupo[0];
       const codigoSucursal = String(sucursaldestino_codigo).trim();
 
       const sucursal = await Sucursal.findOne({ where: { codigo: codigoSucursal } });
-      if (!sucursal) {
-        console.warn("Sucursal no encontrada para código:", codigoSucursal);
-        continue;
-      }
-      console.log("Sucursal encontrada:", sucursal.id, sucursal.nombre);
+      if (!sucursal) continue;
 
       let peso_total = 0;
       const productos = [];
 
       for (const fila of grupo) {
-        try {
-          const codigo = await generarCodigoUnico();
-          console.log("Generando producto con código:", codigo);
+        const codigo = await generarCodigoUnico();
 
-          const producto = await Producto.create({
-            categoria_producto: categoria,
-            subcategoria: subcategoria,
-            costo: parseFloat(fila.costo),
-            kg: parseFloat(fila.kg),
-            tropa: fila.tropa.toString(),
-            sucursal_id: sucursal.id,
-            fecha: fila.fechaConvertida,
-            codigo_de_barra: codigo,
-            num_media: codigo,
-          });
+        const producto = await Producto.create({
+          categoria_producto: categoria,
+          subcategoria: subcategoria,
+          costo: parseFloat(fila.costo),
+          kg: parseFloat(fila.kg),
+          tropa: fila.tropa.toString(),
+          sucursal_id: sucursal.id,
+          fecha: fila.fechaConvertida,
+          codigo_de_barra: codigo,
+          num_media: codigo,
+        });
 
-          productos.push(producto);
-          peso_total += parseFloat(fila.kg);
-        } catch (e) {
-          console.error("Error al crear producto:", e, "Fila:", fila);
-        }
+        productos.push(producto);
+        peso_total += parseFloat(fila.kg);
       }
-
-      console.log(`Total productos creados en grupo ${clave}:`, productos.length);
 
       const nuevaOrden = await Orden.create({
         cantidad_total: productos.length,
@@ -874,7 +768,6 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
         sucursal_id: sucursal.id,
         fecha: grupo[0].fechaConvertida,
       });
-      console.log("Orden creada:", nuevaOrden.id);
 
       await Promise.all(
         productos.map(async (p) => {
@@ -893,7 +786,6 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
 
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
-    console.log("Órdenes creadas:", ordenesCreadas.length);
     return res.status(200).json({
       mensaje: "Órdenes y productos creados correctamente.",
       ordenes: ordenesCreadas,
@@ -902,10 +794,87 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
   } catch (error) {
     console.error("Error en crearOrdenesDesdeExcel:", error);
     if (fs.existsSync(req.file?.path)) fs.unlinkSync(req.file.path);
-    return res.status(500).json({ mensaje: "Error al procesar archivo Excel.", detalle: error.message });
+    return res.status(500).json({ mensaje: "Error al procesar archivo Excel." });
   }
 };
 
+// NUEVO: crearOrdenCerdo
+const crearOrdenCerdo = async (req, res, next) => {
+  try {
+    const {
+      products = [],
+      peso_total,
+      cantidad_total,
+      selectedBranchId,
+      fecha,
+    } = req.body;
+
+    // 1. Crear la orden
+    const nuevaOrden = await Orden.create({
+      peso_total,
+      cantidad_total,
+      sucursal_id: selectedBranchId,
+      fecha: fecha, // YYYY-MM-DD
+    });
+
+    const orden_id = nuevaOrden.id;
+
+    // 2. Crear los productos en la BD asociados a esa orden
+    const productosCreados = await Promise.all(
+      products.map(async (p, idx) => {
+        // Igual que en crearVentaCerdo: generamos un codigo_de_barra único
+        // para esquivar la restricción UNIQUE en la tabla Producto.
+        // num_media queda tal cual vino.
+        const uniqueCodigoBarra = `${p.num_media || "CERDO"}-${Date.now()}-${idx}`;
+
+        const nuevoProd = await Producto.create({
+          categoria_producto: "porcino",
+          subcategoria: "cerdo",
+
+          // lo que vos cargaste manualmente
+          num_media: p.num_media || "",
+
+          // valor único sintético para no violar UNIQUE
+          codigo_de_barra: uniqueCodigoBarra,
+
+          garron: p.garron || null,
+
+          // en orden cerdo precio no se usa todavía
+          precio: 0,
+
+          // costo fijo 0 para cerdo (tu modelo lo marca NOT NULL)
+          costo: 0,
+
+          kg: p.kg || 0,
+          tropa: p.tropa || "",
+
+          // esta mercadería está siendo enviada a la sucursal destino
+          sucursal_id: selectedBranchId,
+
+          fecha: fecha,
+
+          // relación con la orden
+          orden_id: orden_id,
+
+          // lo demás que no aplica en orden cerdo
+          venta_id: null,
+          cliente_id: null,
+          ingreso_id: null,
+        });
+
+        return nuevoProd;
+      })
+    );
+
+    // 3. Devolver respuesta
+    res.json({
+      nuevaOrden,
+      productosCreados,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 export {
@@ -923,5 +892,6 @@ export {
   obtenerCostoVacunoTotal,
   obtenerCostoPorcinoTotal,
   crearOrdenesDesdeExcel,
-  obtenerProductosFiltradosOrdenes
+  obtenerProductosFiltradosOrdenes,
+  crearOrdenCerdo
 };
