@@ -135,35 +135,13 @@ router.use(authRouter);
 
 
 router.use(tablasRouter);
-
-// 🔐 A partir de acá, todo autenticado:
-router.use(JWTAuth, attachPermissions);
-
-router.use(indexRouter);
-router.use(meRouter);
-router.use(agendaRouter);
-router.use(usuariosRouter);
-router.use(rolesRouter)
-router.use(sucursalesRouter);
-router.use(mantenimientoRouter);
-router.use(mantenimientoPreventivoRouter);
-router.use(ordenMantenimientoRouter);
-router.use(revisionItemRouter);
-router.use(itemEquipoRouter);
+router.use(syncRouter);
+router.use(registroPrecioRouter);
 router.use(ventasRindeRouter);
-router.use(rindeRouter);
-router.use(ingresosRouter);
 router.use(infoCajaRouter);
 router.use(mensajeRouter);
-router.use(scheduleRouter);
-router.use(equipoRouter);
-router.use(categoriaEquipoRouter);
-
 router.use(ventaStaticsRouter);
-router.use(syncRouter);
-
 router.use(auditoriaRouter);
-router.use(registroPrecioRouter);
 router.use(datosEmpleadoRouter);
 router.use(turnosRouter);
 router.use(jornadasRouter);
@@ -181,6 +159,26 @@ router.use(documentosRouter);
 router.use(documentosUploadRouter);
 router.use(proyeccionConfigRouter);
 router.use(proyeccionRouter);
+router.use(cierreZIvaRouter);
+
+// 🔐 A partir de acá, todo autenticado:
+router.use(JWTAuth, attachPermissions);
+router.use(indexRouter);
+router.use(meRouter);
+router.use(agendaRouter);
+router.use(usuariosRouter);
+router.use(rolesRouter)
+router.use(sucursalesRouter);
+router.use(mantenimientoRouter);
+router.use(mantenimientoPreventivoRouter);
+router.use(ordenMantenimientoRouter);
+router.use(revisionItemRouter);
+router.use(itemEquipoRouter);
+router.use(rindeRouter);
+router.use(ingresosRouter);
+router.use(scheduleRouter);
+router.use(equipoRouter);
+router.use(categoriaEquipoRouter);
 
 //COMUN
 router.use(bancoRouter);
@@ -209,8 +207,6 @@ router.use(tipoComprobanteRouter);
 // router.use(tipoComprobanteRouter);
 router.use(tipoTarjetaRouter);
 // router.use(tipoTarjetaRouter);
-
-
 //CONCILIACION
 router.use(criterioRouter);
 // router.use(criterioRouter);
@@ -228,7 +224,7 @@ router.use(registroHaciendaRouter); // 🔓 Ruta libre
 // router.use(registroHaciendaRouter);
 
 //IVA
-router.use(cierreZIvaRouter);
+
 // router.use(cierreZIvaRouter); // 🔐 Ruta protegida
 router.use(comprobanteEgresoRouter);
 // router.use(comprobanteEgresoRouter);
