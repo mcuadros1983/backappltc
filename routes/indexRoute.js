@@ -4,6 +4,7 @@ import { attachPermissions } from "../middleware/attachPermissions.js";
 import meRouter from "./auth/meRouter.js";
 import * as indexController from "../controllers/gmedias/indexController.js";
 import authRouter from "./auth/authRoute.js";
+import tablasRouter from "./tablas/tablasRoute.js";
 import clientesRouter from "./gmedias/clientesRoute.js";
 import cobranzasRouter from "./gmedias/cobranzasRoute.js";
 import cuentasCorrientesRouter from "./gmedias/cuentasCorrientesRoute.js";
@@ -20,7 +21,6 @@ import rolesRouter from "./auth/rolesRoute.js";
 import ventasRindeRouter from "./rinde/ventasRindeRoute.js"
 import infoCajaRouter from "./caja/infoCajaRoute.js";
 import rindeRouter from "./rinde/rindeRoute.js";
-import tablasRouter from "./tablas/tablasRoute.js";
 import equipoRouter from "./mantenimiento/equipoRoute.js";
 import categoriaEquipoRouter from "./mantenimiento/categoriaEquipoRoute.js";
 import mantenimientoRouter from "./mantenimiento/mantenimientoRoute.js";
@@ -133,6 +133,9 @@ const indexRouter = Router();
 indexRouter.get("/", JWTAuth, indexController.index);
 router.use(authRouter);
 
+
+router.use(tablasRouter);
+
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
 
@@ -149,7 +152,6 @@ router.use(revisionItemRouter);
 router.use(itemEquipoRouter);
 router.use(ventasRindeRouter);
 router.use(rindeRouter);
-router.use(tablasRouter);
 router.use(ingresosRouter);
 router.use(infoCajaRouter);
 router.use(mensajeRouter);
