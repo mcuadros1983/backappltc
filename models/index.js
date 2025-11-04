@@ -24,7 +24,7 @@ import ConciliacionRegistroBanco from "./conciliacion/registrobanco.js";
 
 // Módulo: sueldoempleado
 import SueldoEmpleado from "./sueldoempleado/sueldoempleado.js";
-import AdelantoEmpleado from "./sueldoempleado/AdelantoEmpleado.js";
+import AdelantoEmpleado from "./sueldoempleado/adelantoempleado.js";
 
 // Módulo: iva
 import ComprobanteEgreso from "./iva/comprobanteegreso.js";
