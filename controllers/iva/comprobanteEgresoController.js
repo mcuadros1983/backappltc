@@ -4,7 +4,6 @@ import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancoteso
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import MovimientoCtaCteProveedor from "../../models/tesoreria/movimientoctacteproveedor.js";
-import MovimientoCtaCteProveedorAplic from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
 import { sequelize } from "../../config/database.js"; // <-- importa la instancia
 import GastoEstimado from "../../models/tesoreria/gastoestimado.js";
@@ -12,7 +11,6 @@ import GastoEstimadoInstancia from "../../models/tesoreria/gastoestimadoinstanci
 import GastoEstimadoPago from "../../models/tesoreria/gastoestimadopago.js";
 import { Op, } from "sequelize";
 import Hacienda from "../../models/gmedia/hacienda.js";
-import RegistroHacienda from "../../models/gmedia/registrohacienda.js";
 
 // Crear nuevo comprobante de egreso
 export const crearComprobanteEgreso = async (req, res) => {
@@ -23,16 +21,6 @@ export const crearComprobanteEgreso = async (req, res) => {
     res.status(500).json({ error: 'Error al crear comprobante de egreso', detalle: error.message });
   }
 };
-
-// // Listar todos
-// export const listarComprobantesEgreso = async (req, res) => {
-//   try {
-//     const lista = await ComprobanteEgreso.findAll();
-//     res.status(200).json(lista);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error al listar comprobantes de egreso' });
-//   }
-// };
 
 // Listar todos
 export const listarComprobantesEgreso = async (req, res) => {
@@ -59,84 +47,6 @@ export const obtenerComprobanteEgresoPorId = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener el comprobante de egreso' });
   }
 };
-
-// // Actualizar
-// export const actualizarComprobanteEgreso = async (req, res) => {
-//   try {
-//     const item = await ComprobanteEgreso.findByPk(req.params.id);
-//     if (!item) return res.status(404).json({ error: 'Comprobante de egreso no encontrado' });
-//     await item.update(req.body);
-//     res.status(200).json(item);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Error al actualizar el comprobante de egreso' });
-//   }
-// };
-
-// import { Hacienda } from '../models';
-
-// export const actualizarComprobanteEgreso = async (req, res) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     const id = Number(req.params.id);
-//     const item = await ComprobanteEgreso.findByPk(id, { transaction: t });
-//     if (!item) {
-//       await t.rollback();
-//       return res.status(404).json({ error: 'Comprobante de egreso no encontrado' });
-//     }
-
-//     const nuevoHaciendaId = req.body.hasOwnProperty('hacienda_id')
-//       ? (req.body.hacienda_id ? Number(req.body.hacienda_id) : null)
-//       : (item.hacienda_id ?? null);
-//     const viejoHaciendaId = item.hacienda_id ? Number(item.hacienda_id) : null;
-
-//     // Actualizar comprobante primero
-//     await item.update(req.body, { transaction: t });
-
-//     // Si cambió la hacienda, sincronizar espejo en Hacienda
-//     const cambioHacienda = (viejoHaciendaId || null) !== (nuevoHaciendaId || null);
-//     if (cambioHacienda) {
-//       // Desvincular la anterior (si había)
-//       if (viejoHaciendaId) {
-//         const hacVieja = await Hacienda.findByPk(viejoHaciendaId, { transaction: t });
-//         if (hacVieja) {
-//           await hacVieja.update(
-//             {
-//               comprobante_id: null,
-//               // estado: 'disponible', // opcional
-//             },
-//             { transaction: t }
-//           );
-//         }
-//       }
-
-//       // Vincular la nueva (si viene)
-//       if (nuevoHaciendaId) {
-//         const hacNueva = await Hacienda.findByPk(nuevoHaciendaId, { transaction: t });
-//         if (!hacNueva) throw new Error('Hacienda nueva no encontrada');
-
-//         // (opcional) Validaciones de coherencia
-//         // if (hacNueva.empresa_id && item.empresa_id && Number(hacNueva.empresa_id) !== Number(item.empresa_id)) throw new Error("Hacienda de otra empresa");
-//         // if (item.proveedor_id && hacNueva.proveedor_id && Number(hacNueva.proveedor_id) !== Number(item.proveedor_id)) throw new Error("Hacienda de otro proveedor");
-//         // if (hacNueva.estado && hacNueva.estado !== 'disponible') throw new Error("Hacienda no disponible");
-
-//         await hacNueva.update(
-//           {
-//             comprobante_id: item.id,
-//             // estado: 'usada', // opcional
-//           },
-//           { transaction: t }
-//         );
-//       }
-//     }
-
-//     await t.commit();
-//     return res.status(200).json(item);
-//   } catch (error) {
-//     await t.rollback();
-//     console.error('❌ actualizarComprobanteEgreso:', error);
-//     return res.status(500).json({ error: error.message || 'Error al actualizar el comprobante de egreso' });
-//   }
-// };
 
 export const actualizarComprobanteEgreso = async (req, res) => {
   const t = await sequelize.transaction();
@@ -189,10 +99,6 @@ export const actualizarComprobanteEgreso = async (req, res) => {
           throw new Error('La Hacienda ya está vinculada a otro comprobante');
         }
 
-        // (Opcional) Validar empresa/proveedor coherentes:
-        // if (hacNueva.empresa_id && comp.empresa_id && Number(hacNueva.empresa_id) !== Number(comp.empresa_id)) throw new Error("Hacienda de otra empresa");
-        // if (comp.proveedor_id && hacNueva.proveedor_id && Number(hacNueva.proveedor_id) !== Number(comp.proveedor_id)) throw new Error("Hacienda de otro proveedor");
-
         await hacNueva.update({ comprobante_id: comp.id }, { transaction: t });
       }
     }
@@ -212,73 +118,6 @@ export const actualizarComprobanteEgreso = async (req, res) => {
 };
 
 
-// Eliminar
-// Controller: eliminar comprobante de egreso (sólo estado IMPAGA)
-// Borra también su Orden de Pago y el/los movimientos de CtaCte (cargo) asociados.
-// export const eliminarComprobanteEgreso = async (req, res) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     const id = Number(req.params.id || 0);
-//     if (!id) throw new Error("ID inválido");
-
-//     // 1) Traer comprobante con lock
-//     const comp = await ComprobanteEgreso.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
-//     if (!comp) {
-//       await t.rollback();
-//       return res.status(404).json({ error: "Comprobante de egreso no encontrado" });
-//     }
-
-//     // 2) Validar estado IMPAGA
-//     const estado = String(comp.estadopago ?? comp.estado ?? "").trim().toLowerCase();
-//     if (estado !== "impaga") {
-//       await t.rollback();
-//       return res.status(400).json({ error: "Sólo se puede eliminar un comprobante en estado IMPAGA" });
-//     }
-
-//     // 3) Por seguridad: confirmar que no haya pagos directos remanentes ni aplicaciones
-//     const compId = comp.id;
-
-//     // Aplicaciones contra cargos del comprobante
-//     const cargos = await MovimientoCtaCteProveedor.findAll({
-//       where: { comprobanteegreso_id: compId, tipo: "cargo" },
-//       attributes: ["id"],
-//       transaction: t,
-//       lock: t.LOCK.UPDATE,
-//     });
-
-//     const cargoIds = cargos.map(c => c.id);
-//     // 5) Eliminar movimientos de CtaCte (cargos) del comprobante
-//     if (cargoIds.length) {
-//       await MovimientoCtaCteProveedor.destroy({
-//         where: { id: { [Op.in]: cargoIds } },
-//         transaction: t,
-//       });
-//     }
-
-//     // 6) Eliminar Orden de Pago si existe (los comprobantes impagos suelen crear una OP)
-//     if (comp.ordenpago_id) {
-//       const op = await OrdenPago.findByPk(comp.ordenpago_id, { transaction: t, lock: t.LOCK.UPDATE });
-//       if (op) {
-//         // Por seguridad, verificar que no tenga pagos bancarios/caja colgados sin comp_id (no debería si está impaga)
-//         // Si tu modelo puede tener “parejas bancarias” u otros vínculos, limpiarlos aquí.
-//         await op.destroy({ transaction: t });
-//       }
-//     }
-
-//     // 7) Eliminar el comprobante
-//     await comp.destroy({ transaction: t });
-
-//     await t.commit();
-//     return res.status(200).json({
-//       mensaje: "Comprobante de egreso y vínculos eliminados correctamente",
-//       eliminado: { comprobanteegreso_id: compId, ordenpago_id: comp.ordenpago_id || null, cargos_eliminados: cargoIds.length }
-//     });
-//   } catch (error) {
-//     await t.rollback();
-//     console.error("❌ eliminarComprobanteEgreso:", error);
-//     return res.status(500).json({ error: error.message || "Error al eliminar el comprobante de egreso" });
-//   }
-// };
 
 export const eliminarComprobanteEgreso = async (req, res) => {
   const t = await sequelize.transaction();

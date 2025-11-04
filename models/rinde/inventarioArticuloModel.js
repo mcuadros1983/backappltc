@@ -1,6 +1,6 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../../config/database.js";
-// import Inventario from "./Local_Inventario.js";
+
 
 const InventarioArticulo = sequelize.define(
   "Inventario_articulo",

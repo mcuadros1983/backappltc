@@ -9,22 +9,15 @@ import CuentaCorriente from "../../models/gmedias/cuentaCorrienteModel.js";
 import Cobranza from "../../models/gmedias/cobranzaModel.js";
 import DetalleCobranza from "../../models/gmedias/detalleCobranzaModel.js";
 import ComprobanteEgreso from "../../models/iva/comprobanteegreso.js";
-import MovCtaCteProvAplic from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
 import GastoEstimadoPago from "../../models/tesoreria/gastoestimadopago.js";
 import GastoEstimadoInstancia from "../../models/tesoreria/gastoestimadoinstancia.js";
 import MovimientoCtaCteProveedorAplic from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import RetiroTesoreria from "../../models/tesoreria/retirotesoreria.js";
-// ⬇️ Agregar este import junto con el resto de modelos
 import PagoSueldoEmpleado from "../../models/sueldoempleado/pagosueldoempleado.js";
 
 
-
-// ⚠️ Si tenés un modelo para "formas de pago", podés importarlo y buscar “caja/efectivo” por descripción.
-// import FormaPagoTesoreria from "../../models/tesoreria/formaPagoTesoreriaModel.js";
-
-// Helper (opcional): normaliza string
 const norm = (s) => String(s || "").trim().toLowerCase();
 
 /**
@@ -114,26 +107,7 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
     // ===== Resolver formacobro_id (si no viene)
     let formaCobroId = formacobro_id ?? null;
 
-    // Si tenés la tabla de formas de pago, podés buscar “caja” o “efectivo”.
-    // if (!formaCobroId) {
-    //   const fp = await FormaPagoTesoreria.findOne({
-    //     where: sequelize.where(
-    //       sequelize.fn("LOWER", sequelize.col("descripcion")),
-    //       "LIKE",
-    //       "%caja%"
-    //     ),
-    //     transaction: t
-    //   }) || await FormaPagoTesoreria.findOne({
-    //     where: sequelize.where(
-    //       sequelize.fn("LOWER", sequelize.col("descripcion")),
-    //       "LIKE",
-    //       "%efectivo%"
-    //     ),
-    //     transaction: t
-    //   });
-    //   if (fp) formaCobroId = fp.id;
-    // }
-    // Si no hay modelo de formas de pago, exigimos que venga en el body:
+        // Si no hay modelo de formas de pago, exigimos que venga en el body:
     if (!formaCobroId) {
       await t.rollback();
       return res.status(400).json({ error: "formacobro_id es requerido (forma de cobro Caja/Efectivo)" });

@@ -11,7 +11,7 @@ import EgresoCaja from "./tesoreria/egresocaja.js";
 
 // Módulo: tesoreria
 import CategoriaEgreso from "./tesoreria/categoriaEgreso.js";
-import CategoriaIngreso from "./tesoreria/categoriaEgreso.js";
+import CategoriaIngreso from "./tesoreria/categoriaIngreso.js";
 
 // Módulo: comun
 import Banco from "./comun/banco.js";

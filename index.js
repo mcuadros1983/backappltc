@@ -17,8 +17,6 @@ import "./libs/configuracionInicial.js";
 import { WebSocketServer } from "ws"; // Importar WebSocket
 import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos de WebSocket
 
-// import "./models/detalleVentaModel.js";
-
 async function main() {
   try {
     // await sequelize.authenticate();

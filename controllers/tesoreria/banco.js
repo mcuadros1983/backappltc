@@ -1,11 +1,7 @@
-// ⬇️ NUEVO: dependencias para importar Excel
 import xlsx from "xlsx";
-
-// ⬇️ NUEVO: modelos necesarios para resolver nombres a IDs
-// (⚠️ ajusta las rutas según tu estructura de modelos)
-import Banco from "../../models/tesoreria/banco.js";
-import Proveedor from "../../models/compras/proveedor.js";
-import Proyecto from "../../models/proyectos/proyecto.js";
+import Banco from "../../models/comun/banco.js";
+import Proveedor from "../../models/comun/proveedor.js";
+import Proyecto from "../../models/comun/proyecto.js";
 
 
 

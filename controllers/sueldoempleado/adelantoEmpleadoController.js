@@ -1,7 +1,6 @@
-// controllers/sueldoempleado/adelantoEmpleadoController.js
 import { sequelize } from "../../config/database.js";
 import { Op } from "sequelize";
-import AdelantoEmpleado from "../../models/sueldoempleado/AdelantoEmpleado.js";
+import AdelantoEmpleado from "../../models/sueldoempleado/adelantoempleado.js";
 import MovimientoCajaTesoreria from "../../models/tesoreria/movimientocajatesoreria.js";
 import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancotesoreria.js";
 import CategoriaEgreso from "../../models/tesoreria/categoriaEgreso.js";

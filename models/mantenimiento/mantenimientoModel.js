@@ -5,7 +5,6 @@ import Equipo from './equipoModel.js';
 import Usuario from '../auth/usuarioModel.js';
 import OrdenMantenimiento from './ordenMantenimientoModel.js';
 import MantenimientoPreventivo from './mantenimientoPreventivoModel.js';
-// import Sucursal from './sucursalModel.js'; // Importa el modelo de Sucursal si existe
 
 const Mantenimiento = sequelize.define('Mantenimiento', {
   fecha_inicio: { type: DataTypes.DATEONLY, allowNull: false },

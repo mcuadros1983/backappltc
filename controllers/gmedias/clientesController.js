@@ -1,6 +1,5 @@
 import Cliente from "../../models/gmedias/clienteModel.js";
 import { Venta } from "../../models/gmedias/ventaModel.js";
-// import DetalleVenta from "../models/detalleVentaModel.js";
 import CuentaCorriente from "../../models/gmedias/cuentaCorrienteModel.js";
 import DetalleCuenta from "../../models/gmedias/detalleCuentaCorrienteModel.js";
 import respuesta from "../../utils/respuesta.js";

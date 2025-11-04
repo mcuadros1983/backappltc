@@ -1,6 +1,5 @@
 import { Op } from "sequelize";
-import VentaTotal from "../../models/VentaTotal.js";
-import { obtenerVentasFiltradasLikeController } from "./helpers/ventasRealHelper.js";
+import { obtenerVentasFiltradasLikeController } from "./ventasRealHelper.js";
 // ↑ explicación abajo
 
 // Cantidad de días históricos que usamos para calibrar

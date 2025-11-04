@@ -4,7 +4,6 @@ import DetalleCuentaCorriente from "../../models/gmedias/detalleCuentaCorrienteM
 import respuesta from "../../utils/respuesta.js";
 import Cobranza from "../../models/gmedias/cobranzaModel.js";
 import { Venta } from "../../models/gmedias/ventaModel.js";
-// import DetalleVenta from "../models/detalleVentaModel.js";
 import Producto from "../../models/gmedias/productoModel.js";
 import DetalleCobranza from "../../models/gmedias/detalleCobranzaModel.js";
 

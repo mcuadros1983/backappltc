@@ -1,4 +1,4 @@
-// Calcula recibos (snapshot): fijos vigentes + variables del periodo
+
 import { Op } from "sequelize";
 import { sequelize } from "../../config/database.js";
 import PeriodoLiquidacion from "../../models/sueldoempleado/periodoliquidacion.js";
@@ -10,7 +10,7 @@ import AdicionalVariable from "../../models/sueldoempleado/adicionalvariable.js"
 import AdicionalVariableTipo from "../../models/sueldoempleado/adicionalvariabletipo.js";
 import Recibo from "../../models/sueldoempleado/recibo.js";
 import ReciboItem from "../../models/sueldoempleado/reciboitem.js";
-import AdelantoEmpleado from "../../models/sueldoempleado/AdelantoEmpleado.js";
+import AdelantoEmpleado from "../../models/sueldoempleado/adelantoempleado.js";
 
 async function getFijosVigentes({ empleado_id, fecha }) {
   const asignaciones = await EmpleadoAdicionalFijo.findAll({

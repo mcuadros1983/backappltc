@@ -1,6 +1,3 @@
-// import UsersRepository from '../persistence/repository/usersRepository.js'
-// const UsersRepo = new UsersRepository()
-
 import { obtenerUsuarioPorNombre } from "../controllers/auth/usuariosController.js"; 
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";

@@ -1,4 +1,4 @@
-import CategoriaIngreso from "../../models/tesoreria/categoriaingreso.js";
+import CategoriaIngreso from "../../models/tesoreria/categoriaIngreso.js";
 
 // Crear categoría
 export const crearCategoriaIngreso = async (req, res) => {
