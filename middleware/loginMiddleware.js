@@ -56,10 +56,10 @@ const loginMiddleware = (req, res, next) => {
           // Configuración de la cookie con el token JWT
           res.cookie('jwtToken', token, {
             httpOnly: true,
-            secure: isProd,
-            sameSite: isProd ? 'Strict' : 'Lax',
+            secure: isProd,                    // en Railway es HTTPS, debe ser true
+            sameSite: isProd ? 'none' : 'lax', // para cross-site FE<->BE
             path: '/',
-            ...(isProd && process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+            // ...(isProd && process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
           });
           console.log("✅ Cookie seteada jwtToken:", token.slice(0, 20)); // no imprimir completa
           console.log("✅ Headers que se envían:", res.getHeaders());

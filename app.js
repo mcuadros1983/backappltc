@@ -20,6 +20,7 @@ import "./config/passport.js";              // 👈 NUEVO (side-effect: passport
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1); // importante detrás del proxy de Railway
 
 const __dirname = path.resolve();
 
