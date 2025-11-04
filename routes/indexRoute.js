@@ -160,6 +160,8 @@ router.use(documentosUploadRouter);
 router.use(proyeccionConfigRouter);
 router.use(proyeccionRouter);
 router.use(cierreZIvaRouter);
+router.use(sucursalesRouter);
+router.use(rolesRouter)
 
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
@@ -167,8 +169,6 @@ router.use(indexRouter);
 router.use(meRouter);
 router.use(agendaRouter);
 router.use(usuariosRouter);
-router.use(rolesRouter)
-router.use(sucursalesRouter);
 router.use(mantenimientoRouter);
 router.use(mantenimientoPreventivoRouter);
 router.use(ordenMantenimientoRouter);
