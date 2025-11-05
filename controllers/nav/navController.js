@@ -1,42 +1,17 @@
 // controllers/nav/navController.js
 // =====================================================
-// Catálogo de navegación + Filtro por PERMISOS del usuario.
-// - Si un link tiene "perm" inferido y el usuario NO lo tiene => se oculta.
-// - Si NO se puede inferir permiso, hacemos fallback opcional a "roles" (legacy).
-// - Logs detallados para depurar.
+// Catálogo de navegación basado en TODOS los paths conocidos,
+// filtrado por permisos del usuario (Usuario.permissions).
+// - Si inferPerm(path) NO devuelve permiso => se OCULTA.
+// - Si el usuario NO tiene el permiso requerido => se OCULTA.
+// - Sin NAV_LINKS estático: se genera desde KNOWN_PATHS.
+// - Incluye endpoint /nav/debug-mapping para diagnosticar.
 // =====================================================
 
 import Usuario from "../../models/auth/usuarioModel.js";
 
-/**
- * Catálogo base (podés mantener roles como fallback legacy).
- * NO repetí todo el catálogo para no alargar; podés conservar tu NAV_LINKS actual.
- * Acá pongo una muestra y vos dejás el resto como lo tenías.
- */
-const NAV_LINKS = [
-  // --- Core ---
-  { label: "Dashboard", path: "/dashboard", keywords: ["inicio", "home", "panel"] },
-  { label: "Agenda", path: "/agenda", keywords: ["calendar", "turnos"], roles: [1] },
-  { label: "Registros", path: "/registros", keywords: ["logs", "auditoría"], roles: [1] },
-  { label: "Precios Históricos", path: "/precioshistoricos", keywords: ["historial", "precios"], roles: [1] },
-
-  // --- Gestión de Medias (muestras; conservá el resto igual que tu archivo original) ---
-  { label: "Registro Hacienda", path: "/registrohacienda", keywords: ["hacienda", "faena"], roles: [1, 2, 3] },
-  { label: "Productos", path: "/products", keywords: ["artículos", "mercadería", "productos"], roles: [1, 2] },
-  { label: "Crear Productos", path: "/products/new", keywords: ["productos", "crear"], roles: [1, 2] },
-  { label: "Actualizar Productos", path: "/products_update", keywords: ["actualizar", "productos"], roles: [1, 2] },
-  { label: "Actualizar por Tropa", path: "/products_update_tropa", keywords: ["tropa", "actualizar"], roles: [1, 2] },
-  { label: "Verificar por Tropa", path: "/products/verificar-tropa", keywords: ["verificar", "tropa"], roles: [1, 2] },
-
-  // ... 🔽 pega aquí TODO tu NAV_LINKS original tal cual lo tenías (no lo pierdas)
-];
-
-/**
- * Mapa rápido ruta → permiso. Para no escribir 100 cases, uso reglas por prefijo.
- * Si necesitás algo ultra específico, añadilo al switch.
- */
+/** --- Mapea path → permiso requerido --- */
 function inferPerm(path = "") {
-  // Normalizar
   const p = path.trim().toLowerCase();
 
   // ===== Config =====
@@ -179,64 +154,122 @@ function inferPerm(path = "") {
   if (p === "/ordenes-mantenimiento") return "mantenimiento:view.ordenes";
   if (p === "/mantenimiento-preventivo") return "mantenimiento:view.preventivo";
 
-  // ===== Agenda / Permisos módulos =====
+  // ===== Agenda =====
   if (p === "/agenda") return "agenda:view";
 
-  // Si no matcheó nada, devolveme null → se usará fallback a roles (si los hay).
   return null;
 }
 
-/** Filtro por permisos con fallback opcional a roles */
-function hasAccess(link, userPermsSet, roleId) {
-  const required = inferPerm(link.path);
-  if (required) {
-    const ok = userPermsSet.has(required);
-    if (!ok) {
-      // Log agresivo para ver por qué se oculta
-      console.log(`[nav.hasAccess] NO PERM ${required} ⇒ oculta: ${link.label} (${link.path})`);
-    }
-    return ok;
-  }
-  // Si no hay permiso mapeado, usar fallback legacy por roles (si el link lo trae)
-  if (Array.isArray(link.roles) && link.roles.length > 0) {
-    const ok = roleId ? link.roles.includes(Number(roleId)) : true;
-    if (!ok) {
-      console.log(`[nav.hasAccess] FALLBACK roles no incluye rol_id=${roleId} ⇒ oculta: ${link.label}`);
-    }
-    return ok;
-  }
-  // Sin perm y sin roles → mostrar (o podés decidir ocultar)
-  console.log(`[nav.hasAccess] SIN perm ni roles ⇒ muestra por defecto: ${link.label} (${link.path})`);
-  return true;
+/** --- Lista canónica de rutas conocidas --- */
+const KNOWN_PATHS = [
+  // Config
+  "/users", "/users/new", "/banks", "/empresas", "/frigorificos",
+  "/librosiva", "/librosiva/new", "/compraproyectada", "/ivaproyeccion",
+  "/categorias-animales", "/tarjetas-comunes", "/tarjeta-planes",
+  "/formas-pago-tesoreria", "/imputaciones-contables", "/marcas-tarjeta",
+  "/tipos-tarjeta", "/tipos-comprobantes", "/ptos-venta", "/proveedores",
+  "/proyectos", "/periodoliquidacion", "/sync", "/registros",
+
+  // Gestión de Medias
+  "/registrohacienda",
+  "/sells", "/sells/new",
+  "/products", "/products/new", "/products_update", "/products_update_tropa", "/products/verificar-tropa",
+  "/branches", "/customers", "/customers/new",
+  "/waypays", "/waypays/new",
+  "/accounts/new", "/accounts",
+  "/stock", "/stock/central",
+  "/orders/new", "/orders", "/orders/productsfromexcel",
+  "/receipts/new", "/receipts", "/receipts/products",
+
+  // Estadísticas / Ventas
+  "/precioshistoricos", "/sells/totalcomparativo", "/sells/comparativorangos",
+  "/sells/graficoventas", "/sells/total", "/sells/customers", "/sells/deleted",
+  "/sells/discount", "/sells/articles", "/sells/user", "/sells/kg_branch",
+  "/sells/quantity", "/inventory/stock",
+
+  // RRHH / Asistencia
+  "/dashboardasistencias", "/asistencias/conceptos", "/asistencias/eventos",
+  "/asistencias/listarvacaciones", "/asistencias/planificacion",
+  "/asistencias/horarios", "/asistencias/asignarempleado", "/asistencias/huellanavegador",
+  "/asistencias", "/jornadasasistencias", "/parametrosasistencias",
+
+  // Tesorería
+  "/tesoreria/cajas/apertura", "/tesoreria/movimientos-caja-tesoreria", "/tesoreria/retirossucursales",
+  "/tesoreria/movimientos-banco-tesoreria", "/tesoreria/movimientos-banco-tesoreria-excel",
+  "/tesoreria/movimientos-tarjetas-tesoreria", "/tesoreria/movimientos-echeq-tesoreria",
+  "/gastosestimados", "/importargastosestimados", "/vencimientos",
+
+  // Info de Caja
+  "/info/register", "/info/expenses", "/info/withdrawals", "/info/vouchers",
+  "/info/creditcard", "/info/salaries", "/info/incomes", "/info/cierrez",
+  "/info/balanceaccount", "/info/balanceaccountbranch", "/info/balanceaccountdetail",
+  "/info/detail",
+
+  // Rinde / Inventario
+  "/formulas", "/formulas/create", "/percent", "/percent_update",
+  "/prices", "/prices_update",
+  "/inventory/inventories", "/inventory/create", "/inventory/movements",
+  "/inventory/movementsotherslist", "/inventory/movementsothers",
+  "/inventory/performance", "/inventory/performancelist", "/inventory/performancelistcomparative",
+  "/inventory/performancegeneral", "/inventory/performancegenerallist", "/inventory/performancelistgral",
+  "/inventory/stock",
+
+  // Mantenimiento
+  "/equipos", "/mantenimientos", "/ordenes-mantenimiento", "/mantenimiento-preventivo",
+
+  // Agenda
+  "/agenda",
+];
+
+/** --- Helpers --- */
+
+function labelize(path) {
+  if (!path || path === "/") return "Inicio";
+  const clean = path.replace(/^\//, "");
+  return clean
+    .split("/")
+    .map(s => s.replace(/[-_]/g, " "))
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" / ");
 }
 
-/** Carga permisos del usuario (array) */
+function buildCatalogFromPaths(paths = KNOWN_PATHS) {
+  return paths.map(p => ({
+    label: labelize(p),
+    path: p,
+    keywords: [],
+  }));
+}
+
 async function getUserPerms(userId) {
   if (!userId) return [];
   const u = await Usuario.findByPk(userId, { attributes: ["id", "permissions"] });
-  const perms = Array.isArray(u?.permissions) ? u.permissions : [];
-  return perms;
+  if (!u) return [];
+  const raw = u.permissions;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return []; }
+  }
+  return [];
 }
 
-/** Aplica filtro por permisos/roles + logs */
-async function filterByUser(links, { roleId, userId }) {
-  const perms = await getUserPerms(userId);
-  const permSet = new Set(perms);
-
-  console.log(`[nav.filterByUser] roleId=${roleId} userId=${userId} perms=${perms.length}`);
-  // Contar mapeos de permisos
-  let withPerm = 0;
-  let withoutPerm = 0;
-
-  const filtered = links.filter((l) => {
-    const need = inferPerm(l.path);
-    if (need) withPerm++; else withoutPerm++;
-    return hasAccess(l, permSet, roleId);
+/** Endurecido: si NO hay mapeo en inferPerm => OCULTA */
+function filterByPerms(catalog, permSet) {
+  return catalog.filter((link) => {
+    const need = inferPerm(link.path);
+    if (!need) {
+      console.log(`[nav] OCULTA (sin mapeo inferPerm) ⇒ ${link.path}`);
+      return false;
+    }
+    const ok = permSet.has(need);
+    if (!ok) {
+      console.log(`[nav] OCULTA por permiso faltante "${need}" ⇒ ${link.path}`);
+    }
+    return ok;
   });
-
-  console.log(`[nav.filterByUser] links in=${links.length} | withPerm=${withPerm} | withoutPerm=${withoutPerm} | out=${filtered.length}`);
-  return filtered;
 }
+
+/** --- Endpoints --- */
 
 // GET /nav/links?roleId=1&userId=123
 export const getNavLinks = async (req, res, next) => {
@@ -244,14 +277,17 @@ export const getNavLinks = async (req, res, next) => {
     const roleId = req.query.roleId ? Number(req.query.roleId) : undefined;
     const userId = req.query.userId ? Number(req.query.userId) : undefined;
 
-    console.log(`[GET /nav/links] q.roleId=${roleId} q.userId=${userId}`);
+    console.log(`[GET /nav/links] roleId=${roleId} userId=${userId}`);
 
-    const filtered = await filterByUser(NAV_LINKS, { roleId, userId });
+    const userPerms = await getUserPerms(userId);
+    console.log(`[GET /nav/links] user perms (${userPerms.length})`);
 
-    // Logging de muestra de 5
-    console.log(`[GET /nav/links] returning ${filtered.length} links. sample=`, filtered.slice(0, 5).map(x => x.path));
+    const catalog = buildCatalogFromPaths(KNOWN_PATHS);
+    const links = filterByPerms(catalog, new Set(userPerms))
+      .sort((a, b) => a.label.localeCompare(b.label, "es"));
 
-    return res.status(200).json({ links: filtered });
+    console.log(`[GET /nav/links] return ${links.length} links. sample=`, links.slice(0, 5).map(l => l.path));
+    return res.status(200).json({ links });
   } catch (err) {
     console.error("[GET /nav/links] ERROR:", err);
     return next(err);
@@ -267,46 +303,31 @@ export const searchNav = async (req, res, next) => {
 
     console.log(`[GET /nav/search] q="${q}" roleId=${roleId} userId=${userId}`);
 
-    // Primero, base filtrada por permisos del usuario
-    const base = await filterByUser(NAV_LINKS, { roleId, userId });
+    const userPerms = await getUserPerms(userId);
+    const base = filterByPerms(buildCatalogFromPaths(KNOWN_PATHS), new Set(userPerms));
 
-    // Buscar en el catálogo filtrado
     const byCatalog = q
-      ? base.filter((l) => {
-          const hay =
-            (l.label && l.label.toLowerCase().includes(q)) ||
-            (l.path && l.path.toLowerCase().includes(q)) ||
-            (Array.isArray(l.keywords) && l.keywords.some((k) => k.toLowerCase().includes(q)));
-          return !!hay;
-        })
-      : base.slice(0, 20);
+      ? base.filter((l) =>
+          (l.label && l.label.toLowerCase().includes(q)) ||
+          (l.path && l.path.toLowerCase().includes(q)) ||
+          (Array.isArray(l.keywords) && l.keywords.some(k => k.toLowerCase().includes(q)))
+        )
+      : base.slice(0, 50);
 
-    // Shortcuts personales (si los usás) — también podrías filtrarlos por permiso si guardás "path" y aplicás inferPerm
-    let shortcuts = [];
-    if (userId) {
-      const u = await Usuario.findByPk(userId, { attributes: ["id", "shortcuts"] });
-      if (u && Array.isArray(u.shortcuts)) {
-        const rawShort = q
-          ? u.shortcuts.filter(
-              (s) =>
-                (s.label && s.label.toLowerCase().includes(q)) ||
-                (s.path && s.path.toLowerCase().includes(q))
-            )
-          : u.shortcuts.slice(0, 20);
-
-        // Filtrar shortcuts por permisos también:
-        const permSet = new Set(await getUserPerms(userId));
-        shortcuts = rawShort.filter(s => hasAccess({ path: s.path, label: s.label }, permSet, roleId));
-      }
-    }
-
-    console.log(`[GET /nav/search] results: catalog=${byCatalog.length} shortcuts=${shortcuts.length}`);
     return res.status(200).json({
       query: q,
-      results: { catalog: byCatalog, shortcuts },
+      results: { catalog: byCatalog, shortcuts: [] },
     });
   } catch (err) {
     console.error("[GET /nav/search] ERROR:", err);
     return next(err);
   }
+};
+
+// GET /nav/debug-mapping (diagnóstico)
+export const debugMapping = (req, res) => {
+  const report = KNOWN_PATHS.map(p => ({ path: p, perm: inferPerm(p) }));
+  const missing = report.filter(r => !r.perm).map(r => r.path);
+  console.log("[/nav/debug-mapping] missing inferPerm =>", missing);
+  return res.json({ total: report.length, missing: missing.length, report });
 };
