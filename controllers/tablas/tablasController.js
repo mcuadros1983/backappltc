@@ -217,18 +217,8 @@ const buscarClienteTablaPorNumero = async (req, res, next) => {
 const obtenerEmpleados = async (req, res, next) => {
   try {
     // Obtener todos los empleados
-    const empleados = await EmpleadoTabla.findAll({
-      where: {
-        fechabaja: {
-          [Op.or]: [null, ""]
-        }
-      },
-      order: [
-        ['apellido', 'ASC'], // orden alfabético por apellido
-        ['nombre', 'ASC']    // opcional: orden por nombre si hay apellidos iguales
-      ],
-      // attributes: ['id', 'nombre', 'apellido'] // solo enviamos lo que usa Flutter
-    });
+    const empleados = await EmpleadoTabla.findAll();
+
     // Verificar si la lista de empleados no está vacía
     if (empleados.length > 0) {
       // Array para almacenar los datos modificados
@@ -252,6 +242,7 @@ const obtenerEmpleados = async (req, res, next) => {
       }
 
       // Enviar la respuesta con los empleados y sus clientes
+      console.log("empleados", empleadosConClientes)
       res.json(empleadosConClientes);
     } else {
       // Enviar una respuesta indicando que no se encontraron empleados
@@ -262,6 +253,7 @@ const obtenerEmpleados = async (req, res, next) => {
     next(error);
   }
 };
+
 
 export const getEmpleado = async (req, res) => {
   const { id } = req.params;
