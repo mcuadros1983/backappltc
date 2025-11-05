@@ -20,6 +20,7 @@ const obtenerOrdenes = async (req, res, next) => {
           model: Producto,
           attributes: [
             "id",
+            "categoria_producto",
             "subcategoria",
             "codigo_de_barra",
             "num_media",
@@ -31,7 +32,7 @@ const obtenerOrdenes = async (req, res, next) => {
       ],
     });
 
-    res.json(ordenes);
+    res.json(ordenes); 
   } catch (error) {
     next(error);
   }
