@@ -162,6 +162,7 @@ router.use(proyeccionRouter);
 router.use(cierreZIvaRouter);
 router.use(sucursalesRouter);
 router.use(rolesRouter)
+router.use(rindeRouter);
 
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
@@ -174,7 +175,6 @@ router.use(mantenimientoPreventivoRouter);
 router.use(ordenMantenimientoRouter);
 router.use(revisionItemRouter);
 router.use(itemEquipoRouter);
-router.use(rindeRouter);
 router.use(ingresosRouter);
 router.use(scheduleRouter);
 router.use(equipoRouter);
