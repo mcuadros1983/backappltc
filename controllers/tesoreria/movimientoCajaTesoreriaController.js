@@ -40,6 +40,168 @@ const norm = (s) => String(s || "").trim().toLowerCase();
  *   detallesCobranza?: [{ monto: number, fecha?: "YYYY-MM-DD" }, ...]
  * }
  */
+// export const registrarIngresoCobranzaClientes = async (req, res, next) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const {
+//       empresa_id,
+//       caja_id,
+//       clienteId,
+//       fecha,
+//       descripcion,
+//       montoTotal,
+//       proyecto_id = null,
+//       categoriaingreso_id = null,
+//       observaciones = null,
+//       formacobro_id = null,
+//       idempotencyKey = null,
+//       detallesCobranza = [],
+//     } = req.body || {};
+
+//     // ===== Validaciones mínimas
+//     if (!empresa_id || !caja_id) {
+//       await t.rollback();
+//       return res.status(400).json({ error: "empresa_id y caja_id son requeridos" });
+//     }
+//     if (!clienteId) {
+//       await t.rollback();
+//       return res.status(400).json({ error: "clienteId es requerido" });
+//     }
+//     const monto = Number(montoTotal);
+//     if (!Number.isFinite(monto) || monto <= 0) {
+//       await t.rollback();
+//       return res.status(400).json({ error: "Monto inválido" });
+//     }
+//     if (!descripcion?.trim()) {
+//       await t.rollback();
+//       return res.status(400).json({ error: "descripcion es requerida" });
+//     }
+
+//     // ===== Idempotencia (opcional)
+//     if (idempotencyKey) {
+//       const existente = await MovimientoCajaTesoreria.findOne({
+//         where: { idempotency_key: idempotencyKey, tipo: "ingreso" },
+//         transaction: t,
+//         lock: t.LOCK.UPDATE,
+//       });
+//       if (existente) {
+//         await t.commit();
+//         return res.json({ ok: true, reused: true, movimiento: existente });
+//       }
+//     }
+
+//     // ===== Cliente + CC (lock para concurrencia)
+//     const cliente = await Cliente.findByPk(clienteId, { transaction: t, lock: t.LOCK.UPDATE });
+//     if (!cliente) {
+//       await t.rollback();
+//       return res.status(404).json({ error: "Cliente no encontrado" });
+//     }
+
+//     const [cc] = await CuentaCorriente.findOrCreate({
+//       where: { cliente_id: cliente.id },
+//       defaults: { cliente_id: cliente.id, saldoActual: 0, fecha: fecha || sequelize.literal("CURRENT_DATE") },
+//       transaction: t,
+//       lock: t.LOCK.UPDATE,
+//     });
+
+//     // ===== Resolver formacobro_id (si no viene)
+//     let formaCobroId = formacobro_id ?? null;
+
+//         // Si no hay modelo de formas de pago, exigimos que venga en el body:
+//     if (!formaCobroId) {
+//       await t.rollback();
+//       return res.status(400).json({ error: "formacobro_id es requerido (forma de cobro Caja/Efectivo)" });
+//     }
+
+//     // ===== 1) Crear MovimientoCajaTesoreria (INGRESO)
+//     const movimiento = await MovimientoCajaTesoreria.create(
+//       {
+//         tipo: "ingreso",
+//         descripcion: `COBRANZA - ${cliente.razonsocial || cliente.nombre || "Cliente #" + cliente.id}`,
+//         monto,
+//         fecha: fecha || sequelize.literal("CURRENT_DATE"),
+//         caja_id,
+//         formapago_id: formaCobroId,
+//         referencia_id: null,            // se setea luego si querés
+//         referencia_tipo: "Cobranza",
+//         observaciones: observaciones || null,
+//         categoriaegreso_id: null,
+//         categoriaingreso_id: categoriaingreso_id || null,
+//         imputacioncontable_id: null,    // si tenés lógica para derivar, podés setear acá
+//         idempotency_key: idempotencyKey || null,
+//         proyecto_id: proyecto_id || null,
+//         ordenpago_id: null,
+//       },
+//       { transaction: t }
+//     );
+
+//     // ===== 2) Crear Cobranza vinculada a CC y al movimiento de caja
+//     const cobranza = await Cobranza.create(
+//       {
+//         monto_total: monto,
+//         descripcion_cobro: descripcion?.trim(),
+//         forma_cobro: "Efectivo", // o "efectivo", purely descriptivo
+//         fecha: fecha || sequelize.literal("CURRENT_DATE"),
+//         formacobro_id: formaCobroId,
+//         movimiento_id: movimiento.id,
+//         cuentaCorriente_id: cc.id,
+//       },
+//       { transaction: t }
+//     );
+
+//     // Opcional: actualizar referencia del movimiento con el id de la cobranza (si te sirve).
+//     await movimiento.update(
+//       { referencia_id: cobranza.id, referencia_tipo: "Cobranza" },
+//       { transaction: t }
+//     );
+
+//     // ===== 3) Detalle(s) de Cobranza
+//     if (Array.isArray(detallesCobranza) && detallesCobranza.length > 0) {
+//       for (const det of detallesCobranza) {
+//         const md = Number(det?.monto ?? 0);
+//         if (!Number.isFinite(md) || md <= 0) {
+//           await t.rollback();
+//           return res.status(400).json({ error: "Monto de detalle inválido" });
+//         }
+//         await DetalleCobranza.create(
+//           {
+//             cobranza_id: cobranza.id,
+//             monto_total: md,
+//             fecha: det?.fecha || fecha || sequelize.literal("CURRENT_DATE"),
+//           },
+//           { transaction: t }
+//         );
+//       }
+//     } else {
+//       // Detalle único por el total
+//       await DetalleCobranza.create(
+//         {
+//           cobranza_id: cobranza.id,
+//           monto_total: monto,
+//           fecha: fecha || sequelize.literal("CURRENT_DATE"),
+//         },
+//         { transaction: t }
+//       );
+//     }
+
+//     // ===== 4) Descontar saldo de la cuenta corriente (pago de cliente ↓ saldo)
+//     await cc.decrement("saldoActual", { by: monto, transaction: t });
+//     await cc.reload({ transaction: t });
+
+//     await t.commit();
+
+//     return res.json({
+//       ok: true,
+//       movimiento,
+//       cobranza,
+//       cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
+//     });
+//   } catch (err) {
+//     await t.rollback();
+//     next(err);
+//   }
+// };
+
 export const registrarIngresoCobranzaClientes = async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
@@ -55,7 +217,7 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       observaciones = null,
       formacobro_id = null,
       idempotencyKey = null,
-      detallesCobranza = [],
+      // detallesCobranza ya no se usa
     } = req.body || {};
 
     // ===== Validaciones mínimas
@@ -76,6 +238,10 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       await t.rollback();
       return res.status(400).json({ error: "descripcion es requerida" });
     }
+    if (!formacobro_id) {
+      await t.rollback();
+      return res.status(400).json({ error: "formacobro_id es requerido (Caja/Efectivo u otra forma válida)" });
+    }
 
     // ===== Idempotencia (opcional)
     if (idempotencyKey) {
@@ -90,44 +256,28 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       }
     }
 
-    // ===== Cliente + CC (lock para concurrencia)
-    const cliente = await Cliente.findByPk(clienteId, { transaction: t, lock: t.LOCK.UPDATE });
+    // ===== Obtener cliente (solo para mejorar el texto)
+    const cliente = await Cliente.findByPk(clienteId, { transaction: t });
     if (!cliente) {
       await t.rollback();
       return res.status(404).json({ error: "Cliente no encontrado" });
     }
 
-    const [cc] = await CuentaCorriente.findOrCreate({
-      where: { cliente_id: cliente.id },
-      defaults: { cliente_id: cliente.id, saldoActual: 0, fecha: fecha || sequelize.literal("CURRENT_DATE") },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-
-    // ===== Resolver formacobro_id (si no viene)
-    let formaCobroId = formacobro_id ?? null;
-
-        // Si no hay modelo de formas de pago, exigimos que venga en el body:
-    if (!formaCobroId) {
-      await t.rollback();
-      return res.status(400).json({ error: "formacobro_id es requerido (forma de cobro Caja/Efectivo)" });
-    }
-
-    // ===== 1) Crear MovimientoCajaTesoreria (INGRESO)
+    // ===== Crear solo el movimiento de caja (INGRESO)
     const movimiento = await MovimientoCajaTesoreria.create(
       {
         tipo: "ingreso",
-        descripcion: `COBRANZA - ${cliente.razonsocial || cliente.nombre || "Cliente #" + cliente.id}`,
+        descripcion: `COBRANZA - ${cliente.razonsocial || cliente.nombre || `Cliente #${cliente.id}`} - ${descripcion.trim()}`,
         monto,
         fecha: fecha || sequelize.literal("CURRENT_DATE"),
         caja_id,
-        formapago_id: formaCobroId,
-        referencia_id: null,            // se setea luego si querés
-        referencia_tipo: "Cobranza",
+        formapago_id: formacobro_id,
+        referencia_id: null,           // si luego querés asociar algo, lo podés actualizar
+        referencia_tipo: "Cobranza",   // etiqueta informativa
         observaciones: observaciones || null,
         categoriaegreso_id: null,
-        categoriaingreso_id: categoriaingreso_id || null,
-        imputacioncontable_id: null,    // si tenés lógica para derivar, podés setear acá
+        categoriaingreso_id: categoriaingreso_id || null, // tu frontend la envía obligatoria
+        imputacioncontable_id: null,
         idempotency_key: idempotencyKey || null,
         proyecto_id: proyecto_id || null,
         ordenpago_id: null,
@@ -135,72 +285,14 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       { transaction: t }
     );
 
-    // ===== 2) Crear Cobranza vinculada a CC y al movimiento de caja
-    const cobranza = await Cobranza.create(
-      {
-        monto_total: monto,
-        descripcion_cobro: descripcion?.trim(),
-        forma_cobro: "Efectivo", // o "efectivo", purely descriptivo
-        fecha: fecha || sequelize.literal("CURRENT_DATE"),
-        formacobro_id: formaCobroId,
-        movimiento_id: movimiento.id,
-        cuentaCorriente_id: cc.id,
-      },
-      { transaction: t }
-    );
-
-    // Opcional: actualizar referencia del movimiento con el id de la cobranza (si te sirve).
-    await movimiento.update(
-      { referencia_id: cobranza.id, referencia_tipo: "Cobranza" },
-      { transaction: t }
-    );
-
-    // ===== 3) Detalle(s) de Cobranza
-    if (Array.isArray(detallesCobranza) && detallesCobranza.length > 0) {
-      for (const det of detallesCobranza) {
-        const md = Number(det?.monto ?? 0);
-        if (!Number.isFinite(md) || md <= 0) {
-          await t.rollback();
-          return res.status(400).json({ error: "Monto de detalle inválido" });
-        }
-        await DetalleCobranza.create(
-          {
-            cobranza_id: cobranza.id,
-            monto_total: md,
-            fecha: det?.fecha || fecha || sequelize.literal("CURRENT_DATE"),
-          },
-          { transaction: t }
-        );
-      }
-    } else {
-      // Detalle único por el total
-      await DetalleCobranza.create(
-        {
-          cobranza_id: cobranza.id,
-          monto_total: monto,
-          fecha: fecha || sequelize.literal("CURRENT_DATE"),
-        },
-        { transaction: t }
-      );
-    }
-
-    // ===== 4) Descontar saldo de la cuenta corriente (pago de cliente ↓ saldo)
-    await cc.decrement("saldoActual", { by: monto, transaction: t });
-    await cc.reload({ transaction: t });
-
     await t.commit();
-
-    return res.json({
-      ok: true,
-      movimiento,
-      cobranza,
-      cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
-    });
+    return res.json({ ok: true, movimiento });
   } catch (err) {
     await t.rollback();
     next(err);
   }
 };
+
 
 // Crear movimiento de caja
 export const crearMovimientoCajaTesoreria = async (req, res) => {
