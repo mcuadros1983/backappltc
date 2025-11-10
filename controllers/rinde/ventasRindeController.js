@@ -1126,7 +1126,7 @@ const crearVentasConArticulo = async (req, res, next) => {
     }
 
     // 4) Insertar (sin ignoreDuplicates, no hace falta)
-    const creados = await VentaArticulo.bulkCreate(aInsertar, { validate: true });
+    const creados = await VentasArticulo.bulkCreate(aInsertar, { validate: true });
     return res.status(201).json(creados);
   } catch (error) {
     console.error("Error al crear VentaArticulo:", error);
