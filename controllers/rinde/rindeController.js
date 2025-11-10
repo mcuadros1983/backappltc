@@ -631,7 +631,7 @@ const crearRinde = async (req, res, next) => {
       eficiencia,
     } = req.body;
 
-    const formatToTwoDecimals = (value) => {
+    const formatToTwoDecimals = (value) => { 
       if (value && !isNaN(value)) {
         return parseFloat(value).toFixed(2);
       }

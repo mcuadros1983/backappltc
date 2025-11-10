@@ -1050,86 +1050,171 @@ const obtenerCantidadPorArticulo = async (
 //   }
 // };
 
+
 const crearVentasConArticulo = async (req, res, next) => {
   try {
     const ventas = req.body;
-
-    if (!Array.isArray(ventas)) {
-      return res
-        .status(400)
-        .json({ error: "Los datos deben estar en formato de matriz." });
+    if (!Array.isArray(ventas) || ventas.length === 0) {
+      return res.status(400).json({ error: "Debes enviar un array con ventas." });
     }
 
-    const sucursalId = ventas[0].sucursal_id;
+    // 1) DEDUPE en memoria por (sucursal_id, fechaISO, articuloCodigo)
+    const seen = new Set();
+    const uniqueRows = [];
 
-    // Obtener registros existentes para esa sucursal
-    const ventasExistentes = await VentasArticulo.findAll({
-      where: { sucursal_id: sucursalId },
-      attributes: ["ventaarticuloId", "fecha"],
+    const sucursalesSet = new Set();
+    const fechasSet = new Set();
+    const codigosSet = new Set();
+
+    for (const v of ventas) {
+      if (!v) continue;
+
+      const sucursal_id = Number(v.sucursal_id);
+      const articuloCodigo = String(v.codigo ?? v.articuloCodigo ?? "").trim();
+      const d = new Date(v.fecha);
+      if (!sucursal_id || !articuloCodigo || Number.isNaN(d.getTime())) continue;
+
+      const fechaISO = d.toISOString().slice(0, 10);
+      const key = `${sucursal_id}|${fechaISO}|${articuloCodigo}`;
+      if (seen.has(key)) continue; // evita duplicado dentro del mismo payload
+      seen.add(key);
+
+      sucursalesSet.add(sucursal_id);
+      fechasSet.add(fechaISO);
+      codigosSet.add(articuloCodigo);
+
+      uniqueRows.push({
+        id: null,
+        ventaarticuloId: v.id ?? v.ventaarticuloId ?? null,
+        fecha: fechaISO,
+        sucursal_id,
+        articuloCodigo,
+        articuloDescripcion: String(v.descripcion ?? v.articuloDescripcion ?? "").trim(),
+        cantidad: v.cantidad == null ? 0 : Number.parseFloat(Number(v.cantidad).toFixed(3)),
+        monto_lista: v.preciolista == null ? null : Number(v.preciolista),
+      });
+    }
+
+    if (uniqueRows.length === 0) {
+      return res.status(200).json({ mensaje: "No hay ventas válidas para insertar." });
+    }
+
+    // 2) PREFETCH: existentes en BD que choquen por (sucursal_id, fecha, articuloCodigo)
+    //    (acotamos por los valores presentes en el lote para que sea eficiente)
+    const existentes = await VentasArticulo.findAll({
+      where: {
+        sucursal_id: { [Op.in]: [...sucursalesSet] },
+        fecha: { [Op.in]: [...fechasSet] },
+        articuloCodigo: { [Op.in]: [...codigosSet] },
+      },
+      attributes: ["sucursal_id", "fecha", "articuloCodigo"],
       raw: true,
     });
 
-    // Crear mapa de combinación ID + fecha
-    const mapaVentas = new Map();
-    ventasExistentes.forEach(({ ventaarticuloId, fecha }) => {
-      try {
-        const fechaISO = new Date(fecha).toISOString().split("T")[0];
-        mapaVentas.set(`${ventaarticuloId}_${fechaISO}`, true);
-      } catch (e) {
-        console.warn(
-          `Fecha inválida en BD para ventaarticuloId ${ventaarticuloId}`
-        );
-      }
+    const existentesSet = new Set(
+      existentes.map(e => `${e.sucursal_id}|${e.fecha}|${e.articuloCodigo}`)
+    );
+
+    // 3) Filtrar los que YA existen en la BD
+    const aInsertar = uniqueRows.filter(r => {
+      const k = `${r.sucursal_id}|${r.fecha}|${r.articuloCodigo}`;
+      return !existentesSet.has(k);
     });
 
-    // Armar array de nuevas ventas que no estén duplicadas por ID+fecha
-    const nuevasVentasConArticuloBulk = ventas
-      .map((venta) => {
-        const ventaarticuloId = venta.id;
-        let fechaISO = null;
-
-        try {
-          fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
-        } catch (e) {
-          console.warn(
-            `Fecha inválida recibida para ventaarticuloId ${venta.id}`
-          );
-          return null;
-        }
-
-        const clave = `${ventaarticuloId}_${fechaISO}`;
-        if (!mapaVentas.has(clave)) {
-          return {
-            id: null,
-            ventaarticuloId: ventaarticuloId,
-            fecha: venta.fecha,
-            sucursal_id: venta.sucursal_id,
-            articuloCodigo: venta.codigo,
-            articuloDescripcion: venta.descripcion,
-            cantidad: parseFloat(venta.cantidad.toFixed(3)),
-            monto_lista: venta.preciolista,
-          };
-        }
-        return null;
-      })
-      .filter((venta) => venta !== null);
-
-    if (nuevasVentasConArticuloBulk.length === 0) {
-      return res
-        .status(200)
-        .json({ mensaje: "No hay nuevas ventas con artículo para insertar." });
+    if (aInsertar.length === 0) {
+      return res.status(200).json({ mensaje: "No hay nuevas ventas para insertar." });
     }
 
-    const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
-      nuevasVentasConArticuloBulk
-    );
-    console.log("Registros de VentaArticulo creados exitosamente.");
-    res.status(201).json(nuevasVentasConArticulo);
+    // 4) Insertar (sin ignoreDuplicates, no hace falta)
+    const creados = await VentaArticulo.bulkCreate(aInsertar, { validate: true });
+    return res.status(201).json(creados);
   } catch (error) {
-    console.error("Error al crear los registros de VentaArticulo:", error);
+    console.error("Error al crear VentaArticulo:", error);
     next(error);
   }
 };
+
+
+// const crearVentasConArticulo = async (req, res, next) => {
+//   try {
+//     const ventas = req.body;
+
+//     if (!Array.isArray(ventas)) {
+//       return res
+//         .status(400)
+//         .json({ error: "Los datos deben estar en formato de matriz." });
+//     }
+
+//     const sucursalId = ventas[0].sucursal_id;
+
+//     // Obtener registros existentes para esa sucursal
+//     const ventasExistentes = await VentasArticulo.findAll({
+//       where: { sucursal_id: sucursalId },
+//       attributes: ["ventaarticuloId", "fecha"],
+//       raw: true,
+//     });
+
+//     // Crear mapa de combinación ID + fecha
+//     const mapaVentas = new Map();
+//     ventasExistentes.forEach(({ ventaarticuloId, fecha }) => {
+//       try {
+//         const fechaISO = new Date(fecha).toISOString().split("T")[0];
+//         mapaVentas.set(`${ventaarticuloId}_${fechaISO}`, true);
+//       } catch (e) {
+//         console.warn(
+//           `Fecha inválida en BD para ventaarticuloId ${ventaarticuloId}`
+//         );
+//       }
+//     });
+
+//     // Armar array de nuevas ventas que no estén duplicadas por ID+fecha
+//     const nuevasVentasConArticuloBulk = ventas
+//       .map((venta) => {
+//         const ventaarticuloId = venta.id;
+//         let fechaISO = null;
+
+//         try {
+//           fechaISO = new Date(venta.fecha).toISOString().split("T")[0];
+//         } catch (e) {
+//           console.warn(
+//             `Fecha inválida recibida para ventaarticuloId ${venta.id}`
+//           );
+//           return null;
+//         }
+
+//         const clave = `${ventaarticuloId}_${fechaISO}`;
+//         if (!mapaVentas.has(clave)) {
+//           return {
+//             id: null,
+//             ventaarticuloId: ventaarticuloId,
+//             fecha: venta.fecha,
+//             sucursal_id: venta.sucursal_id,
+//             articuloCodigo: venta.codigo,
+//             articuloDescripcion: venta.descripcion,
+//             cantidad: parseFloat(venta.cantidad.toFixed(3)),
+//             monto_lista: venta.preciolista,
+//           };
+//         }
+//         return null;
+//       })
+//       .filter((venta) => venta !== null);
+
+//     if (nuevasVentasConArticuloBulk.length === 0) {
+//       return res
+//         .status(200)
+//         .json({ mensaje: "No hay nuevas ventas con artículo para insertar." });
+//     }
+
+//     const nuevasVentasConArticulo = await VentasArticulo.bulkCreate(
+//       nuevasVentasConArticuloBulk
+//     );
+//     console.log("Registros de VentaArticulo creados exitosamente.");
+//     res.status(201).json(nuevasVentasConArticulo);
+//   } catch (error) {
+//     console.error("Error al crear los registros de VentaArticulo:", error);
+//     next(error);
+//   }
+// };
 
 // Función para obtener la fecha del último registro para una sucursal específica
 const obtenerUltimaFechaRegistroPorSucursal = async (sucursalId) => {
