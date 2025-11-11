@@ -21,7 +21,7 @@ const obtenerVentasTotales = async (req, res, next) => {
   }
 };
 
-const obtenerVentasFiltradas = async (req, res, next) => { 
+const obtenerVentasFiltradas = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
 
@@ -1588,58 +1588,108 @@ const obtenerKgPorUsuarioFiltradas = async (req, res, next) => {
   }
 };
 
+// const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta } = req.body;
+
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//       articulocodigo: {
+//         [Op.notIn]: ["1005", "1012", "1011"],
+//       },
+//     };
+
+//     const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
+//       where: filters,
+//       attributes: [
+//         "fecha",
+//         "sucursal_id",
+//         "articulocodigo",
+//         [
+//           sequelize.fn("SUM", sequelize.col("total_cantidadpeso")),
+//           "total_cantidadpeso",
+//         ],
+//       ],
+//       group: ["fecha", "sucursal_id", "articulocodigo"],
+//     });
+
+//     // Agrupar los datos por fecha y sucursal
+//     const agrupados = ventasFiltradas.reduce((acc, venta) => {
+//       const key = `${venta.fecha}-${venta.sucursal_id}`;
+//       if (!acc[key]) {
+//         acc[key] = {
+//           fecha: venta.fecha,
+//           sucursal_id: venta.sucursal_id,
+//           total_kg: 0,
+//         };
+//       }
+//       acc[key].total_kg += parseFloat(venta.total_cantidadpeso);
+//       return acc;
+//     }, {});
+
+//     const ventasAgrupadas = Object.values(agrupados);
+
+//     res.json({ ventasFiltradas, ventasAgrupadas });
+//   } catch (error) {
+//     console.error(
+//       "Error al obtener las ventas en kg por sucursal filtradas:",
+//       error
+//     );
+//     next(error);
+//   }
+// };
+
 const obtenerKgPorSucursalFiltradas = async (req, res, next) => {
   try {
-    const { fechaDesde, fechaHasta } = req.body;
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
 
-    const filters = {
-      fecha: {
-        [Op.between]: [fechaDesde, fechaHasta],
-      },
-      articulocodigo: {
-        [Op.notIn]: ["1005", "1012", "1011"],
-      },
+    if (!fechaDesde || !fechaHasta) {
+      return res.status(400).json({ error: "Debe indicar fechaDesde y fechaHasta (YYYY-MM-DD)." });
+    }
+
+    // Armado de filtros
+    const where = {
+      fecha: { [Op.between]: [fechaDesde, fechaHasta] },
+      articuloCodigo: { [Op.notIn]: ["1005", "1012", "1011"] },
     };
 
-    const ventasFiltradas = await VentasArticulosKgPorUsuario.findAll({
-      where: filters,
+    if (sucursalId) {
+      where.sucursal_id = sucursalId; // permite filtrar por una sucursal específica
+    }
+
+    // Sumatoria de KG (cantidad) por sucursal en el rango dado
+    const rows = await VentasArticulo.findAll({
+      where,
       attributes: [
-        "fecha",
         "sucursal_id",
-        "articulocodigo",
-        [
-          sequelize.fn("SUM", sequelize.col("total_cantidadpeso")),
-          "total_cantidadpeso",
-        ],
+        [sequelize.fn("SUM", sequelize.col("cantidad")), "total_cantidadpeso"],
       ],
-      group: ["fecha", "sucursal_id", "articulocodigo"],
+      group: ["sucursal_id"],
+      order: [["sucursal_id", "ASC"]],
+      raw: true, // devuelve objetos planos
     });
 
-    // Agrupar los datos por fecha y sucursal
-    const agrupados = ventasFiltradas.reduce((acc, venta) => {
-      const key = `${venta.fecha}-${venta.sucursal_id}`;
-      if (!acc[key]) {
-        acc[key] = {
-          fecha: venta.fecha,
-          sucursal_id: venta.sucursal_id,
-          total_kg: 0,
-        };
-      }
-      acc[key].total_kg += parseFloat(venta.total_cantidadpeso);
-      return acc;
-    }, {});
+    // Normalización de tipos para el frontend (Number en lugar de string decimal)
+    const ventasFiltradas = rows.map((r) => ({
+      sucursal_id: Number(r.sucursal_id),
+      total_cantidadpeso: Number(r.total_cantidadpeso ?? 0),
+    }));
 
-    const ventasAgrupadas = Object.values(agrupados);
+    // El frontend vuelve a agrupar, pero enviamos también 'ventasAgrupadas' por comodidad
+    const ventasAgrupadas = ventasFiltradas.map((v) => ({
+      sucursal_id: v.sucursal_id,
+      total_kg: v.total_cantidadpeso,
+    }));
 
-    res.json({ ventasFiltradas, ventasAgrupadas });
+    return res.json({ ventasFiltradas, ventasAgrupadas });
   } catch (error) {
-    console.error(
-      "Error al obtener las ventas en kg por sucursal filtradas:",
-      error
-    );
-    next(error);
+    console.error("Error al obtener las ventas en kg por sucursal filtradas:", error);
+    return next(error);
   }
 };
+
 
 const crearCantidadTicketPorUsuario = async (req, res, next) => {
   try {
