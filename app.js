@@ -24,14 +24,47 @@ app.set('trust proxy', 1); // importante detrás del proxy de Railway
 
 const __dirname = path.resolve();
 
+// app.js
+const ALLOWED_ORIGINS = [
+  LOCAL_HOST,
+  process.env.FRONTEND_URL,
+  "http://localhost:3000",
+  // acá podés sumar el dominio real que usás en el celu si es otro
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: LOCAL_HOST,
+    origin: (origin, callback) => {
+      if (!origin) {
+        console.log("[CORS] origin vacío (posible same-origin / móvil). Permitido.");
+        return callback(null, true);
+      }
+
+      console.log("[CORS] origin recibido:", origin);
+
+      if (ALLOWED_ORIGINS.includes(origin)) {
+        console.log("[CORS] origin PERMITIDO:", origin);
+        return callback(null, true);
+      }
+
+      console.warn("[CORS] origin NO permitido:", origin);
+      return callback(new Error("Origen no permitido por CORS: " + origin));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+
+// app.use(
+//   cors({
+//     origin: LOCAL_HOST,
+//     credentials: true,
+//     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+//     allowedHeaders: ["Content-Type", "Authorization"],
+//   })
+// );
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true, parameterLimit: 50000 }));
