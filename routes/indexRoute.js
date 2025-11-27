@@ -163,6 +163,9 @@ router.use(cierreZIvaRouter);
 router.use(sucursalesRouter);
 router.use(rolesRouter)
 router.use(rindeRouter);
+router.use(ordenesRouter);
+router.use(productosRouter);
+router.use(ventasRouter);
 
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
@@ -305,9 +308,7 @@ router.use(cuentasCorrientesRouter);
 router.use(detallesCobranzasRouter);
 router.use(detallesCuentasCorrientesRouter);
 router.use(formasPagoRouter);
-router.use(ordenesRouter);
-router.use(productosRouter);
-router.use(ventasRouter);
+
 
 
 
