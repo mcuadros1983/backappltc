@@ -166,6 +166,7 @@ router.use(rindeRouter);
 router.use(ordenesRouter);
 router.use(productosRouter);
 router.use(ventasRouter);
+router.use(navRouter);
 
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
@@ -300,7 +301,7 @@ router.use(CompraProyectadaRouter);
 router.use(gastoEstimadoRouter);
 router.use(gastoEstimadoReportesRouter);
 router.use(disponiblesRouter);
-router.use(navRouter);
+
 
 router.use(clientesRouter);
 router.use(cobranzasRouter);
