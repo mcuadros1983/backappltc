@@ -19,20 +19,27 @@ export async function listCategorias(req, res) {
 
 // POST /documentos/categorias
 export async function createCategoria(req, res) {
-  console.log("req.body", req.body.nombre.nombre);
   try {
     const { rol_id, id: user_id } = req.user || {};
     if (!isAdmin(rol_id)) {
       return res.status(403).json({ error: "Solo admin puede crear categorías" });
     }
 
-    const { nombre } = req.body.nombre;
-    if (!nombre) {
+    // Puede venir:
+    // - { nombre: "MANUALES" }
+    // - { nombre: { nombre: "MANUALES" } }  (forma vieja)
+    let nombre = req.body?.nombre;
+
+    if (typeof nombre === "object" && nombre !== null) {
+      nombre = nombre.nombre;
+    }
+
+    if (!nombre || typeof nombre !== "string" || !nombre.trim()) {
       return res.status(400).json({ error: "Falta nombre" });
     }
 
     const cat = await DocumentoCategoria.create({
-      nombre,
+      nombre: nombre.trim(),
       activo: true,
       creado_por_usuario_id: user_id || null,
     });
@@ -53,7 +60,12 @@ export async function updateCategoria(req, res) {
     }
 
     const { id } = req.params;
-    const { nombre, activo } = req.body;
+    let { nombre, activo } = req.body;
+
+    // Por si algún cliente viejo aún manda nombre como objeto
+    if (typeof nombre === "object" && nombre !== null) {
+      nombre = nombre.nombre;
+    }
 
     const cat = await DocumentoCategoria.findByPk(id);
     if (!cat) {
@@ -73,7 +85,6 @@ export async function updateCategoria(req, res) {
 }
 
 // DELETE /documentos/categorias/:id
-// soft delete => activo = false
 export async function removeCategoria(req, res) {
   try {
     const { rol_id } = req.user || {};
