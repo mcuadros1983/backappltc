@@ -126,7 +126,7 @@ async function ensureNextMonthlyInstance(instancia, { totalAplicado } = {}) {
 }
 
 //
-export async function aplicarPago(req, res) {
+export async function aplicarPago(req, res) { 
   try {
     const { id } = req.params; // instancia_id
     const {
@@ -147,6 +147,7 @@ export async function aplicarPago(req, res) {
     if (!inst) return res.status(404).json({ error: "Instancia no encontrada" });
     if (inst.anulado) return res.status(400).json({ error: "Instancia anulada" });
 
+    // 1) Registrar pago
     const pago = await GastoEstimadoPago.create({
       gastoestimado_instancia_id: id,
       referencia_tipo,
@@ -158,37 +159,9 @@ export async function aplicarPago(req, res) {
     });
 
     // 2) Recalcular estado / totales de la instancia
-    let resync = await recomputar(id);
+    const resync = await recomputar(id);
     // resync.totalAplicado => suma de pagos de la instancia
     // resync.instancia => instancia con estado actualizado
-
-    // ✅ NUEVO: si es mensual y quedó "parcial", cerrar instancia con el total pagado
-    try {
-      const instAfter = resync?.instancia;
-      if (instAfter) {
-        const plant = await GastoEstimado.findByPk(instAfter.gastoestimado_id);
-
-        const baseOriginal = Number((instAfter.monto_real ?? instAfter.monto_estimado) ?? 0);
-        const totalAplicado = Number(resync.totalAplicado || 0);
-
-        if (
-          plant &&
-          plant.periodicidad === "mensual" &&
-          plant.activo !== false &&
-          totalAplicado > 0 &&
-          totalAplicado < baseOriginal &&
-          instAfter.estado === "parcial"
-        ) {
-          // el monto real del mes pasa a ser lo efectivamente pagado
-          await instAfter.update({ monto_real: totalAplicado });
-
-          // recomputar nuevamente: base = monto_real = totalAplicado => queda "pagado"
-          resync = await recomputar(id);
-        }
-      }
-    } catch (e) {
-      console.error("Cierre automático de instancia mensual parcial:", e);
-    }
 
     // 3) Si pidió cancelar renovación, desactivar la plantilla (mensual)
     let plantillaActualizada = null;
@@ -204,15 +177,17 @@ export async function aplicarPago(req, res) {
       }
     }
 
-    // 4) Actualizar default solo si quedó PAGADO (ahora también aplica cuando cerramos por pago menor)
+    // 4) Si la instancia quedó PAGADA, usamos ese total para actualizar el default de la plantilla
     try {
       const instAfter = resync?.instancia;
       if (instAfter?.estado === "pagado") {
         const plant = await GastoEstimado.findByPk(instAfter.gastoestimado_id);
         if (plant && plant.periodicidad === "mensual") {
+          // Tomamos el total aplicado sobre la instancia (mejor que el último parcial)
           const nuevoDefault = Number(resync.totalAplicado || 0);
           if (nuevoDefault > 0) {
             await plant.update({ monto_estimado_default: nuevoDefault });
+            // por si querés informar este ajuste en la respuesta:
             plantillaActualizada = {
               ...(plantillaActualizada || {}),
               id: plant.id,
@@ -221,6 +196,12 @@ export async function aplicarPago(req, res) {
           }
         }
       }
+
+      // 👉 Si en vez de esperar a que quede “pagado” querés actualizar SIEMPRE con el último pago:
+      // const plant = await GastoEstimado.findByPk(resync.instancia.gastoestimado_id);
+      // if (plant && plant.periodicidad === "mensual") {
+      //   await plant.update({ monto_estimado_default: Number(monto_aplicado) });
+      // }
     } catch (e) {
       console.error("No se pudo actualizar monto_estimado_default de la plantilla:", e);
     }
@@ -228,6 +209,7 @@ export async function aplicarPago(req, res) {
     // 5) Rollover (sólo si NO canceló y quedó pagado)
     let rollover = { created: false };
     if (!cancelar_renovacion && resync?.instancia?.estado === "pagado") {
+      // IMPORTANTE: pasamos totalAplicado para que la próxima instancia pueda usar este valor
       rollover = await ensureNextMonthlyInstance(resync.instancia, { totalAplicado: resync.totalAplicado });
     }
 
