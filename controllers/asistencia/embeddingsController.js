@@ -2,20 +2,69 @@
 import { buildEmbeddingsSnapshot, serializeAndSignSnapshot } from '../../services/embeddingsSnapshot.js';
 import { EmpleadoEmbedding } from '../../models/asistencia/EmpleadoEmbedding.js';
 import Empleado from "../../models/tablas/empleadoModel.js";
+import crypto from "crypto"; 
 
 /** Util interno para parsear booleanos desde query */
 function parseBool(v) {
   return String(v).toLowerCase() === 'true';
 }
 
-// GET /embeddings/snapshot?sucursal_id=1&since=2025-09-01T00:00:00Z&metaOnly=true
+// // GET /embeddings/snapshot?sucursal_id=1&since=2025-09-01T00:00:00Z&metaOnly=true
+// export async function getSnapshot(req, res, next) {
+//   try {
+//     const { sucursal_id, since, metaOnly } = req.query;
+
+//     const snap = await buildEmbeddingsSnapshot({
+//       sucursalId: sucursal_id ? Number(sucursal_id) : null,
+//       updatedSince: since || null,
+//     });
+
+//     if (parseBool(metaOnly)) {
+//       return res.json(snap.meta);
+//     }
+
+//     const payload = { meta: snap.meta, items: snap.items };
+//     const { gz, signature, etag, contentLength } = serializeAndSignSnapshot(payload);
+
+//     // Soporte de cache condicional
+//     const inm = req.headers['if-none-match'];
+//     if (inm && inm === etag) {
+//       return res.status(304).end();
+//     }
+
+//     // res.setHeader('Content-Type', 'application/octet-stream');
+//     res.setHeader('Content-Type', 'application/json');
+//     res.setHeader('Content-Encoding', 'gzip');
+//     res.setHeader('Content-Length', contentLength.toString());
+//     res.setHeader('X-Snapshot-Signature', signature);
+//     res.setHeader('ETag', etag);
+
+//     // Cacheo opcional (según env)
+//     const maxAge = process.env.SNAPSHOT_MAX_AGE
+//       ? Number(process.env.SNAPSHOT_MAX_AGE)
+//       : 0; // segundos
+//     if (maxAge > 0) {
+//       res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+//     }
+
+//     return res.send(gz);
+//   } catch (err) {
+//     next(err);
+//   }
+// }
+
+// GET /embeddings/snapshot?sucursal_id=1&since=...&metaOnly=true&dim=192
 export async function getSnapshot(req, res, next) {
   try {
-    const { sucursal_id, since, metaOnly } = req.query;
+    const { sucursal_id, since, metaOnly, dim } = req.query;
+
+    // ✅ OPCIÓN B: si Flutter no manda dim, asumimos 192
+    const dimNum = dim ? Number(dim) : 192;
 
     const snap = await buildEmbeddingsSnapshot({
       sucursalId: sucursal_id ? Number(sucursal_id) : null,
       updatedSince: since || null,
+      dim: dimNum, // 👈 filtra por dimensión
     });
 
     if (parseBool(metaOnly)) {
@@ -23,30 +72,23 @@ export async function getSnapshot(req, res, next) {
     }
 
     const payload = { meta: snap.meta, items: snap.items };
-    const { gz, signature, etag, contentLength } = serializeAndSignSnapshot(payload);
 
-    // Soporte de cache condicional
-    const inm = req.headers['if-none-match'];
-    if (inm && inm === etag) {
-      return res.status(304).end();
-    }
+    // ✅ ETag sobre el JSON (para 304)
+    const etag = crypto
+      .createHash("sha1")
+      .update(JSON.stringify(payload))
+      .digest("base64");
 
-    // res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Encoding', 'gzip');
-    res.setHeader('Content-Length', contentLength.toString());
-    res.setHeader('X-Snapshot-Signature', signature);
-    res.setHeader('ETag', etag);
+    const inm = req.headers["if-none-match"];
+    if (inm && inm === etag) return res.status(304).end();
 
-    // Cacheo opcional (según env)
-    const maxAge = process.env.SNAPSHOT_MAX_AGE
-      ? Number(process.env.SNAPSHOT_MAX_AGE)
-      : 0; // segundos
-    if (maxAge > 0) {
-      res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
-    }
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("ETag", etag);
 
-    return res.send(gz);
+    const maxAge = process.env.SNAPSHOT_MAX_AGE ? Number(process.env.SNAPSHOT_MAX_AGE) : 0;
+    if (maxAge > 0) res.setHeader("Cache-Control", `public, max-age=${maxAge}`);
+
+    return res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -97,7 +139,13 @@ export async function postEmployeeEmbeddings(req, res, next) {
     const emp = await Empleado.findByPk(empleado_id);
     if (!emp) return res.status(404).json({ error: 'Empleado no existe' });
 
-    // 5) Guardar
+    // 5) Desactivar embeddings anteriores del empleado (para evitar mezcla)
+    await EmpleadoEmbedding.update(
+      { activo: false },
+      { where: { empleado_id } }
+    );
+
+    // 6) Guardar nuevos embeddings
     const rows = await Promise.all(
       vectors.map(v => EmpleadoEmbedding.create({
         empleado_id,
