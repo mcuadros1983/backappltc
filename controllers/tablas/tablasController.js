@@ -1,5 +1,6 @@
 // controllers.js
 import { sequelize } from "../../config/database.js";
+import { Op } from "sequelize";
 import CategoriaTabla from "../../models/tablas/categoriaModel.js";
 import Sucursal from "../../models/gmedias/sucursalModel.js";
 import PrecioTabla from "../../models/tablas/precioModel.js";
@@ -191,6 +192,57 @@ const obtenerClientesPersonaTabla = async (req, res, next) => {
     res.json(clientesPersona);
   } catch (error) {
     console.error("Error al obtener los clientes persona:", error);
+    next(error);
+  }
+};
+
+const buscarClientesPersonaTabla = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    // Evita consultas pesadas si el usuario no escribió nada
+    if (q.length < 2) {
+      return res.json({ rows: [], count: 0 });
+    }
+
+    const where = {
+      [Op.or]: [
+        { apellido: { [Op.iLike]: `%${q}%` } },
+        { nombre: { [Op.iLike]: `%${q}%` } },
+        { numero: { [Op.iLike]: `%${q}%` } },
+        { cuil: { [Op.iLike]: `%${q}%` } },
+      ],
+    };
+
+    const { rows, count } = await ClientePersonaTabla.findAndCountAll({
+      attributes: ["id", "apellido", "nombre", "numero", "cuil"],
+      where,
+      order: [["apellido", "ASC"], ["nombre", "ASC"]],
+      limit,
+      offset,
+    });
+
+    res.json({ rows, count });
+  } catch (error) {
+    console.error("Error al buscar clientes persona:", error);
+    next(error);
+  }
+};
+
+const getClientePersonaTablaById = async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "ID inválido" });
+
+    const row = await ClientePersonaTabla.findByPk(id, {
+      attributes: ["id", "apellido", "nombre", "numero", "cuil"],
+    });
+
+    if (!row) return res.status(404).json({ error: "Cliente no encontrado" });
+    res.json(row);
+  } catch (error) {
     next(error);
   }
 };
@@ -1335,5 +1387,7 @@ export {
   obtenerArticulosPorcentaje,
   eliminarArticuloPorcentaje,
   editarArticuloPorcentaje,
-  buscarClienteTablaPorNumero
+  buscarClienteTablaPorNumero,
+  buscarClientesPersonaTabla,
+  getClientePersonaTablaById,
 };

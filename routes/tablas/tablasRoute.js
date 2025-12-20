@@ -89,6 +89,17 @@ tablasRouter.get(
   tablasController.obtenerClientesPersonaTabla
 );
 
+// ✅ NUEVAS RUTAS (deben ir ANTES de /clientespersonatabla/:numero)
+tablasRouter.get(
+  "/clientespersonatabla/buscar",
+  tablasController.buscarClientesPersonaTabla
+);
+
+tablasRouter.get(
+  "/clientespersonatabla/id/:id",
+  tablasController.getClientePersonaTablaById
+);
+
 tablasRouter.get(
   "/clientespersonatabla/:numero",
   tablasController.buscarClienteTablaPorNumero
