@@ -17,6 +17,7 @@ const sequelize = new Sequelize(DB_DATABASE,DB_USER, DB_PASSWORD, {
   host: DB_HOST,
   port: DB_PORT,
   dialect: DB_DIALECT,
+  logging: false, // 👈 ESTO
 
   // Puedes agregar más configuraciones aquí según sea necesario
 });
