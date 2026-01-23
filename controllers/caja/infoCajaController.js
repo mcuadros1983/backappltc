@@ -548,6 +548,7 @@ const crearCupones = async (req, res, next) => {
 
   try {
     const cuponesData = Array.isArray(req.body) ? req.body : [];
+    console.log("cuponesData recibidos:", cuponesData.length);
 
     if (cuponesData.length === 0) {
       return res.status(400).json({ error: "No se recibieron cupones." });
