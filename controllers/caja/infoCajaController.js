@@ -548,7 +548,7 @@ const crearCupones = async (req, res, next) => {
 
   try {
     const cuponesData = Array.isArray(req.body) ? req.body : [];
-    console.log("cuponesData recibidos:", cuponesData.length);
+    console.log("cuponesData recibidos:", cuponesData[10]);
 
     if (cuponesData.length === 0) {
       return res.status(400).json({ error: "No se recibieron cupones." });
@@ -1491,7 +1491,7 @@ const obtenerClienteOneshotPorId = async (req, res, next) => {
 const crearClienteOneshot = async (req, res, next) => {
   try {
     const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha, lote_cupon } = req.body;
-    console.log("fecha", fecha)
+    //console.log("fecha", fecha)
 
     const nuevoCliente = await Clienteoneshot.create({
       apellido,
