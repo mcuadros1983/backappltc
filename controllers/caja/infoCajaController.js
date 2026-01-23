@@ -536,14 +536,24 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
 // };
 
 const crearCupones = async (req, res, next) => {
+  // ✅ anti-corrimiento: nunca usa getDate() / getMonth() con timezone
   const toYYYYMMDD = (v) => {
     if (!v) return null;
-    if (typeof v === "string") return v.trim().slice(0, 10); // "YYYY-MM-DD"
-    const d = new Date(v);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+
+    // Si viene ISO string "2024-06-14T13:32:46.451Z" → "2024-06-14"
+    if (typeof v === "string") {
+      const s = v.trim();
+      // ya viene "YYYY-MM-DD"
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      // viene con hora
+      if (s.includes("T")) return s.split("T")[0];
+      // fallback: tomar primeros 10 si está bien formado
+      return s.slice(0, 10);
+    }
+
+    // Si viene Date u otro tipo: pasamos a ISO UTC y tomamos la fecha
+    const iso = new Date(v).toISOString(); // "YYYY-MM-DDTHH:mm:ss.sssZ"
+    return iso.split("T")[0];
   };
 
   try {
@@ -558,7 +568,7 @@ const crearCupones = async (req, res, next) => {
     const payload = cuponesData.map((c) => ({
       ...c,
       cuponId: c.cuponId ?? c.id, // compatibilidad con tu data vieja
-      fecha: toYYYYMMDD(c.fecha),
+      fecha: toYYYYMMDD(c.fecha), // ✅ sin corrimiento
       venta_id: c.venta_id ?? null, // puede venir o no
     }));
 
@@ -632,6 +642,7 @@ const crearCupones = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 // Controlador para obtener todos los sueldos
