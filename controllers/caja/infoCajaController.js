@@ -64,47 +64,6 @@ const obtenerCajasFiltrados = async (req, res, next) => {
   }
 };
 
-// const crearCajas = async (req, res, next) => {
-//   try {
-//     // Obtener los datos de las cajas desde el cuerpo de la solicitud
-//     const cajasData = req.body;
-
-//     // Filtrar los datos para omitir los que ya existen en la base de datos
-//     const cajasFiltradas = await Promise.all(
-//       cajasData.map(async (caja) => {
-//         // const fechaFormatoDateOnly = format(new Date(caja.fecha), 'yyyy-MM-dd'); // Asegurar formato DATEONLY
-//         const existeCaja = await Caja.findOne({
-//           where: {
-//             cajaId: caja.id,
-//             sucursal_id: caja.sucursal_id,
-//             // fecha:fechaFormatoDateOnly
-//           },
-//         });
-//         return existeCaja ? null : caja;
-//       })
-//     );
-
-//     // Eliminar los elementos nulos del array
-//     const cajasParaCrear = cajasFiltradas.filter((caja) => caja !== null);
-
-//     // Iterar sobre los datos de las cajas y asignar el id como cajaId
-//     const cajasConId = cajasParaCrear.map((caja) => ({
-//       ...caja,
-//       cajaId: caja.id, // Asignamos el valor del id existente como cajaId
-//       id: undefined, // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     // Crear las cajas en la base de datos
-//     const nuevasCajas = await Caja.bulkCreate(cajasConId);
-
-//     // Retornar los nuevos gastos creados como respuesta
-//     res.status(201).json(nuevasCajas);
-//   } catch (error) {
-//     console.error("Error al crear las cajas:", error);
-//     next(error);
-//   }
-// };
-
 const crearCajas = async (req, res, next) => {
   try {
     const cajasData = req.body;
@@ -217,55 +176,6 @@ const obtenerGastosFiltrados = async (req, res, next) => {
   }
 };
 
-// const crearGastos = async (req, res, next) => {
-//   try {
-//     console.log("req.gastos", req.body)
-//     const gastosData = req.body;
-//     const fechasFormateadas = gastosData.map(gasto => ({
-//       ...gasto,
-//       fecha: format(new Date(gasto.fecha), "yyyy-MM-dd") // Asegurar formato DATEONLY
-//     }));
-
-//     // Obtiene todos los gastos que podrían ser duplicados en una única consulta
-//     const posiblesDuplicados = await Gasto.findAll({
-//       where: {
-//         [Op.or]: fechasFormateadas.map(gasto => ({
-//           gastoId: gasto.id,
-//           sucursal_id: gasto.sucursal_id,
-//           fecha: gasto.fecha
-//         }))
-//       }
-//     });
-
-//     console.log("posibles duplicados", posiblesDuplicados)
-
-//     // Crear un conjunto de claves de duplicados para comparación rápida
-//     const duplicadosSet = new Set(posiblesDuplicados.map(gasto => `${gasto.gastoId}-${gasto.sucursal_id}-${gasto.fecha}`));
-
-//     // Filtrar los gastos para omitir los que ya existen en la base de datos
-//     const gastosParaCrear = fechasFormateadas.filter(gasto => {
-//       const clave = `${gasto.id}-${gasto.sucursal_id}-${gasto.fecha}`;
-//       return !duplicadosSet.has(clave);
-//     });
-
-//     // Preparar gastos con los campos correctos para la inserción
-//     const gastosConId = gastosParaCrear.map(gasto => ({
-//       ...gasto,
-//       gastoId: gasto.id, // Asignar gasto.id a gastoId
-//       id: undefined // Dejar el campo id undefined para que la base de datos lo genere automáticamente
-//     }));
-
-//     console.log("gastos a crear", gastosConId)
-
-//     // Crear los gastos en la base de datos usando bulkCreate
-//     const nuevosGastos = await Gasto.bulkCreate(gastosConId);
-
-//     res.status(201).json(nuevosGastos);
-//   } catch (error) {
-//     console.error("Error al crear los gastos:", error);
-//     next(error);
-//   }
-// };
 const crearGastos = async (req, res, next) => {
   try {
     const gastosData = req.body;
@@ -380,49 +290,6 @@ const obtenerRetirosFiltrados = async (req, res, next) => {
     next(error);
   }
 };
-
-// const crearRetiros = async (req, res, next) => {
-//   try {
-//     const retirosData = req.body;
-
-//     const fechasFormateadas = retirosData.map(retiro => ({
-//       ...retiro,
-//       fecha: format(new Date(retiro.fecha), "yyyy-MM-dd")
-//     }));
-
-//     // Obtiene todos los retiros que podrían ser duplicados en una única consulta
-//     const posiblesDuplicados = await Retiro.findAll({
-//       where: {
-//         [Op.or]: fechasFormateadas.map(retiro => ({
-//           retiroId: retiro.id,
-//           sucursal_id: retiro.sucursal_id,
-//           fecha: retiro.fecha
-//         }))
-//       }
-//     });
-
-//     const duplicadosSet = new Set(posiblesDuplicados.map(retiro => `${retiro.retiroId}-${retiro.sucursal_id}-${retiro.fecha}`));
-
-//     const retirosParaCrear = fechasFormateadas.filter(retiro => {
-//       const clave = `${retiro.id}-${retiro.sucursal_id}-${retiro.fecha}`;
-//       return !duplicadosSet.has(clave);
-//     });
-
-//     const retirosConId = retirosParaCrear.map(retiro => ({
-//       ...retiro,
-//       retiroId: retiro.id,
-//       id: undefined
-//     }));
-
-//     // Crear los retiros en la base de datos usando bulkCreate para eficiencia
-//     const nuevosRetiros = await Retiro.bulkCreate(retirosConId);
-
-//     res.status(201).json(nuevosRetiros);
-//   } catch (error) {
-//     console.error("Error al crear los retiros:", error);
-//     next(error);
-//   }
-// };
 
 const crearRetiros = async (req, res, next) => {
   try {
@@ -619,55 +486,124 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
   }
 };
 
+// const crearCupones = async (req, res, next) => {
+//   try {
+//     const cuponesData = req.body;
+//     const fechasFormateadas = cuponesData.map(cupon => ({
+//       ...cupon,
+//       fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
+//     }));
+
+//     // Crear un array de claves únicas para buscar posibles duplicados
+//     const clavesUnicas = fechasFormateadas.map(cupon => ({
+//       cuponId: cupon.id,
+//       sucursal_id: cupon.sucursal_id,
+//       fecha: cupon.fecha
+//     }));
+
+//     // Dividir las claves en lotes pequeños para reducir la carga de la consulta
+//     const loteSize = 1000;
+//     let posiblesDuplicados = [];
+
+//     for (let i = 0; i < clavesUnicas.length; i += loteSize) {
+//       const lote = clavesUnicas.slice(i, i + loteSize);
+//       const duplicadosLote = await Cupon.findAll({
+//         where: {
+//           [Op.or]: lote
+//         }
+//       });
+//       posiblesDuplicados = posiblesDuplicados.concat(duplicadosLote);
+//     }
+
+//     const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
+
+//     const cuponesParaCrear = fechasFormateadas.filter(cupon => {
+//       const clave = `${cupon.id}-${cupon.sucursal_id}-${cupon.fecha}`;
+//       return !duplicadosSet.has(clave);
+//     });
+
+//     const nuevosCupones = await Cupon.bulkCreate(cuponesParaCrear.map(cupon => ({
+//       ...cupon,
+//       cuponId: cupon.id,
+//       id: undefined
+//     })));
+
+//     res.status(201).json(nuevosCupones);
+//   } catch (error) {
+//     console.error("Error al crear los cupones:", error);
+//     next(error);
+//   }
+// };
+
 const crearCupones = async (req, res, next) => {
+  const toYYYYMMDD = (v) => {
+    if (!v) return null;
+    if (typeof v === "string") return v.trim().slice(0, 10); // ✅ "2026-01-02"
+    const d = new Date(v);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   try {
-    const cuponesData = req.body;
-    const fechasFormateadas = cuponesData.map(cupon => ({
+    const cuponesData = Array.isArray(req.body) ? req.body : [];
+
+    const payload = cuponesData.map((cupon) => ({
       ...cupon,
-      fecha: format(new Date(cupon.fecha), "yyyy-MM-dd")
-    }));
-
-    // Crear un array de claves únicas para buscar posibles duplicados
-    const clavesUnicas = fechasFormateadas.map(cupon => ({
       cuponId: cupon.id,
-      sucursal_id: cupon.sucursal_id,
-      fecha: cupon.fecha
+      fecha: toYYYYMMDD(cupon.fecha), // ✅ NO hay corrimiento
     }));
 
-    // Dividir las claves en lotes pequeños para reducir la carga de la consulta
-    const loteSize = 1000;
-    let posiblesDuplicados = [];
+    const CHUNK = 2000;
+    let insertados = 0;
 
-    for (let i = 0; i < clavesUnicas.length; i += loteSize) {
-      const lote = clavesUnicas.slice(i, i + loteSize);
-      const duplicadosLote = await Cupon.findAll({
-        where: {
-          [Op.or]: lote
-        }
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      const chunk = payload.slice(i, i + CHUNK);
+
+      const replacements = {};
+      chunk.forEach((c, idx) => {
+        replacements[`cuponId_${idx}`] = c.cuponId;
+        replacements[`sucursal_id_${idx}`] = c.sucursal_id;
+        replacements[`fecha_${idx}`] = c.fecha; // ✅ ya es YYYY-MM-DD
+        replacements[`importecuponconrecargo_${idx}`] = c.importecuponconrecargo;
+        replacements[`caja_id_${idx}`] = c.caja_id;
+        replacements[`venta_id_${idx}`] = c.venta_id ?? null;
       });
-      posiblesDuplicados = posiblesDuplicados.concat(duplicadosLote);
+
+      const valuesIdx = chunk
+        .map(
+          (_, idx) =>
+            `(DEFAULT, :cuponId_${idx}, :sucursal_id_${idx}, :fecha_${idx}, :importecuponconrecargo_${idx}, :caja_id_${idx}, :venta_id_${idx})`
+        )
+        .join(",");
+
+      const [result] = await sequelize.query(
+        `
+        INSERT INTO "Cupon"
+          ("id","cuponId","sucursal_id","fecha","importecuponconrecargo","caja_id","venta_id")
+        VALUES
+          ${valuesIdx}
+        ON CONFLICT ("cuponId","sucursal_id","fecha")
+        DO NOTHING
+        RETURNING "id";
+        `,
+        { replacements }
+      );
+
+      insertados += result.length;
     }
 
-    const duplicadosSet = new Set(posiblesDuplicados.map(cupon => `${cupon.cuponId}-${cupon.sucursal_id}-${cupon.fecha}`));
-
-    const cuponesParaCrear = fechasFormateadas.filter(cupon => {
-      const clave = `${cupon.id}-${cupon.sucursal_id}-${cupon.fecha}`;
-      return !duplicadosSet.has(clave);
+    res.status(201).json({
+      recibidos: cuponesData.length,
+      insertados,
+      ignoradosPorDuplicado: cuponesData.length - insertados,
     });
-
-    const nuevosCupones = await Cupon.bulkCreate(cuponesParaCrear.map(cupon => ({
-      ...cupon,
-      cuponId: cupon.id,
-      id: undefined
-    })));
-
-    res.status(201).json(nuevosCupones);
   } catch (error) {
     console.error("Error al crear los cupones:", error);
     next(error);
   }
 };
-
 
 
 // Controlador para obtener todos los sueldos
@@ -1528,8 +1464,6 @@ const crearClienteOneshot = async (req, res, next) => {
   try {
     const { apellido, nombre, dni, domicilio, telefono, mail, monto, usuario_id, fecha, lote_cupon } = req.body;
     console.log("fecha", fecha)
-    // Formatear la fecha al formato de Argentina
-    // const fechaFormateada = format(new Date(fecha), "yyyy-MM-dd");
 
     const nuevoCliente = await Clienteoneshot.create({
       apellido,
