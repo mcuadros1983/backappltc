@@ -538,7 +538,7 @@ const obtenerCuponesFiltrados = async (req, res, next) => {
 const crearCupones = async (req, res, next) => {
   const toYYYYMMDD = (v) => {
     if (!v) return null;
-    if (typeof v === "string") return v.trim().slice(0, 10); // ✅ "2026-01-02"
+    if (typeof v === "string") return v.trim().slice(0, 10); // "YYYY-MM-DD"
     const d = new Date(v);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -549,10 +549,16 @@ const crearCupones = async (req, res, next) => {
   try {
     const cuponesData = Array.isArray(req.body) ? req.body : [];
 
-    const payload = cuponesData.map((cupon) => ({
-      ...cupon,
-      cuponId: cupon.id,
-      fecha: toYYYYMMDD(cupon.fecha), // ✅ NO hay corrimiento
+    if (cuponesData.length === 0) {
+      return res.status(400).json({ error: "No se recibieron cupones." });
+    }
+
+    // Normalizamos lo mínimo (fecha + cuponId)
+    const payload = cuponesData.map((c) => ({
+      ...c,
+      cuponId: c.cuponId ?? c.id, // compatibilidad con tu data vieja
+      fecha: toYYYYMMDD(c.fecha),
+      venta_id: c.venta_id ?? null, // puede venir o no
     }));
 
     const CHUNK = 2000;
@@ -565,23 +571,44 @@ const crearCupones = async (req, res, next) => {
       chunk.forEach((c, idx) => {
         replacements[`cuponId_${idx}`] = c.cuponId;
         replacements[`sucursal_id_${idx}`] = c.sucursal_id;
-        replacements[`fecha_${idx}`] = c.fecha; // ✅ ya es YYYY-MM-DD
+        replacements[`cliente_id_${idx}`] = c.cliente_id;
+        replacements[`fecha_${idx}`] = c.fecha;
+
+        replacements[`importecupon_${idx}`] = c.importecupon;
         replacements[`importecuponconrecargo_${idx}`] = c.importecuponconrecargo;
+
+        replacements[`lote_${idx}`] = c.lote;
+        replacements[`nrocupon_${idx}`] = c.nrocupon;
+        replacements[`plantarjeta_id_${idx}`] = c.plantarjeta_id;
+
         replacements[`caja_id_${idx}`] = c.caja_id;
-        replacements[`venta_id_${idx}`] = c.venta_id ?? null;
+        replacements[`venta_id_${idx}`] = c.venta_id; // null si no viene
       });
 
       const valuesIdx = chunk
         .map(
-          (_, idx) =>
-            `(DEFAULT, :cuponId_${idx}, :sucursal_id_${idx}, :fecha_${idx}, :importecuponconrecargo_${idx}, :caja_id_${idx}, :venta_id_${idx})`
+          (_, idx) => `(
+            DEFAULT,
+            :caja_id_${idx},
+            :cuponId_${idx},
+            :sucursal_id_${idx},
+            :cliente_id_${idx},
+            :fecha_${idx},
+            :importecupon_${idx},
+            :importecuponconrecargo_${idx},
+            :lote_${idx},
+            :nrocupon_${idx},
+            :plantarjeta_id_${idx},
+            :venta_id_${idx}
+          )`
         )
         .join(",");
 
       const [result] = await sequelize.query(
         `
         INSERT INTO "Cupon"
-          ("id","cuponId","sucursal_id","fecha","importecuponconrecargo","caja_id","venta_id")
+          ("id","caja_id","cuponId","sucursal_id","cliente_id","fecha",
+           "importecupon","importecuponconrecargo","lote","nrocupon","plantarjeta_id","venta_id")
         VALUES
           ${valuesIdx}
         ON CONFLICT ("cuponId","sucursal_id","fecha")
@@ -591,10 +618,10 @@ const crearCupones = async (req, res, next) => {
         { replacements }
       );
 
-      insertados += result.length;
+      insertados += (result?.length ?? 0);
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       recibidos: cuponesData.length,
       insertados,
       ignoradosPorDuplicado: cuponesData.length - insertados,
@@ -1779,5 +1806,5 @@ export {
   eliminarClienteOneshot,
   obtenerClientesOneshotFiltrados,
   obtenerSumaGastosFiltrados,
-  
+
 };
