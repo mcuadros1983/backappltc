@@ -558,7 +558,7 @@ const crearCupones = async (req, res, next) => {
 
   try {
     const cuponesData = Array.isArray(req.body) ? req.body : [];
-    console.log("cuponesData recibidos:", cuponesData[10]);
+    console.log("cuponesData recibidos:", cuponesData[35503]);
 
     if (cuponesData.length === 0) {
       return res.status(400).json({ error: "No se recibieron cupones." });
@@ -572,6 +572,8 @@ const crearCupones = async (req, res, next) => {
       venta_id: c.venta_id ?? null, // puede venir o no
     }));
 
+    console.log("payload preparado:", payload[35503]);
+    
     const CHUNK = 2000;
     let insertados = 0;
 
