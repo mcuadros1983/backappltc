@@ -123,66 +123,117 @@ export const actualizarCobranza = async (req, res, next) => {
 
   try {
     const { cobranzaId } = req.params;
-    const { monto_total, forma_cobro , descripcion_cobro } = req.body;
+    const { fecha, monto_total, forma_cobro, descripcion_cobro } = req.body;
 
-    // Iniciar transacción
+    const montoNum = Number(monto_total);
+    if (Number.isNaN(montoNum)) throw new Error("monto_total inválido");
+
+    if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
+      throw new Error("fecha inválida (usar YYYY-MM-DD)");
+    }
+
     transaction = await sequelize.transaction();
 
-    // Obtener la cobranza a actualizar
-    const cobranzaActualizada = await Cobranza.findByPk(cobranzaId, {
-      transaction,
-    });
+    const cobranzaActualizada = await Cobranza.findByPk(cobranzaId, { transaction });
+    if (!cobranzaActualizada) throw new Error("Cobranza no encontrada");
 
-    if (!cobranzaActualizada) {
-      throw new Error("Cobranza no encontrada");
-    }
+    const diferenciaMonto = montoNum - Number(cobranzaActualizada.monto_total || 0);
 
-    // Calcular la diferencia en el monto_total
-    const diferenciaMonto = monto_total - cobranzaActualizada.monto_total;
-    // Actualizar el monto_total en la cobranza
-    await cobranzaActualizada.update({ monto_total, forma_cobro, descripcion_cobro }, { transaction });
-
-    // Obtener la cuenta corriente asociada a la cobranza a través del modelo de Cliente
-    const cuentaCorriente = await CuentaCorriente.findOne({
-      include: [
-        {
-          model: Cobranza,
-          as: "cobranzas",
-          where: { id: cobranzaId },
-        },
-      ],
-    });
-
-    if (!cuentaCorriente) {
-      throw new Error("CuentaCorriente no encontrados");
-    }
-
-    // Actualizar el saldo en la cuenta corriente
-    const nuevoSaldo = cuentaCorriente.saldoActual - diferenciaMonto;
-    await cuentaCorriente.update({ saldoActual: nuevoSaldo }, { transaction });
-
-    await DetalleCobranza.destroy({
-      where: { cobranza_id: cobranzaId },
-      transaction,
-    });
-
-
-    const detalleCobranza = await registrarDetalleCobranza(
-      cobranzaId,
-      monto_total
+    await cobranzaActualizada.update(
+      { fecha, monto_total: montoNum, forma_cobro, descripcion_cobro },
+      { transaction }
     );
 
+    const cuentaCorriente = await CuentaCorriente.findOne({
+      include: [{ model: Cobranza, as: "cobranzas", where: { id: cobranzaId } }],
+      transaction,
+    });
+
+    if (!cuentaCorriente) throw new Error("CuentaCorriente no encontrada");
+
+    const nuevoSaldo = Number(cuentaCorriente.saldoActual || 0) - diferenciaMonto;
+    await cuentaCorriente.update({ saldoActual: nuevoSaldo }, { transaction });
+
+    await DetalleCobranza.destroy({ where: { cobranza_id: cobranzaId }, transaction });
+
+    await registrarDetalleCobranza(cobranzaId, montoNum, { transaction }); 
+    // 👆 si tu función no recibe transaction, dejala sin ese argumento, pero sería ideal pasarla
 
     await transaction.commit();
     res.json(cobranzaActualizada);
   } catch (error) {
-    // Rollback de la transacción en caso de error
-    if (transaction) {
-      await transaction.rollback();
-    }
+    if (transaction) await transaction.rollback();
     next(error);
   }
 };
+
+
+// export const actualizarCobranza = async (req, res, next) => {
+//   let transaction;
+
+//   try {
+//     const { cobranzaId } = req.params;
+//     const { fecha, monto_total, forma_cobro , descripcion_cobro } = req.body;
+
+//     // Iniciar transacción
+//     transaction = await sequelize.transaction();
+
+//     // Obtener la cobranza a actualizar
+//     const cobranzaActualizada = await Cobranza.findByPk(cobranzaId, {
+//       transaction,
+//     });
+
+//     if (!cobranzaActualizada) {
+//       throw new Error("Cobranza no encontrada");
+//     }
+
+//     // Calcular la diferencia en el monto_total
+//     const diferenciaMonto = monto_total - cobranzaActualizada.monto_total;
+//     // Actualizar el monto_total en la cobranza
+//     await cobranzaActualizada.update({ fecha, monto_total, forma_cobro, descripcion_cobro }, { transaction });
+
+//     // Obtener la cuenta corriente asociada a la cobranza a través del modelo de Cliente
+//     const cuentaCorriente = await CuentaCorriente.findOne({
+//       include: [
+//         {
+//           model: Cobranza,
+//           as: "cobranzas",
+//           where: { id: cobranzaId },
+//         },
+//       ],
+//     });
+
+//     if (!cuentaCorriente) {
+//       throw new Error("CuentaCorriente no encontrados");
+//     }
+
+//     // Actualizar el saldo en la cuenta corriente
+//     const nuevoSaldo = cuentaCorriente.saldoActual - diferenciaMonto;
+//     await cuentaCorriente.update({ saldoActual: nuevoSaldo }, { transaction });
+
+//     await DetalleCobranza.destroy({
+//       where: { cobranza_id: cobranzaId },
+//       transaction,
+//     });
+
+
+//     const detalleCobranza = await registrarDetalleCobranza(
+//       cobranzaId,
+//       monto_total
+//     );
+
+
+//     await transaction.commit();
+//     res.json(cobranzaActualizada);
+//   } catch (error) {
+//     // Rollback de la transacción en caso de error
+//     if (transaction) {
+//       await transaction.rollback();
+//     }
+//     next(error);
+//   }
+// };
+
 
 export const eliminarCobranza = async (req, res, next) => {
   try {
