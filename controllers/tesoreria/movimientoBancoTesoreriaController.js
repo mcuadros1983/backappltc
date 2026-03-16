@@ -21,6 +21,7 @@ import xlsx from "xlsx";
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoSueldoEmpleado from "../../models/sueldoempleado/pagosueldoempleado.js";
 import PagoTarjetaCredito  from "../../models/tesoreria/pagotarjetacredito.js"
+import AdelantoEmpleado from "../../models/sueldoempleado/adelantoempleado.js";
 
 /* ===================== CRUD BÁSICO ===================== */
 
