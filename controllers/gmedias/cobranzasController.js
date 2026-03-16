@@ -234,6 +234,7 @@ export const actualizarCobranza = async (req, res, next) => {
 //   }
 // };
 
+
 export const eliminarCobranza = async (req, res, next) => {
   try {
     const { cobranzaId } = req.params;
