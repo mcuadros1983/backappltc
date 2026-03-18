@@ -1,13 +1,39 @@
 // controllers/comun/proveedorController.js
 import Proveedor from "../../models/comun/proveedor.js";
 
-// Crear nuevo proveedor
+// // Crear nuevo proveedor
+// export const crearProveedor = async (req, res) => {
+//   try {
+//     const proveedor = await Proveedor.create(req.body);
+//     res.status(201).json(proveedor);
+//   } catch (error) {
+//     res.status(500).json({ error: "Error al crear el proveedor" });
+//   }
+// };
+
 export const crearProveedor = async (req, res) => {
   try {
+    const { cuit } = req.body;
+
+    // 🔎 Verificar si ya existe
+    const proveedorExistente = await Proveedor.findOne({
+      where: { cuit }
+    });
+
+    if (proveedorExistente) {
+      return res.status(400).json({
+        error: "Ya existe un proveedor con ese CUIT"
+      });
+    }
+
     const proveedor = await Proveedor.create(req.body);
+
     res.status(201).json(proveedor);
+
   } catch (error) {
-    res.status(500).json({ error: "Error al crear el proveedor" });
+    res.status(500).json({
+      error: "Error al crear el proveedor"
+    });
   }
 };
 
