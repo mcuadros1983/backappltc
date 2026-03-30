@@ -22,9 +22,9 @@ export const registrarCobranza = async (req, res, next) => {
     } = req.body;
 
     const monto = Number(montoTotal);
-    if (!Number.isFinite(monto) || monto <= 0) {
+    if (!Number.isFinite(monto) || monto === 0) {
       await t.rollback();
-      return res.status(400).json({ error: 'Monto inválido' });
+      return res.status(400).json({ error: 'Monto inválido. Debe ser un número distinto de 0' });
     }
 
     // 1) Cliente (lock para concurrencia)
@@ -67,14 +67,13 @@ export const registrarCobranza = async (req, res, next) => {
     if (Array.isArray(detallesCobranza) && detallesCobranza.length > 0) {
       for (const det of detallesCobranza) {
         const m = Number(det.monto ?? monto);
-        if (!Number.isFinite(m) || m <= 0) {
+        if (!Number.isFinite(m) || m === 0) {
           await t.rollback();
-          return res.status(400).json({ error: 'Monto de detalle inválido' });
+          return res.status(400).json({ error: 'Monto de detalle inválido. Debe ser distinto de 0' });
         }
         await registrarDetalleCobranza(cobranza.id, m, det.fecha ?? fecha, t);
       }
     } else {
-      // un solo detalle por el total si no mandaron array
       await registrarDetalleCobranza(cobranza.id, monto, fecha, t);
     }
 
@@ -126,7 +125,9 @@ export const actualizarCobranza = async (req, res, next) => {
     const { fecha, monto_total, forma_cobro, descripcion_cobro } = req.body;
 
     const montoNum = Number(monto_total);
-    if (Number.isNaN(montoNum)) throw new Error("monto_total inválido");
+    if (!Number.isFinite(montoNum) || montoNum === 0) {
+      throw new Error("monto_total inválido: debe ser un número distinto de 0");
+    }
 
     if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
       throw new Error("fecha inválida (usar YYYY-MM-DD)");
@@ -156,8 +157,7 @@ export const actualizarCobranza = async (req, res, next) => {
 
     await DetalleCobranza.destroy({ where: { cobranza_id: cobranzaId }, transaction });
 
-    await registrarDetalleCobranza(cobranzaId, montoNum, { transaction }); 
-    // 👆 si tu función no recibe transaction, dejala sin ese argumento, pero sería ideal pasarla
+    await registrarDetalleCobranza(cobranzaId, montoNum, fecha, transaction);
 
     await transaction.commit();
     res.json(cobranzaActualizada);
@@ -166,7 +166,6 @@ export const actualizarCobranza = async (req, res, next) => {
     next(error);
   }
 };
-
 
 // export const actualizarCobranza = async (req, res, next) => {
 //   let transaction;
