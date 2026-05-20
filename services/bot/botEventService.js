@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { extractBotEntities } from "./botEntityExtractorService.js";
 import BotEventMeta from "../../models/bot/botEventMetaModel.js";
 import Sucursal from "../../models/gmedias/sucursalModel.js";
 
@@ -369,8 +370,8 @@ export async function updateBotEventMeta(id, data = {}) {
     sucursal_id: aplicaTodas
       ? null
       : data.sucursal_id !== undefined && data.sucursal_id !== ""
-      ? Number(data.sucursal_id)
-      : row.sucursal_id,
+        ? Number(data.sucursal_id)
+        : row.sucursal_id,
 
     aplica_todas_sucursales: aplicaTodas,
 
@@ -411,8 +412,11 @@ export async function deleteBotEventMeta(id) {
 
 export async function searchEventMetaCandidates(text = "", options = {}) {
   const q = normalizeText(text);
-  const detectedDate = extractEventDate(text);
-  const fecha = options.fecha || detectedDate || todayISO();
+  const entities = extractBotEntities(text);
+  // const detectedDate = extractEventDate(text);
+  // const fecha = options.fecha || detectedDate || todayISO();
+  const detectedDate = options.fecha || entities.date || null;
+  const fecha = detectedDate || todayISO();
   const limit = Number(options.limit || 30);
   const sucursal_id = options.sucursal_id || null;
 
@@ -464,56 +468,89 @@ export async function searchEventMetaCandidates(text = "", options = {}) {
 
   return scored.slice(0, limit).map((item) => item.row);
 }
-
 export function buildEventReply(events = []) {
   if (!Array.isArray(events) || events.length === 0) {
-    return "No tengo eventos o cambios especiales cargados en este momento. Si necesitás consultar una sucursal puntual, decime cuál y te paso sus datos de contacto.";
+    return "No tengo eventos o cambios especiales cargados en este momento.";
   }
 
-  const lines = events.map((event) => {
+  const generalClosures = [];
+  const branchSpecific = [];
+  const normalEvents = [];
+
+  for (const event of events) {
     const data = event.toJSON ? event.toJSON() : event;
 
     const title = data.titulo || "Evento";
-    const dateText =
-      data.fecha_inicio && data.fecha_fin && data.fecha_inicio !== data.fecha_fin
-        ? `${data.fecha_inicio} al ${data.fecha_fin}`
-        : data.fecha_inicio || "";
+    const date =
+      data.fecha_inicio
+        ? new Date(data.fecha_inicio + "T00:00:00")
+        : null;
 
-    const sucursalText = data.aplica_todas_sucursales
-      ? "Aplica a todas las sucursales."
-      : data.sucursal?.nombre
-      ? `Sucursal: ${data.sucursal.nombre}.`
+    const formattedDate = date
+      ? date.toLocaleDateString("es-AR", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })
       : "";
 
-    let impactoText = "";
+    const branchName =
+      data.sucursal?.nombre ||
+      data.sucursal?.descripcion ||
+      null;
 
-    if (data.impacto === "cerrado") {
-      impactoText = "Ese día permaneceremos cerrados.";
-    } else if (data.impacto === "horario_reducido") {
-      impactoText = "Ese día atenderemos con horario reducido.";
-    } else if (data.impacto === "normal") {
-      impactoText = "La atención será normal.";
+    const message =
+      data.mensaje_bot ||
+      data.descripcion ||
+      "";
+
+    if (
+      data.impacto === "cerrado" &&
+      data.aplica_todas_sucursales
+    ) {
+      generalClosures.push(
+        `El ${formattedDate} nuestras sucursales permanecerán cerradas por feriado.`
+      );
+
+      continue;
     }
 
-    const horarioText =
-      data.hora_inicio || data.hora_fin
-        ? `Horario: ${data.hora_inicio || ""}${data.hora_fin ? ` a ${data.hora_fin}` : ""}.`
-        : "";
+    if (branchName) {
+      if (data.impacto === "normal") {
+        branchSpecific.push(
+          `La sucursal ${branchName} atenderá normalmente${
+            data.hora_inicio && data.hora_fin
+              ? ` de ${data.hora_inicio} a ${data.hora_fin} hs`
+              : ""
+          }.`
+        );
+      } else if (data.impacto === "horario_reducido") {
+        branchSpecific.push(
+          `La sucursal ${branchName} atenderá con horario reducido${
+            data.hora_inicio && data.hora_fin
+              ? ` de ${data.hora_inicio} a ${data.hora_fin} hs`
+              : ""
+          }.`
+        );
+      } else if (data.impacto === "cerrado") {
+        branchSpecific.push(
+          `La sucursal ${branchName} permanecerá cerrada.`
+        );
+      }
 
-    return [
-      `• ${title}`,
-      dateText ? `Fecha: ${dateText}.` : "",
-      impactoText,
-      horarioText,
-      data.mensaje_bot || data.descripcion || "",
-      data.condiciones ? `Condiciones: ${data.condiciones}` : "",
-      sucursalText,
-    ]
-      .filter(Boolean)
-      .join("\n  ");
-  });
+      continue;
+    }
 
-  return lines.join("\n\n");
+    normalEvents.push(message || title);
+  }
+
+  return [
+    ...generalClosures,
+    ...branchSpecific,
+    ...normalEvents,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export default {

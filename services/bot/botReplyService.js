@@ -1,4 +1,5 @@
 import { BOT_INTENTS, BOT_MESSAGE_DIRECTION, BOT_MESSAGE_TYPE } from "../../utils/bot/botConstants.js";
+
 import { getBotSettings } from "./botConfigService.js";
 import { detectIntent, extractCommercialSignals } from "./botIntentService.js";
 import { searchProductAdviceCandidates } from "./botProductService.js";
@@ -16,6 +17,7 @@ import {
   searchBenefitMetaCandidates,
   buildBenefitReply,
 } from "./botBenefitService.js";
+import { extractBotEntities } from "./botEntityExtractorService.js";
 
 function money(value) {
   if (
@@ -432,7 +434,7 @@ function findLastBranchOptionsMessage(messages = []) {
 
 function extractBranchSearchText(text = "") {
   const clean = normalizeText(text);
-  
+
   return clean
     .replace("dime", "")
     .replace("pasame", "")
@@ -477,6 +479,21 @@ function getStrongSingleBranchMatch(incomingText = "", branchCandidates = []) {
   if (strongMatches.length === 1) return strongMatches[0];
 
   return null;
+}
+
+function isOpeningStatusQuestion(text = "") {
+  const clean = normalizeText(text);
+
+  return (
+    clean.includes("abren") ||
+    clean.includes("abre") ||
+    clean.includes("abierto") ||
+    clean.includes("abiertos") ||
+    clean.includes("estara abierto") ||
+    clean.includes("estara abierta") ||
+    clean.includes("atienden") ||
+    clean.includes("trabajan")
+  );
 }
 
 function shouldRequestHandoff(intent, incomingText) {
@@ -563,6 +580,7 @@ export async function buildBotReply({
   let extraPayload = { signals };
 
   const normalizedIncomingText = normalizeText(incomingText);
+  const entities = extractBotEntities(incomingText);
 
   const recentMessagesForBranchContact = await BotMessage.findAll({
     where: { conversation_id: conversation.id },
@@ -654,6 +672,31 @@ export async function buildBotReply({
     );
   });
 
+  if (isOpeningStatusQuestion(incomingText)) {
+    const events = await searchEventMetaCandidates(incomingText, {
+      sucursal_id:
+        conversation.sucursal_id ||
+        sucursal_id ||
+        settings.default_sucursal_id ||
+        null,
+    });
+
+    if (events.length > 0) {
+      replyText = buildEventReply(events);
+    } else {
+      replyText =
+        "No tengo cargado un cambio especial para esa fecha. Si querés, puedo pasarte los horarios habituales de una sucursal.";
+    }
+
+    return saveAndReturnReply({
+      conversation,
+      replyText,
+      intent: BOT_INTENTS.EVENTS,
+      modelUsed: null,
+      extraPayload,
+    });
+  }
+
   const canContinueBranchContactFlow =
     intent === BOT_INTENTS.BRANCHES ||
     isContinuingScheduleFlow ||
@@ -701,6 +744,36 @@ export async function buildBotReply({
       ...extraPayload,
       branch_contact_flow: true,
       branch_candidates: buildBranchOptionsPayload(branchCandidates),
+    };
+
+    return saveAndReturnReply({
+      conversation,
+      replyText,
+      intent: BOT_INTENTS.BRANCHES,
+      modelUsed: null,
+      extraPayload,
+    });
+  }
+
+  const asksAllBranchesSchedule =
+    isScheduleQuery(incomingText) &&
+    (
+      normalizedIncomingText.includes("sucursales") ||
+      normalizedIncomingText.includes("todas") ||
+      normalizedIncomingText.includes("todos los locales") ||
+      normalizedIncomingText.includes("horario de las sucursales") ||
+      normalizedIncomingText.includes("horarios de las sucursales")
+    );
+
+  if (asksAllBranchesSchedule) {
+    const allBranches = await getAllActiveBranchMeta();
+
+    replyText = buildBranchOptionsReply(allBranches);
+
+    extraPayload = {
+      ...extraPayload,
+      branch_contact_flow: true,
+      branch_candidates: buildBranchOptionsPayload(allBranches),
     };
 
     return saveAndReturnReply({
@@ -912,7 +985,7 @@ export async function buildBotReply({
         sucursal_id: sucursal_id || settings.default_sucursal_id || null,
         listaprecio_id:
           listaprecio_id || settings.default_listaprecio_id || null,
-        fecha: date,
+        fecha: entities.date || new Date(),
         limit: 100,
       });
 

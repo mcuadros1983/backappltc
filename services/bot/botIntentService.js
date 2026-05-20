@@ -1,5 +1,5 @@
 import { BOT_INTENTS } from "../../utils/bot/botConstants.js";
-
+import { extractBotEntities } from "./botEntityExtractorService.js";
 function normalizeText(text = "") {
   return String(text)
     .toLowerCase()
@@ -378,10 +378,19 @@ function isGeneralPromotionQuery(text) {
 
 export function detectIntent(text = "", context = {}) {
   const normalizedText = normalizeText(text);
+  const entities = extractBotEntities(text);
 
   if (!normalizedText) {
     return BOT_INTENTS.FALLBACK;
   }
+
+  if (entities.asksOpeningStatus && entities.mentionsSpecialDate) {
+  return BOT_INTENTS.EVENTS;
+}
+
+if (entities.asksSchedule && !entities.mentionsSpecialDate) {
+  return BOT_INTENTS.BRANCHES;
+}
 
   const scores = {};
 
