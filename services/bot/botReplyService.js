@@ -947,10 +947,6 @@ export async function buildBotReply({
       };
     }
   } else if (
-    settings.use_openai_for_advice &&
-    intent !== BOT_INTENTS.BRANCHES
-  ) {
-  } else if (
     intent === BOT_INTENTS.PRODUCT_ADVICE ||
     intent === BOT_INTENTS.PRICE ||
     intent === BOT_INTENTS.FALLBACK
