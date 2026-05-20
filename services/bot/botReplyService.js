@@ -76,34 +76,22 @@ function buildPromotionProductsReply(items = []) {
   const lines = items.map((item, index) => {
     const nombre = item.articulo_nombre || `Artículo ${item.articulo_id}`;
 
-    const precioTexto =
+    const precioPromo =
       item.precio_final !== null && typeof item.precio_final !== "undefined"
         ? `Precio promo: $${money(item.precio_final)}`
         : "";
 
-    let promoTexto = "";
-
-    if (item.tipo_promocion === "precio_fijo") {
-      promoTexto = "precio fijo";
-    }
-
-    if (item.tipo_promocion === "porcentaje") {
-      promoTexto = `${money(item.valor_promocion)}% de descuento`;
-    }
-
-    const normalTexto =
+    const precioAntes =
       item.precio_normal !== null &&
-        typeof item.precio_normal !== "undefined" &&
-        Number(item.precio_normal) !== Number(item.precio_final)
+      typeof item.precio_normal !== "undefined" &&
+      Number(item.precio_normal) !== Number(item.precio_final)
         ? `Antes: $${money(item.precio_normal)}`
         : "";
 
     return [
       `${index + 1}. ${nombre}`,
-      item.promocion_descripcion ? `Promo: ${item.promocion_descripcion}` : "",
-      promoTexto,
-      precioTexto,
-      normalTexto,
+      precioPromo,
+      precioAntes,
     ]
       .filter(Boolean)
       .join("\n   ");
