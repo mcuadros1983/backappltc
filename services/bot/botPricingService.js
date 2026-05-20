@@ -7,9 +7,30 @@ import PromocionDiaTabla from "../../models/tablas/promocionDiaModel.js";
 import ArticuloTabla from "../../models/tablas/articuloModel.js";
 import ArticuloPrecioTabla from "../../models/tablas/articuloPrecioModel.js";
 
+// function getDiaSemanaNumero(fecha = new Date()) {
+//   const dia = fecha.getDay();
+//   return dia === 0 ? 7 : dia;
+// }
+
+function normalizeFecha(fecha = new Date()) {
+  if (fecha instanceof Date) return fecha;
+
+  if (typeof fecha === "string") {
+    return new Date(`${fecha}T12:00:00-03:00`);
+  }
+
+  return new Date();
+}
+
 function getDiaSemanaNumero(fecha = new Date()) {
-  const dia = fecha.getDay();
+  const date = normalizeFecha(fecha);
+  const dia = date.getDay();
   return dia === 0 ? 7 : dia;
+}
+
+function getDateOnly(fecha = new Date()) {
+  const date = normalizeFecha(fecha);
+  return date.toISOString().split("T")[0];
 }
 
 export async function getProductPrices({
@@ -39,7 +60,10 @@ export async function getActivePromotionProductsForBot({
   fecha = new Date(),
   limit = 100,
 } = {}) {
-  const hoyDate = fecha.toISOString().split("T")[0];
+  // const hoyDate = fecha.toISOString().split("T")[0];
+  // const diaSemana = getDiaSemanaNumero(fecha);
+
+  const hoyDate = getDateOnly(fecha);
   const diaSemana = getDiaSemanaNumero(fecha);
 
   const promociones = await PromocionTabla.findAll({

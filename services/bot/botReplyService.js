@@ -42,6 +42,92 @@ function normalizeText(text = "") {
     .trim();
 }
 
+function addDays(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function getNextWeekday(targetDay) {
+  const today = new Date();
+  const currentDay = today.getDay();
+  const diff = (targetDay - currentDay + 7) % 7 || 7;
+  return addDays(today, diff);
+}
+
+function formatDateOnly(date) {
+  return date.toISOString().split("T")[0];
+}
+
+function resolvePromotionDateContext(text = "") {
+  const clean = normalizeText(text);
+
+  if (
+    clean.includes("fin de semana") ||
+    clean.includes("finde") ||
+    clean.includes("sabado y domingo") ||
+    clean.includes("sábado y domingo")
+  ) {
+    return {
+      type: "weekend",
+      label: "para el fin de semana",
+      dates: [
+        getNextWeekday(6), // sábado
+        getNextWeekday(0), // domingo
+      ],
+    };
+  }
+
+  if (clean.includes("sabado") || clean.includes("sábado")) {
+    return {
+      type: "single",
+      label: "para el sábado",
+      dates: [getNextWeekday(6)],
+    };
+  }
+
+  if (clean.includes("domingo")) {
+    return {
+      type: "single",
+      label: "para el domingo",
+      dates: [getNextWeekday(0)],
+    };
+  }
+
+  if (clean.includes("mañana") || clean.includes("manana")) {
+    return {
+      type: "single",
+      label: "para mañana",
+      dates: [addDays(new Date(), 1)],
+    };
+  }
+
+  return {
+    type: "today",
+    label: "vigentes para hoy",
+    dates: [new Date()],
+  };
+}
+
+function mergePromotionItems(items = []) {
+  const map = new Map();
+
+  for (const item of items) {
+    const key = [
+      item.promocion_id,
+      item.articulo_id,
+      item.precio_final,
+      item.precio_normal,
+    ].join("-");
+
+    if (!map.has(key)) {
+      map.set(key, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 function buildSimpleProductReply(candidates = [], pricing = [], intent = null) {
   const pricingMap = new Map(pricing.map((p) => [Number(p.articulo_id), p]));
 
@@ -68,9 +154,9 @@ function buildSimpleProductReply(candidates = [], pricing = [], intent = null) {
   return `${lines.join("\n")}\n\n${close}`;
 }
 
-function buildPromotionProductsReply(items = []) {
+function buildPromotionProductsReply(items = [], label = "vigentes para hoy") {
   if (!Array.isArray(items) || items.length === 0) {
-    return "Por el momento no tengo artículos en promoción vigentes para hoy.";
+    return `Por el momento no tengo artículos en promoción ${label}.`;
   }
 
   const lines = items.map((item, index) => {
@@ -83,28 +169,62 @@ function buildPromotionProductsReply(items = []) {
 
     const precioAntes =
       item.precio_normal !== null &&
-      typeof item.precio_normal !== "undefined" &&
-      Number(item.precio_normal) !== Number(item.precio_final)
+        typeof item.precio_normal !== "undefined" &&
+        Number(item.precio_normal) !== Number(item.precio_final)
         ? `Antes: $${money(item.precio_normal)}`
         : "";
 
-    return [
-      `${index + 1}. ${nombre}`,
-      precioPromo,
-      precioAntes,
-    ]
+    return [`${index + 1}. ${nombre}`, precioPromo, precioAntes]
       .filter(Boolean)
       .join("\n   ");
   });
 
   return [
-    "Estas son las promociones vigentes de artículos para hoy:",
+    `Estas son las promociones ${label}:`,
     "",
     ...lines,
     "",
     "Los precios pueden variar según sucursal o lista de precios.",
   ].join("\n");
 }
+
+// function buildPromotionProductsReply(items = []) {
+//   if (!Array.isArray(items) || items.length === 0) {
+//     return "Por el momento no tengo artículos en promoción vigentes para hoy.";
+//   }
+
+//   const lines = items.map((item, index) => {
+//     const nombre = item.articulo_nombre || `Artículo ${item.articulo_id}`;
+
+//     const precioPromo =
+//       item.precio_final !== null && typeof item.precio_final !== "undefined"
+//         ? `Precio promo: $${money(item.precio_final)}`
+//         : "";
+
+//     const precioAntes =
+//       item.precio_normal !== null &&
+//       typeof item.precio_normal !== "undefined" &&
+//       Number(item.precio_normal) !== Number(item.precio_final)
+//         ? `Antes: $${money(item.precio_normal)}`
+//         : "";
+
+//     return [
+//       `${index + 1}. ${nombre}`,
+//       precioPromo,
+//       precioAntes,
+//     ]
+//       .filter(Boolean)
+//       .join("\n   ");
+//   });
+
+//   return [
+//     "Estas son las promociones vigentes de artículos para hoy:",
+//     "",
+//     ...lines,
+//     "",
+//     "Los precios pueden variar según sucursal o lista de precios.",
+//   ].join("\n");
+// }
 
 function buildAskBranchContactReply() {
   return [
@@ -765,19 +885,38 @@ export async function buildBotReply({
   } else if (intent === BOT_INTENTS.GREETING) {
     replyText = settings.welcome_message;
   } else if (intent === BOT_INTENTS.PROMOTIONS) {
-    const promotionItems = await getActivePromotionProductsForBot({
-      sucursal_id: sucursal_id || settings.default_sucursal_id || null,
-      listaprecio_id:
-        listaprecio_id || settings.default_listaprecio_id || null,
-      limit: 100,
-    });
+    const promoDateContext = resolvePromotionDateContext(incomingText);
+
+    const promotionResults = [];
+
+    for (const date of promoDateContext.dates) {
+      const items = await getActivePromotionProductsForBot({
+        sucursal_id: sucursal_id || settings.default_sucursal_id || null,
+        listaprecio_id:
+          listaprecio_id || settings.default_listaprecio_id || null,
+        fecha: date,
+        limit: 100,
+      });
+
+      promotionResults.push(...items);
+    }
+
+    const promotionItems = mergePromotionItems(promotionResults);
 
     extraPayload = {
       ...extraPayload,
+      promotion_date_context: {
+        type: promoDateContext.type,
+        label: promoDateContext.label,
+        dates: promoDateContext.dates.map(formatDateOnly),
+      },
       promotion_items: promotionItems,
     };
 
-    replyText = buildPromotionProductsReply(promotionItems);
+    replyText = buildPromotionProductsReply(
+      promotionItems,
+      promoDateContext.label
+    );
   } else if (intent === BOT_INTENTS.BRANCHES) {
     const wantsAllBranches =
       normalizedIncomingText.includes("sucursales") ||
