@@ -8,7 +8,7 @@ import DatosEmpleado from '../../models/tablas/datosEmpleadoModel.js';
 import Jornada from '../../models/asistencia/jornadaModel.js';
 import { Turno } from '../../models/asistencia/Turno.js';
 import JornadaTurno from '../../models/asistencia/jornadaTurnoModel.js';
-import {  getExpectedForRecord } from '../../utils/getExpectedForRecord.js';
+import { getExpectedForRecord } from '../../utils/getExpectedForRecord.js';
 
 // --- Constantes / helpers ---
 const VALID_CONCEPTS = ['INGRESO', 'EGRESO'];
@@ -159,7 +159,7 @@ export async function listDetallado(req, res, next) {
 
         operation_concept: concepto,
         jornada_nombre: expected?.jornadaNombre || null,
-        turno_nombre: expected?.turnoNombre   || null,
+        turno_nombre: expected?.turnoNombre || null,
         expected_time: expectedTime,
 
         delta_min: calc.deltaMin,
@@ -283,132 +283,217 @@ export async function create(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// --- Crear directa (body), útil para integraciones internas ---
 export async function createAsistencia(req, res, next) {
-  const tag = '[createAsistencia]';
+  console.log("creando asistencia ---------------");
+  const tag = "[createAsistencia]";
+
   try {
     console.log(`${tag} ⇢ INICIO`);
-    console.log(`${tag} headers:`, {
-      'Idempotency-Key': req.get('Idempotency-Key'),
-      'X-Idempotency-Key': req.get('X-Idempotency-Key'),
-      'X-Device-Id': req.get('X-Device-Id'),
-      'content-type': req.get('content-type'),
-    });
-
     console.log(`${tag} raw body:`, req.body);
 
-    const {
-      empleado_id,
-      sucursal_id,
-      device_id,
-      metodo,
-      score,
-      liveness_passed,
-      ts_utc,
-      lat,
-      lon,
-      turno_id,
-      operation_concept // NEW
-    } = req.body || {};
+    const items = Array.isArray(req.body) ? req.body : [req.body];
 
-    // Validaciones mínimas
-    if (!empleado_id || !sucursal_id || !device_id) {
-      console.log(`${tag} ❌ faltan campos obligatorios`, {
-        empleado_id, sucursal_id, device_id
-      });
-      return res.status(400).json({ error: 'empleado_id, sucursal_id y device_id son obligatorios' });
+    if (!items.length) {
+      return res.status(400).json({ ok: false, error: "payload_vacio" });
     }
-    console.log(`${tag} ✓ payload básico OK`);
 
-    // Normaliza device_id
-    const normDeviceId = normalizeDeviceId(device_id);
-    console.log(`${tag} device_id(normalizado):`, normDeviceId);
+    const creados = [];
+    const omitidos = [];
+    const errores = [];
 
-    // Verifica sucursal
-    const sucIdNum = Number(sucursal_id);
-    console.log(`${tag} buscando sucursal`, { sucursal_id: sucIdNum });
-    const suc = await Sucursal.findByPk(sucIdNum);
-    if (!suc) {
-      console.log(`${tag} ❌ sucursal no existe`, { sucursal_id: sucIdNum });
-      return res.status(400).json({ error: 'sucursal_id no existe' });
-    }
-    console.log(`${tag} ✓ sucursal encontrada`, { id: suc.id });
+    for (const item of items) {
+      try {
+        const {
+          empleado_id,
+          sucursal_id,
+          metodo,
+          ts_utc,
+          operation_concept,
+          idempotency_key,
+        } = item || {};
 
-    // Normaliza y valida concepto
-    const concept = (operation_concept || 'INGRESO').toString().toUpperCase();
-    console.log(`${tag} operation_concept(normalizado):`, concept);
-    if (!VALID_CONCEPTS.includes(concept)) {
-      console.log(`${tag} ❌ concepto inválido`, { concept, allowed: VALID_CONCEPTS });
-      return res.status(400).json({ error: 'invalid_operation_concept', allowed: VALID_CONCEPTS });
-    }
-    console.log(`${tag} ✓ concepto OK`);
+        if (!empleado_id || !sucursal_id || !ts_utc) {
+          errores.push({
+            item,
+            error: "empleado_id, sucursal_id y ts_utc son obligatorios",
+          });
+          continue;
+        }
 
-    // Idempotencia
-    const idem =
-      req.get('Idempotency-Key') ||
-      req.get('X-Idempotency-Key') ||
-      req.headers['x-idempotency-key'] ||
-      null;
-    console.log(`${tag} idempotency_key:`, idem);
+        const empIdNum = Number(empleado_id);
+        const sucIdNum = Number(sucursal_id);
 
-    if (idem) {
-      const prev = await Asistencia.findOne({ where: { idempotency_key: idem } });
-      console.log(`${tag} búsqueda por idempotencia`, { found: !!prev });
-      if (prev) {
-        console.log(`${tag} ✓ idempotente (ya existe)`, { id: prev.id });
-        return res.status(200).json({ id: prev.id, duplicated: true });
+        if (Number.isNaN(empIdNum) || Number.isNaN(sucIdNum)) {
+          errores.push({
+            item,
+            error: "empleado_id y sucursal_id deben ser numéricos",
+          });
+          continue;
+        }
+
+        const suc = await Sucursal.findByPk(sucIdNum);
+        if (!suc) {
+          errores.push({
+            item,
+            error: "sucursal_id no existe",
+          });
+          continue;
+        }
+
+        const concept = (operation_concept || "INGRESO")
+          .toString()
+          .toUpperCase();
+
+        if (!VALID_CONCEPTS.includes(concept)) {
+          errores.push({
+            item,
+            error: "invalid_operation_concept",
+            allowed: VALID_CONCEPTS,
+          });
+          continue;
+        }
+
+        const ts = new Date(ts_utc);
+        if (Number.isNaN(ts.getTime())) {
+          errores.push({
+            item,
+            error: "ts_utc inválido",
+          });
+          continue;
+        }
+
+        const idem =
+          idempotency_key ||
+          `${sucIdNum}-${empIdNum}-${ts.toISOString()}-${concept}`;
+
+        const prev = await Asistencia.findOne({
+          where: { idempotency_key: idem },
+        });
+
+        if (prev) {
+          console.log(`${tag} ⚠ duplicado detectado:`, {
+            id: prev.id,
+            empleado_id: empIdNum,
+            sucursal_id: sucIdNum,
+            idempotency_key: idem,
+          });
+
+          omitidos.push({
+            id: prev.id,
+            empleado_id: empIdNum,
+            sucursal_id: sucIdNum,
+            duplicated: true,
+          });
+          continue;
+        }
+
+        const payload = {
+          empleado_id: empIdNum,
+          sucursal_id: sucIdNum,
+          device_id: null,
+          metodo: metodo || "reloj",
+          score: null,
+          liveness_passed: null,
+          ts_utc: ts,
+          lat: null,
+          lon: null,
+          operation_concept: concept,
+          idempotency_key: idem,
+        };
+
+        console.log(`${tag} payload a crear:`, payload);
+
+        const row = await Asistencia.create(payload);
+
+        console.log(`${tag} ✅ registro creado correctamente:`, row.toJSON());
+
+        creados.push({
+          id: row.id,
+          empleado_id: row.empleado_id,
+          sucursal_id: row.sucursal_id,
+          ts_utc: row.ts_utc,
+          operation_concept: row.operation_concept,
+        });
+      } catch (errItem) {
+        console.error(`${tag} ❌ error por item:`, {
+          item,
+          name: errItem?.name,
+          message: errItem?.message,
+          errors: errItem?.errors,
+          parent: errItem?.parent,
+          original: errItem?.original,
+          sql: errItem?.sql,
+          stack: errItem?.stack,
+        });
+
+        errores.push({
+          item,
+          error: errItem?.message || "Error desconocido al crear asistencia",
+          detail: errItem?.original?.detail || null,
+          parentMessage: errItem?.parent?.message || null,
+        });
       }
     }
 
-    // Construir payload final
-    const payload = {
-      empleado_id: Number(empleado_id),
-      sucursal_id: sucIdNum,
-      device_id: normDeviceId,
-      metodo: metodo || 'facial-onnx',
-      score: (score ?? null),
-      liveness_passed: !!liveness_passed,
-      ts_utc: ts_utc ? new Date(ts_utc) : new Date(),
-      lat: lat ?? null,
-      lon: lon ?? null,
-      turno_id: turno_id ?? null,
-      operation_concept: concept,
-      idempotency_key: idem || null,
-    };
-    console.log(`${tag} payload a crear:`, payload);
+    const ok = errores.length === 0;
+    const statusCode =
+      creados.length > 0 ? 201 : errores.length > 0 ? 400 : 200;
 
-    const row = await Asistencia.create(payload);
-    console.log(`${tag} ✓ creado`, { id: row.id });
+    console.log("CREADOS:", creados.length);
+    console.log("OMITIDOS:", omitidos.length);
+    console.log("ERRORES:", errores.length);
+    console.log("DETALLE ERRORES:", errores);
 
-    return res.status(201).json({ id: row.id });
+    return res.status(statusCode).json({
+      ok,
+      total_recibidos: items.length,
+      total_creados: creados.length,
+      total_omitidos: omitidos.length,
+      total_errores: errores.length,
+      creados,
+      omitidos,
+      errores,
+    });
   } catch (err) {
-    // Log detallado del error
-    console.error('[createAsistencia] ❌ ERROR:', {
+    console.error("[createAsistencia] ❌ ERROR GENERAL:", {
       name: err?.name,
       message: err?.message,
       errors: err?.errors,
+      parent: err?.parent,
+      original: err?.original,
+      sql: err?.sql,
       stack: err?.stack,
     });
 
-    // Errores comunes de Sequelize (validations / unique / enum)
-    if (err?.name === 'SequelizeUniqueConstraintError') {
-      return res.status(400).json({ error: 'unique_constraint', fields: err?.fields || null });
+    if (err?.name === "SequelizeUniqueConstraintError") {
+      return res.status(400).json({
+        ok: false,
+        error: "unique_constraint",
+        fields: err?.fields || null,
+      });
     }
-    if (err?.name === 'SequelizeDatabaseError') {
-      // Por ejemplo: error de ENUM si no coincide con los valores permitidos
-      return res.status(400).json({ error: 'db_error', detail: err?.original?.detail || err?.message });
+
+    if (err?.name === "SequelizeDatabaseError") {
+      return res.status(400).json({
+        ok: false,
+        error: "db_error",
+        detail: err?.original?.detail || err?.message,
+      });
     }
-    if (err?.name === 'SequelizeValidationError') {
-      return res.status(400).json({ error: 'validation_error', detail: err?.errors?.map(e => e.message) });
+
+    if (err?.name === "SequelizeValidationError") {
+      return res.status(400).json({
+        ok: false,
+        error: "validation_error",
+        detail: err?.errors?.map((e) => e.message),
+      });
     }
 
     return next(err);
   } finally {
-    console.log('[createAsistencia] ⇠ FIN');
+    console.log("[createAsistencia] ⇠ FIN");
   }
 }
-
-
 // ---------------------- utils ----------------------
 
 // diferencia en minutos (float) y hh:mm:ss (string con signo)

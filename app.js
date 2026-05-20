@@ -19,17 +19,55 @@ import "./config/passport.js";              // 👈 NUEVO (side-effect: passport
 
 dotenv.config();
 
+console.log("========== ENV BOT CHECK ==========");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("PORT:", process.env.PORT);
+
+console.log("WHATSAPP_PROVIDER:", process.env.WHATSAPP_PROVIDER);
+console.log("WHATSAPP_GRAPH_API_VERSION:", process.env.WHATSAPP_GRAPH_API_VERSION);
+console.log("WHATSAPP_PHONE_NUMBER_ID:", process.env.WHATSAPP_PHONE_NUMBER_ID);
+
+console.log(
+  "WHATSAPP_ACCESS_TOKEN:",
+  process.env.WHATSAPP_ACCESS_TOKEN
+    ? `${process.env.WHATSAPP_ACCESS_TOKEN.slice(0, 12)}...${process.env.WHATSAPP_ACCESS_TOKEN.slice(-8)}`
+    : "NO DEFINIDO"
+);
+
+console.log(
+  "WHATSAPP_ACCESS_TOKEN length:",
+  process.env.WHATSAPP_ACCESS_TOKEN?.length || 0
+);
+
+console.log(
+  "OPENAI_API_KEY:",
+  process.env.OPENAI_API_KEY
+    ? `${process.env.OPENAI_API_KEY.slice(0, 8)}...${process.env.OPENAI_API_KEY.slice(-6)}`
+    : "NO DEFINIDO"
+);
+
+console.log("===================================");
+
 const app = express();
 app.set('trust proxy', 1); // importante detrás del proxy de Railway
 
 const __dirname = path.resolve();
 
 // app.js
+// const ALLOWED_ORIGINS = [
+//   LOCAL_HOST,
+//   process.env.FRONTEND_URL,
+//   "http://localhost:3000",
+//   // acá podés sumar el dominio real que usás en el celu si es otro
+// ].filter(Boolean);
+
 const ALLOWED_ORIGINS = [
   LOCAL_HOST,
   process.env.FRONTEND_URL,
+  process.env.FRONTEND_PUBLIC_URL,
+  process.env.PUBLIC_FIDELIZACION_URL,
   "http://localhost:3000",
-  // acá podés sumar el dominio real que usás en el celu si es otro
+  "https://sorteos.latradicioncarnicerias.com",
 ].filter(Boolean);
 
 app.use(

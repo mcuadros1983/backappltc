@@ -80,3 +80,61 @@ export const enviarTablas = async (req, res) => {
   }
 };
 
+export const enviarAsistencias = async (req, res) => {
+  try {
+    // Enviar la señal de sincronización a todos los clientes conectados
+    broadcastToClients({ type: "asistencias", message: "Sincronización de asistencias enviada." });
+
+    // Responder al cliente HTTP (opcional, si tienes un frontend)
+    res.status(200).json({ message: "Asistencias completada y señal enviada a través de WebSocket." });
+  } catch (error) {
+    console.error("Error durante la sincronización:", error);
+    res.status(500).json({ message: "Error al ejecutar la sincronización." });
+  }
+};
+
+export const enviarAudioPorFecha = async (req, res) => {
+  try {
+    const { sucursalCodigo, fecha } = req.body;
+
+    if (!sucursalCodigo || !String(sucursalCodigo).trim()) {
+      return res.status(400).json({
+        ok: false,
+        message: "El campo 'sucursalCodigo' es obligatorio.",
+      });
+    }
+
+    if (!fecha || !String(fecha).trim()) {
+      return res.status(400).json({
+        ok: false,
+        message: "El campo 'fecha' es obligatorio.",
+      });
+    }
+
+    const requestId = `audio-${String(sucursalCodigo).trim()}-${Date.now()}`;
+
+    broadcastToClients({
+      type: "process_audio_date",
+      requestId,
+      sucursalCodigo: String(sucursalCodigo).trim(),
+      fecha: String(fecha).trim(),
+    });
+
+    return res.status(200).json({
+      ok: true,
+      message: "Solicitud de procesamiento de audio enviada por WebSocket.",
+      data: {
+        requestId,
+        sucursalCodigo: String(sucursalCodigo).trim(),
+        fecha: String(fecha).trim(),
+      },
+    });
+  } catch (error) {
+    console.error("Error al enviar solicitud de audio por fecha:", error);
+    return res.status(500).json({
+      ok: false,
+      message: "Error al enviar la solicitud de audio.",
+    });
+  }
+};
+

@@ -87,6 +87,99 @@ import DocumentoPaso from "./documentacion/DocumentoPaso.js";
 import DocumentoArchivo from "./documentacion/DocumentoArchivo.js"
 import DocumentoSubcategoria from "./documentacion/DocumentoSubcategoria.js"
 
+import { AudioSegment } from "./audio/AudioSegment.js";
+import { AudioSegmentAnalysis } from "./audio/AudioSegmentAnalysis.js";
+
+import PromocionTabla from "./tablas/promocionModel.js";
+import PromocionArticuloTabla from "./tablas/promocionArticuloModel.js";
+import PromocionDiaTabla from "./tablas/promocionDiaModel.js";
+
+import ArticuloTabla from "../models/tablas/articuloModel.js";
+import Usuario from "../models/auth/usuarioModel.js";
+
+import BotSetting from "../models/bot/botSettingModel.js";
+import BotProductMeta from "../models/bot/botProductMetaModel.js";
+import BotConversation from "../models/bot/botConversationModel.js";
+import BotMessage from "../models/bot/botMessageModel.js";
+import BotHandoffRequest from "../models/bot/botHandoffRequestModel.js";
+
+import {
+  ComercioAsociado,
+  ComercioQr,
+  CampaniaFidelizacion,
+  PremioCliente,
+  ClienteFidelizacion,
+  ParticipacionCliente,
+  CuponCliente,
+  CanjeCuponCliente,
+  PuntoComercioMovimiento,
+  PremioComercio,
+  CanjePremioComercio,
+  AlertaFraude,
+  initFidelizacionAssociations,
+} from "./fidelizacion/index.js";
+
+/**
+ * BotProductMeta <-> ArticuloTabla
+ */
+BotProductMeta.belongsTo(ArticuloTabla, {
+  foreignKey: "articulo_id",
+  as: "articulo",
+});
+
+ArticuloTabla.hasOne(BotProductMeta, {
+  foreignKey: "articulo_id",
+  as: "bot_meta",
+});
+
+/**
+ * BotConversation <-> BotMessage
+ */
+BotConversation.hasMany(BotMessage, {
+  foreignKey: "conversation_id",
+  as: "messages",
+});
+
+BotMessage.belongsTo(BotConversation, {
+  foreignKey: "conversation_id",
+  as: "conversation",
+});
+
+/**
+ * BotConversation <-> BotHandoffRequest
+ */
+BotConversation.hasMany(BotHandoffRequest, {
+  foreignKey: "conversation_id",
+  as: "handoffs",
+});
+
+BotHandoffRequest.belongsTo(BotConversation, {
+  foreignKey: "conversation_id",
+  as: "conversation",
+});
+
+/**
+ * Usuario <-> BotHandoffRequest
+ */
+BotHandoffRequest.belongsTo(Usuario, {
+  foreignKey: "assigned_user_id",
+  as: "assigned_user",
+});
+
+Usuario.hasMany(BotHandoffRequest, {
+  foreignKey: "assigned_user_id",
+  as: "bot_handoffs",
+});
+
+AudioSegment.hasOne(AudioSegmentAnalysis, {
+  foreignKey: "audio_segment_id",
+  as: "analysis",
+});
+
+AudioSegmentAnalysis.belongsTo(AudioSegment, {
+  foreignKey: "audio_segment_id",
+  as: "segment",
+});
 registerAuditHooks(sequelize);
 
 // Relaciones para MovimientoCajaTesoreria
@@ -348,10 +441,10 @@ Turno.belongsToMany(Jornada, {
 
 // (Opcional) facilitar includes desde la pivote:
 JornadaTurno.belongsTo(Jornada, { foreignKey: 'jornada_id', as: 'jornada' });
-JornadaTurno.belongsTo(Turno,   { foreignKey: 'turno_id',   as: 'turno'   });
+JornadaTurno.belongsTo(Turno, { foreignKey: 'turno_id', as: 'turno' });
 
 // Documento tiene muchos pasos
-Documento.hasMany(DocumentoPaso, { 
+Documento.hasMany(DocumentoPaso, {
   foreignKey: "documento_id",
   as: "pasos",
   onDelete: "CASCADE",
@@ -381,6 +474,8 @@ DocumentoSubcategoria.hasMany(Documento, {
   foreignKey: "subcategoria_id",
   as: "documentos",
 });
+
+initFidelizacionAssociations();
 
 // Exportar todos los modelos por si se necesita en otros módulos
 export {
@@ -424,6 +519,18 @@ export {
   HorarioTurno,
   AsignacionVacaciones,
   Jornada,
-  JornadaTurno, Documento, DocumentoPaso, DocumentoArchivo
+  JornadaTurno, Documento, DocumentoPaso, DocumentoArchivo,
+  ComercioAsociado,
+  ComercioQr,
+  CampaniaFidelizacion,
+  PremioCliente,
+  ClienteFidelizacion,
+  ParticipacionCliente,
+  CuponCliente,
+  CanjeCuponCliente,
+  PuntoComercioMovimiento,
+  PremioComercio,
+  CanjePremioComercio,
+  AlertaFraude,
 };
 

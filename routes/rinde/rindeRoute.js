@@ -69,6 +69,10 @@ rindeRouter.delete(
 );
 rindeRouter.put("/editarFormula/:formulaId", rindeController.editarFormula);
 rindeRouter.post("/obtenerstock", rindeController.obtenerStock);
+rindeRouter.post(
+  "/obtenersubcategoriasmedias",
+  rindeController.obtenerSubcategoriasMedias
+);
 
 rindeRouter.post("/movimientos-otro", rindeController.obtenerMovimientosFiltradosOtro);
 rindeRouter.post("/movimientos-otro/monto", rindeController.obtenerMontoMovimientosFiltradosOtro);
@@ -78,7 +82,7 @@ rindeRouter.delete("/movimientos-otro/:movimientoId", rindeController.eliminarMo
 rindeRouter.post('/movimientos-otro-excel', upload.single('file'), rindeController.crearMovimientosOtrosDesdeExcel);
 rindeRouter.post("/movimientos-otro/fechas-unicas", rindeController.obtenerFechasUnicasMovimientosOtros);
 rindeRouter.post("/movimientos-otro/eliminar-por-fechas", rindeController.eliminarMovimientosOtrosPorFechas);
-rindeRouter.post("/cargarinventarios-excel",upload.single("file"), rindeController.cargarInventarioDesdeExcel);
+rindeRouter.post("/cargarinventarios-excel", upload.single("file"), rindeController.cargarInventarioDesdeExcel);
 rindeRouter.put(
   "/inventario/articulo/:articuloId",
   rindeController.editarArticuloInventario

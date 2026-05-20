@@ -14,5 +14,9 @@ syncRouter.post("/syncprecios", syncController.enviarPrecios);
 
 syncRouter.post("/synctablas", syncController.enviarTablas);
 
+syncRouter.post("/syncasistencias", syncController.enviarAsistencias);
+
+syncRouter.post("/syncaudio", syncController.enviarAudioPorFecha);
+
 // Exportar el enrutador
 export default syncRouter;

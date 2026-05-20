@@ -631,7 +631,7 @@ const crearRinde = async (req, res, next) => {
       eficiencia,
     } = req.body;
 
-    const formatToTwoDecimals = (value) => { 
+    const formatToTwoDecimals = (value) => {
       if (value && !isNaN(value)) {
         return parseFloat(value).toFixed(2);
       }
@@ -1041,7 +1041,8 @@ const editarFormula = async (req, res, next) => {
 const obtenerSumaKgMediasPorSubcategoria = async (
   fechaDesde,
   fechaHasta,
-  sucursalId
+  sucursalId,
+  subcategoriasOmitidas = []
 ) => {
   try {
     const filters = {
@@ -1079,16 +1080,42 @@ const obtenerSumaKgMediasPorSubcategoria = async (
       where: filters,
     });
 
+    console.log(
+      "Subcategorías encontradas en productos de medias:",
+      ordenes.flatMap((orden) =>
+        orden.Productos.map((producto) => producto.subcategoria)
+      )
+    );
+
+
     // Calcular la suma de los campos 'kg' de los productos agrupados por subcategoría
     const sumaKgPorSubcategoria = {};
+    // ordenes.forEach((orden) => {
+    //   orden.Productos.forEach((producto) => {
+    //     if (!sumaKgPorSubcategoria[producto.subcategoria]) {
+    //       sumaKgPorSubcategoria[producto.subcategoria] = 0;
+    //     }
+    //     sumaKgPorSubcategoria[producto.subcategoria] += producto.kg;
+    //   });
+    // });
+
     ordenes.forEach((orden) => {
       orden.Productos.forEach((producto) => {
-        if (!sumaKgPorSubcategoria[producto.subcategoria]) {
-          sumaKgPorSubcategoria[producto.subcategoria] = 0;
+        const subcategoria = String(producto.subcategoria || "").trim();
+
+        if (subcategoriasOmitidas.includes(subcategoria)) {
+          return;
         }
-        sumaKgPorSubcategoria[producto.subcategoria] += producto.kg;
+
+        if (!sumaKgPorSubcategoria[subcategoria]) {
+          sumaKgPorSubcategoria[subcategoria] = 0;
+        }
+
+        sumaKgPorSubcategoria[subcategoria] += parseFloat(producto.kg || 0);
       });
     });
+
+
     // Convertir el objeto a un arreglo de objetos con la estructura deseada
     const resultado = Object.keys(sumaKgPorSubcategoria).map((categoria) => ({
       subcategoria: categoria,
@@ -1098,6 +1125,58 @@ const obtenerSumaKgMediasPorSubcategoria = async (
     return resultado;
   } catch (error) {
     console.error("Error al obtener el stock por subcategoría:", error);
+  }
+};
+
+const obtenerSubcategoriasMedias = async (req, res, next) => {
+  try {
+    const { fechaDesde, fechaHasta, sucursalId } = req.body;
+
+    if (!fechaDesde || !fechaHasta) {
+      return res.status(400).json({
+        message: "Debe proporcionar fechaDesde y fechaHasta.",
+      });
+    }
+
+    const filters = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
+
+    if (sucursalId) {
+      filters.sucursal_id = sucursalId;
+    }
+
+    const ordenes = await Orden.findAll({
+      include: [
+        {
+          model: Producto,
+          attributes: ["subcategoria"],
+          as: "Productos",
+        },
+      ],
+      where: filters,
+    });
+
+    const subcategoriasSet = new Set();
+
+    ordenes.forEach((orden) => {
+      orden.Productos.forEach((producto) => {
+        const subcategoria = String(producto.subcategoria || "").trim();
+
+        if (subcategoria) {
+          subcategoriasSet.add(subcategoria);
+        }
+      });
+    });
+
+    const subcategorias = Array.from(subcategoriasSet).sort();
+
+    return res.status(200).json(subcategorias);
+  } catch (error) {
+    console.error("Error al obtener subcategorías de medias:", error);
+    next(error);
   }
 };
 
@@ -1511,14 +1590,29 @@ const obtenerKgPorArticuloVendido = async (
 };
 
 const obtenerStock = async (req, res, next) => {
-  const { fechaDesde, fechaHasta, sucursalId, inventarioId } = req.body;
+  // const { fechaDesde, fechaHasta, sucursalId, inventarioId } = req.body;
+
+  const {
+    fechaDesde,
+    fechaHasta,
+    sucursalId,
+    inventarioId,
+    subcategoriasOmitidas = [],
+  } = req.body;
 
   try {
     let sumaCantidadesMedias = [];
+    // const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
+    //   fechaDesde,
+    //   fechaHasta,
+    //   sucursalId
+    // );
+
     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
       fechaDesde,
       fechaHasta,
-      sucursalId
+      sucursalId,
+      subcategoriasOmitidas
     );
 
     if (sumaMedias.length > 0) {
@@ -1580,6 +1674,8 @@ const obtenerStock = async (req, res, next) => {
 
     // Crear un mapa para almacenar las cantidades por código de barras
     const codigoCantidadMap = new Map();
+    const codigoVentasMap = new Map();
+    const codigoEgresosMap = new Map();
 
     // Función para sumar cantidades al mapa
     const sumarCantidad = (codigo, cantidad) => {
@@ -1587,6 +1683,15 @@ const obtenerStock = async (req, res, next) => {
       codigoCantidadMap.set(codigo, cantidadActual + cantidad);
     };
 
+    const sumarVenta = (codigo, cantidad) => {
+      const cantidadActual = codigoVentasMap.get(codigo) || 0;
+      codigoVentasMap.set(codigo, cantidadActual + cantidad);
+    };
+
+    const sumarEgreso = (codigo, cantidad) => {
+      const cantidadActual = codigoEgresosMap.get(codigo) || 0;
+      codigoEgresosMap.set(codigo, cantidadActual + cantidad);
+    };
     // Función para iterar sobre los datos y sumar cantidades al mapa
     const sumarCantidades = (datos) => {
       datos.forEach(({ codigo, cantidad }) => {
@@ -1599,6 +1704,18 @@ const obtenerStock = async (req, res, next) => {
     sumarCantidades(sumaInventario);
     sumarCantidades(sumaMovimientos);
     sumarCantidades(sumaCantidadesVendidasPorArticulo);
+
+    sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+      sumarVenta(codigo, parseFloat(cantidad));
+    });
+
+    sumaMovimientos.forEach(({ codigo, cantidad }) => {
+      const cantidadNumerica = parseFloat(cantidad);
+
+      if (cantidadNumerica < 0) {
+        sumarEgreso(codigo, Math.abs(cantidadNumerica));
+      }
+    });
 
     // Obtener las descripciones de los productos desde ArticuloTabla
     const descripcionMap = new Map();
@@ -1617,10 +1734,18 @@ const obtenerStock = async (req, res, next) => {
     }
 
     // Convertir el mapa a un array de objetos con la estructura requerida
+    // const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+    //   codigo,
+    //   cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
+    //   descripcion: descripcionMap.get(codigo) || "", // Obtener la descripción desde ArticuloTabla
+    // }));
+
     const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
       codigo,
-      cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
-      descripcion: descripcionMap.get(codigo) || "", // Obtener la descripción desde ArticuloTabla
+      cantidad: cantidad.toFixed(2),
+      ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
+      egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
+      descripcion: descripcionMap.get(codigo) || "",
     }));
 
     // Devolver el stock unificado
@@ -2245,5 +2370,6 @@ export {
   agregarArticuloInventario,
   obtenerRindesGeneralesPorMesAnio,
   guardarRindeGeneral,
-  eliminarRindeGeneral
+  eliminarRindeGeneral,
+  obtenerSubcategoriasMedias,
 };

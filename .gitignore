@@ -1,1 +1,6 @@
 node_modules
+.env
+.env copy
+uploads
+*.log
+.DS_Store

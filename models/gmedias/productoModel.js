@@ -53,20 +53,8 @@ const Producto = sequelize.define(
       defaultValue: sequelize.literal("CURRENT_DATE"), // Establece la fecha actual por defecto
     },
   },
-  // {
-  //   indexes: [
-  //     {
-  //       fields: ["codigo_de_barra"], // Índice explícito para optimizar búsquedas
-  //     },
-  //     {
-  //       fields: ["num_media"], // Índice explícito para optimizar búsquedas
-  //     },
-  //   ],
-  //   freezeTableName: true,
-  // }
-  // ,
+
   {
-    //timestamps: false, // Evita la creación automática de las columnas 'createdAt' y 'updatedAt'
     freezeTableName: true, // Evita que Sequelize pluralice el nombre de la tabla
   }
 );

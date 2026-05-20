@@ -16,6 +16,7 @@ import "./models/index.js"; // Este define las relaciones
 import "./libs/configuracionInicial.js";
 import { WebSocketServer } from "ws"; // Importar WebSocket
 import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos de WebSocket
+import { runFidelizacionJobs } from "./jobs/fidelizacion/fidelizacionJobs.js";
 
 async function main() {
   try {
@@ -25,10 +26,12 @@ async function main() {
     // Sincroniza las tablas después de que el servidor esté escuchando
     const server = app.listen(PORT, async () => {
       console.log(`Server is listening on port ${PORT}`);
-      
+
     });
 
-
+    setInterval(async () => {
+      await runFidelizacionJobs();
+    }, 1000 * 60 * 60);
 
     // Inicializar WebSocket
     const wss = new WebSocketServer({ server });

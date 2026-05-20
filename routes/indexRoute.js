@@ -123,7 +123,10 @@ import documentosRouter from "./documentacion/documentosRoute.js";
 import documentosUploadRouter from "./documentacion/documentosUploadRoute.js";
 import proyeccionConfigRouter from "./proyeccion/proyeccionConfigRoute.js";
 import proyeccionRouter from "./proyeccion/proyeccionRoute.js";
-
+import { audioSegmentsRouter, audioSegmentsProtectedRouter } from "./audio/audioSegmentsRoute.js";
+import promocionRouter from "./tablas/promocionRoute.js";
+import { publicBotRouter, privateBotRouter } from "./botRoute.js";
+import fidelizacionRoutes from "./fidelizacion/fidelizacionRoutes.js";
 
 const router = Router();
 
@@ -133,7 +136,9 @@ const indexRouter = Router();
 indexRouter.get("/", JWTAuth, indexController.index);
 router.use(authRouter);
 
+// pública para Electron
 
+router.use(audioSegmentsRouter);
 router.use(tablasRouter);
 router.use(syncRouter);
 router.use(registroPrecioRouter);
@@ -167,9 +172,16 @@ router.use(ordenesRouter);
 router.use(productosRouter);
 router.use(ventasRouter);
 router.use(navRouter);
+router.use("/promociones", promocionRouter);
+router.use(publicBotRouter);
+router.use(privateBotRouter);
+
+router.use("/fidelizacion", fidelizacionRoutes);
 
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
+// protegidas para frontend ERP
+router.use(audioSegmentsProtectedRouter);
 router.use(indexRouter);
 router.use(meRouter);
 router.use(agendaRouter);
