@@ -119,27 +119,73 @@ export async function getBotEventMetaById(id) {
     ],
   });
 }
+function toBoolean(value, defaultValue = true) {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return defaultValue;
+}
+
+function emptyToNull(value) {
+  return value === "" || value === undefined ? null : value;
+}
+
+function normalizeAliases(value) {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
 
 export async function createBotEventMeta(data = {}) {
+  const aplicaTodas = toBoolean(data.aplica_todas_sucursales, true);
+
+  if (!data.tipo_evento) {
+    throw new Error("Debe indicar el tipo de evento");
+  }
+
+  if (!data.titulo) {
+    throw new Error("Debe indicar el título del evento");
+  }
+
+  if (!data.fecha_inicio) {
+    throw new Error("Debe indicar la fecha de inicio");
+  }
+
+  if (!aplicaTodas && !data.sucursal_id) {
+    throw new Error("Debe seleccionar una sucursal o marcar que aplica a todas");
+  }
+
   return BotEventMeta.create({
     tipo_evento: data.tipo_evento,
     titulo: data.titulo,
-    descripcion: data.descripcion || null,
+    descripcion: emptyToNull(data.descripcion),
+
     fecha_inicio: data.fecha_inicio,
     fecha_fin: data.fecha_fin || data.fecha_inicio,
-    hora_inicio: data.hora_inicio || null,
-    hora_fin: data.hora_fin || null,
-    sucursal_id: data.aplica_todas_sucursales ? null : data.sucursal_id || null,
-    aplica_todas_sucursales:
-      typeof data.aplica_todas_sucursales === "boolean"
-        ? data.aplica_todas_sucursales
-        : true,
-    condiciones: data.condiciones || null,
-    mensaje_bot: data.mensaje_bot || null,
-    aliases: Array.isArray(data.aliases) ? data.aliases : [],
-    activo_bot:
-      typeof data.activo_bot === "boolean" ? data.activo_bot : true,
+
+    hora_inicio: emptyToNull(data.hora_inicio),
+    hora_fin: emptyToNull(data.hora_fin),
+
+    sucursal_id: aplicaTodas ? null : Number(data.sucursal_id),
+
+    aplica_todas_sucursales: aplicaTodas,
+
+    condiciones: emptyToNull(data.condiciones),
+    mensaje_bot: emptyToNull(data.mensaje_bot),
+
+    aliases: normalizeAliases(data.aliases),
+
+    activo_bot: toBoolean(data.activo_bot, true),
     prioridad: Number(data.prioridad || 0),
+
+    impacto: emptyToNull(data.impacto),
   });
 }
 

@@ -47,7 +47,6 @@ export async function getById(req, res) {
     });
   }
 }
-
 export async function create(req, res) {
   try {
     const row = await createBotEventMeta(req.body);
@@ -57,10 +56,27 @@ export async function create(req, res) {
       data: row,
     });
   } catch (error) {
-    return res.status(500).json({
+    console.error("[BOT EVENT META CREATE ERROR]", {
+      message: error.message,
+      name: error.name,
+      errors: error.errors?.map((e) => ({
+        message: e.message,
+        path: e.path,
+        value: e.value,
+        validatorKey: e.validatorKey,
+      })),
+      body: req.body,
+    });
+
+    return res.status(400).json({
       ok: false,
       error: "Error al crear evento del bot",
       details: error.message,
+      validationErrors: error.errors?.map((e) => ({
+        field: e.path,
+        message: e.message,
+        value: e.value,
+      })),
     });
   }
 }

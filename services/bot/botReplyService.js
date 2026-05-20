@@ -430,8 +430,26 @@ function findLastBranchOptionsMessage(messages = []) {
   });
 }
 
+function extractBranchSearchText(text = "") {
+  const clean = normalizeText(text);
+  
+  return clean
+    .replace("dime", "")
+    .replace("pasame", "")
+    .replace("dame", "")
+    .replace("el horario de", "")
+    .replace("horario de", "")
+    .replace("horario", "")
+    .replace("la sucursal", "")
+    .replace("sucursal", "")
+    .replace("la", "")
+    .replace("el", "")
+    .trim();
+}
+
 function getStrongSingleBranchMatch(incomingText = "", branchCandidates = []) {
-  const q = normalizeText(incomingText);
+  // const q = normalizeText(incomingText);
+  const q = extractBranchSearchText(incomingText);
 
   if (!q || q.length < 3) return null;
 
