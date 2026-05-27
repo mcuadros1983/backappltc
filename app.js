@@ -67,7 +67,7 @@ const ALLOWED_ORIGINS = [
   process.env.FRONTEND_PUBLIC_URL,
   process.env.PUBLIC_FIDELIZACION_URL,
   "http://localhost:3000",
-  "https://sorteos.latradicioncarnicerias.com",
+  "https://latradicionsorteos.com",
 ].filter(Boolean);
 
 app.use(
