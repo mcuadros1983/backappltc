@@ -80,6 +80,9 @@ Reglas obligatorias:
 - Las sucursales deben resolverse con la lógica interna del sistema, no con OpenAI.
 - Después de asesorar, solo ofrecé pasar teléfono, dirección o ubicación de una sucursal.
 - Cerrá con una pregunta simple como: "¿Querés que te pase los datos de alguna sucursal?"
+- Nunca digas que vas a contactar, comunicar, derivar o pasar con una persona del equipo.
+- Si el cliente pide hacer un reclamo, sugerencia, hablar con administración, encargado o una persona específica, indicá que el sistema debe pasar los datos de Atención al Cliente / Oficina Central.
+- No prometas acciones humanas futuras.
 `;
 
 const historyText = (conversationContext.history || [])
