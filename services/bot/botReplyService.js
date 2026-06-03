@@ -496,9 +496,52 @@ function isOpeningStatusQuestion(text = "") {
   );
 }
 
+function isAdminContactRequest(text = "") {
+  const clean = normalizeText(text);
+
+  return (
+    clean.includes("reclamo") ||
+    clean.includes("queja") ||
+    clean.includes("sugerencia") ||
+    clean.includes("encargado") ||
+    clean.includes("administracion") ||
+    clean.includes("administración") ||
+    clean.includes("oficina central") ||
+    clean.includes("atencion al cliente") ||
+    clean.includes("atención al cliente") ||
+    clean.includes("hablar con") ||
+    clean.includes("comunicarme con") ||
+    clean.includes("comunicame con") ||
+    clean.includes("quiero hablar") ||
+    clean.includes("necesito hablar")
+  );
+}
+
+async function getAdministrationBranch() {
+  const candidates = await searchBranchMetaCandidates("oficina central", 50);
+
+  const exact = candidates.find((branch) => {
+    const data = branch.toJSON ? branch.toJSON() : branch;
+    const nombre = normalizeText(data.nombre_visible || "");
+    const aliases = Array.isArray(data.aliases)
+      ? data.aliases.map((a) => normalizeText(a))
+      : [];
+
+    return (
+      nombre.includes("oficina central") ||
+      nombre.includes("administracion") ||
+      aliases.includes("oficina central") ||
+      aliases.includes("administracion") ||
+      aliases.includes("atencion al cliente")
+    );
+  });
+
+  return exact || candidates[0] || null;
+}
+
 function shouldRequestHandoff(intent, incomingText) {
   const text = String(incomingText || "").toLowerCase();
-
+if (isAdminContactRequest(incomingText)) return false;
   if (isScheduleQuery(text)) return false;
 
   if ([BOT_INTENTS.HUMAN_HANDOFF, BOT_INTENTS.COMPLAINT].includes(intent)) {
@@ -915,6 +958,39 @@ export async function buildBotReply({
     });
   }
 
+  if (isAdminContactRequest(incomingText)) {
+  const adminBranch = await getAdministrationBranch();
+
+  if (adminBranch) {
+    replyText = [
+      "Para reclamos, sugerencias o consultas con administración, te paso los datos de Atención al Cliente:",
+      "",
+      buildBranchContactReply(adminBranch),
+    ].join("\n");
+
+    extraPayload = {
+      ...extraPayload,
+      branch_contact_flow: true,
+      selected_branch: adminBranch.toJSON ? adminBranch.toJSON() : adminBranch,
+      admin_contact_flow: true,
+    };
+  } else {
+    replyText = [
+      "Para reclamos, sugerencias o consultas con administración, podés comunicarte con Atención al Cliente.",
+      "",
+      "En este momento no tengo cargados los datos de la oficina central.",
+    ].join("\n");
+  }
+
+  return saveAndReturnReply({
+    conversation,
+    replyText,
+    intent: BOT_INTENTS.BRANCHES,
+    modelUsed: null,
+    extraPayload,
+  });
+}
+    
   if (!settings.activo) {
     replyText =
       "En este momento el asistente automático no está activo. Te dejamos la consulta para que la revise el equipo.";
