@@ -171,9 +171,10 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
     q.includes("marcatón") ||
     q.includes("reintegro") ||
     q.includes("cuotas") ||
-    q.includes("plan z");
+    q.includes("plan z") ||
+    q.includes("medio de pago");
 
-  const safeLimit = Math.min(Number(limit || 3), 5);
+  const safeLimit = Math.min(Number(limit || 3), 10);
 
   let rows = await BotBenefitMeta.findAll({
     where: { activo_bot: true },
@@ -191,10 +192,23 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
   });
 
   if (asksCardBenefit) {
-    rows = rows.filter(
-      (row) =>
-        normalizeText(row.tipo_beneficio || "") === "reintegro"
-    );
+    rows = rows.filter((row) => {
+      const tipo = normalizeText(row.tipo_beneficio || "");
+      const medioPago = normalizeText(row.medio_pago || "");
+      const entidad = normalizeText(row.entidad || "");
+
+      return (
+        medioPago.length > 0 ||
+        entidad.length > 0 ||
+        [
+          "reintegro",
+          "descuento",
+          "cuotas",
+          "tarjeta",
+          "financiero",
+        ].includes(tipo)
+      );
+    });
   }
 
   const scored = rows
@@ -209,6 +223,8 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       const tipo = normalizeText(data.tipo_beneficio || "");
       const descripcion = normalizeText(data.descripcion || "");
       const mensaje = normalizeText(data.mensaje_bot || "");
+      const medioPago = normalizeText(data.medio_pago || "");
+      const entidad = normalizeText(data.entidad || "");
 
       let score = 0;
 
@@ -216,7 +232,7 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       if (titulo === q) score += 90;
       if (tipo === q) score += 80;
 
-      // Prioridad fuerte para consultas específicas
+      // Prioridad fuerte para búsquedas específicas
       if (
         q.includes("marcaton") ||
         q.includes("marcatón") ||
@@ -226,7 +242,9 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       ) {
         if (
           titulo.includes(q) ||
-          aliases.some((alias) => alias.includes(q))
+          aliases.some((alias) => alias.includes(q)) ||
+          medioPago.includes(q) ||
+          entidad.includes(q)
         ) {
           score += 300;
         }
@@ -236,19 +254,22 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
         score += 60;
       }
 
-      if (titulo.includes(q) || q.includes(titulo)) {
-        score += 50;
-      }
+      if (titulo.includes(q) || q.includes(titulo)) score += 50;
+
+      if (medioPago.includes(q)) score += 70;
+      if (entidad.includes(q)) score += 70;
 
       const words = q
         .split(" ")
         .map((w) => w.trim())
-        .filter((word) => word.length >= 4);
+        .filter((word) => word.length >= 3);
 
       for (const word of words) {
         if (aliases.some((alias) => alias.includes(word))) score += 12;
         if (titulo.includes(word)) score += 10;
         if (tipo.includes(word)) score += 8;
+        if (medioPago.includes(word)) score += 15;
+        if (entidad.includes(word)) score += 15;
         if (descripcion.includes(word)) score += 3;
         if (mensaje.includes(word)) score += 3;
       }
@@ -276,6 +297,22 @@ export function buildBenefitReply(benefits = []) {
     return null;
   }
 
+  const hasFinancialBenefits = benefits.some((benefit) => {
+    const data = benefit.toJSON ? benefit.toJSON() : benefit;
+
+    return (
+      data.medio_pago ||
+      data.entidad ||
+      ["reintegro", "descuento", "financiero", "tarjeta"].includes(
+        normalizeText(data.tipo_beneficio || "")
+      )
+    );
+  });
+
+  const title = hasFinancialBenefits
+    ? "Promociones y beneficios vigentes con tarjetas y medios de pago:"
+    : "Estos son los beneficios que encontré:";
+
   const lines = benefits.map((benefit) => {
     const data = benefit.toJSON ? benefit.toJSON() : benefit;
 
@@ -284,33 +321,38 @@ export function buildBenefitReply(benefits = []) {
     parts.push(`• ${data.titulo}`);
 
     if (data.porcentaje_descuento) {
-      parts.push(`Descuento: ${Number(data.porcentaje_descuento)}%`);
+      const tipo =
+        normalizeText(data.tipo_beneficio || "") === "reintegro"
+          ? "Reintegro"
+          : "Descuento";
+
+      parts.push(`✓ ${tipo}: ${Number(data.porcentaje_descuento)}%`);
     }
 
     if (Array.isArray(data.dias_aplica) && data.dias_aplica.length > 0) {
-      parts.push(`Días: ${data.dias_aplica.join(", ")}`);
+      parts.push(`✓ Días: ${data.dias_aplica.join(", ")}`);
     }
 
     if (data.medio_pago) {
-      parts.push(`Medio de pago: ${data.medio_pago}`);
+      parts.push(`✓ Medio de pago: ${data.medio_pago}`);
     }
 
     if (data.entidad) {
-      parts.push(`Entidad: ${data.entidad}`);
+      parts.push(`✓ Entidad: ${data.entidad}`);
     }
 
     if (data.condiciones) {
-      parts.push(`Condiciones: ${data.condiciones}`);
+      parts.push(`✓ Condiciones: ${data.condiciones}`);
     }
 
     if (data.mensaje_bot) {
-      parts.push(data.mensaje_bot);
+      parts.push(`${data.mensaje_bot}`);
     }
 
-    return parts.join("\n  ");
+    return parts.join("\n");
   });
 
-  return `Estos son los beneficios que encontré:\n\n${lines.join(
+  return `${title}\n\n${lines.join(
     "\n\n"
   )}\n\n¿Querés que te detalle alguno en particular?`;
 }
