@@ -448,12 +448,7 @@ export function detectIntent(text = "", context = {}) {
     );
   }
 
-  if (
-    signals.wantsPromotion &&
-    !signals.wantsBenefit &&
-    !asksBenefits &&
-    !asksCardBenefit
-  ) {
+  if (signals.wantsPromotion && !signals.wantsBenefit && !asksBenefits) {
     scores[BOT_INTENTS.PROMOTIONS] =
       (scores[BOT_INTENTS.PROMOTIONS] || 0) + 5;
   }

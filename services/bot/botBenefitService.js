@@ -191,23 +191,18 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
     ],
   });
 
+  // FILTRO ESPECIAL PARA TARJETAS / BANCOS
   if (asksCardBenefit) {
     rows = rows.filter((row) => {
-      const tipo = normalizeText(row.tipo_beneficio || "");
-      const medioPago = normalizeText(row.medio_pago || "");
-      const entidad = normalizeText(row.entidad || "");
+      const data = row.toJSON ? row.toJSON() : row;
 
-      return (
-        medioPago.length > 0 ||
-        entidad.length > 0 ||
-        [
-          "reintegro",
-          "descuento",
-          "cuotas",
-          "tarjeta",
-          "financiero",
-        ].includes(tipo)
-      );
+      const tipo = normalizeText(data.tipo_beneficio || "");
+
+      return [
+        "reintegro",
+        "cuotas",
+        "medio_pago",
+      ].includes(tipo);
     });
   }
 
@@ -232,7 +227,6 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       if (titulo === q) score += 90;
       if (tipo === q) score += 80;
 
-      // Prioridad fuerte para búsquedas específicas
       if (
         q.includes("marcaton") ||
         q.includes("marcatón") ||
