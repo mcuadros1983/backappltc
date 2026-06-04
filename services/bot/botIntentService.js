@@ -293,6 +293,13 @@ export function extractCommercialSignals(text = "") {
       "descuento cumple",
       "descuento cumpleanos",
       "descuento cumpleaños",
+      "tarjeta",
+      "banco",
+      "marcaton",
+      "marcatón",
+      "cuotas",
+      "plan z",
+      "medio de pago",
     ]),
 
     wantsEvent: includesAny(normalizedText, [
@@ -385,12 +392,12 @@ export function detectIntent(text = "", context = {}) {
   }
 
   if (entities.asksOpeningStatus && entities.mentionsSpecialDate) {
-  return BOT_INTENTS.EVENTS;
-}
+    return BOT_INTENTS.EVENTS;
+  }
 
-if (entities.asksSchedule && !entities.mentionsSpecialDate) {
-  return BOT_INTENTS.BRANCHES;
-}
+  if (entities.asksSchedule && !entities.mentionsSpecialDate) {
+    return BOT_INTENTS.BRANCHES;
+  }
 
   const scores = {};
 
@@ -401,9 +408,23 @@ if (entities.asksSchedule && !entities.mentionsSpecialDate) {
   const signals = extractCommercialSignals(normalizedText);
 
   const asksBenefits = isBenefitPriorityQuery(normalizedText);
+
+  const asksCardBenefit =
+    normalizedText.includes("tarjeta") ||
+    normalizedText.includes("banco") ||
+    normalizedText.includes("marcaton") ||
+    normalizedText.includes("marcatón") ||
+    normalizedText.includes("naranja") ||
+    normalizedText.includes("centrocard") ||
+    normalizedText.includes("reintegro") ||
+    normalizedText.includes("cuotas") ||
+    normalizedText.includes("plan z") ||
+    normalizedText.includes("medio de pago");
+
+
   const asksPromotions = isGeneralPromotionQuery(normalizedText);
 
-  if (asksBenefits) {
+  if (asksBenefits || asksCardBenefit) {
     scores[BOT_INTENTS.BENEFITS] =
       (scores[BOT_INTENTS.BENEFITS] || 0) + 20;
 
@@ -427,7 +448,12 @@ if (entities.asksSchedule && !entities.mentionsSpecialDate) {
     );
   }
 
-  if (signals.wantsPromotion && !signals.wantsBenefit && !asksBenefits) {
+  if (
+    signals.wantsPromotion &&
+    !signals.wantsBenefit &&
+    !asksBenefits &&
+    !asksCardBenefit
+  ) {
     scores[BOT_INTENTS.PROMOTIONS] =
       (scores[BOT_INTENTS.PROMOTIONS] || 0) + 5;
   }
