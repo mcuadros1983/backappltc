@@ -162,9 +162,20 @@ export async function deleteBotBenefitMeta(id) {
 
 export async function searchBenefitMetaCandidates(text = "", limit = 3) {
   const q = normalizeText(text);
+
+  const asksCardBenefit =
+    q.includes("tarjeta") ||
+    q.includes("banco") ||
+    q.includes("naranja") ||
+    q.includes("marcaton") ||
+    q.includes("marcatón") ||
+    q.includes("reintegro") ||
+    q.includes("cuotas") ||
+    q.includes("plan z");
+
   const safeLimit = Math.min(Number(limit || 3), 5);
 
-  const rows = await BotBenefitMeta.findAll({
+  let rows = await BotBenefitMeta.findAll({
     where: { activo_bot: true },
     include: [
       {
@@ -178,6 +189,13 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       ["id", "ASC"],
     ],
   });
+
+  if (asksCardBenefit) {
+    rows = rows.filter(
+      (row) =>
+        normalizeText(row.tipo_beneficio || "") === "reintegro"
+    );
+  }
 
   const scored = rows
     .map((row) => {
@@ -198,13 +216,34 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
       if (titulo === q) score += 90;
       if (tipo === q) score += 80;
 
+      // Prioridad fuerte para consultas específicas
+      if (
+        q.includes("marcaton") ||
+        q.includes("marcatón") ||
+        q.includes("naranja") ||
+        q.includes("centrocard") ||
+        q.includes("plan z")
+      ) {
+        if (
+          titulo.includes(q) ||
+          aliases.some((alias) => alias.includes(q))
+        ) {
+          score += 300;
+        }
+      }
+
       if (aliases.some((alias) => q.includes(alias) || alias.includes(q))) {
         score += 60;
       }
 
-      if (titulo.includes(q) || q.includes(titulo)) score += 50;
+      if (titulo.includes(q) || q.includes(titulo)) {
+        score += 50;
+      }
 
-      const words = q.split(" ").filter((word) => word.length >= 4);
+      const words = q
+        .split(" ")
+        .map((w) => w.trim())
+        .filter((word) => word.length >= 4);
 
       for (const word of words) {
         if (aliases.some((alias) => alias.includes(word))) score += 12;
@@ -223,9 +262,13 @@ export async function searchBenefitMetaCandidates(text = "", limit = 3) {
 
   const bestScore = scored[0]?.score || 0;
 
-  const filtered = scored.filter((item) => item.score >= bestScore * 0.65);
+  const filtered = scored.filter(
+    (item) => item.score >= bestScore * 0.65
+  );
 
-  return filtered.slice(0, safeLimit).map((item) => item.row);
+  return filtered
+    .slice(0, safeLimit)
+    .map((item) => item.row);
 }
 
 export function buildBenefitReply(benefits = []) {
