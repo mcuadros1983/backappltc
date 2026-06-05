@@ -11,7 +11,6 @@ const mantenimientoRouter = Router()
 mantenimientoRouter.use(JWTAuth, attachPermissions); 
 mantenimientoRouter.post('/mantenimientos',  authorize("mantenimiento:create"),mantenimientoController.crearMantenimiento);
 mantenimientoRouter.get('/mantenimientos',  authorize("mantenimiento:view"),mantenimientoController.listarMantenimientos);
-mantenimientoRouter.get('/mantenimientos/:id',  authorize("mantenimiento:view"),mantenimientoController.obtenerMantenimientoPorId);
 mantenimientoRouter.put('/mantenimientos/:id',  authorize("mantenimiento:update"),mantenimientoController.actualizarMantenimiento);
 mantenimientoRouter.delete('/mantenimientos/:id',  authorize("mantenimiento:delete"),mantenimientoController.eliminarMantenimiento);
 
@@ -19,4 +18,5 @@ mantenimientoRouter.delete('/mantenimientos/:id',  authorize("mantenimiento:dele
 mantenimientoRouter.get('/mantenimientos/orden/:orden_mantenimiento_id',  authorize("mantenimiento:view"),mantenimientoController.obtenerMantenimientoPorOrdenId);
 mantenimientoRouter.get('/mantenimientos/preventivo/:mantenimiento_preventivo_id',  authorize("mantenimiento:view"),mantenimientoController.obtenerMantenimientoPorPreventivoId);
 
+mantenimientoRouter.get('/mantenimientos/:id',  authorize("mantenimiento:view"),mantenimientoController.obtenerMantenimientoPorId);
 export default mantenimientoRouter;

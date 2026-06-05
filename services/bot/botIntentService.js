@@ -76,6 +76,17 @@ const INTENT_RULES = {
     "algo barato",
     "que puedo llevar",
     "tenes algo para",
+    "que puedo cocinar",
+    "que puedo hacer",
+    "como cocinar",
+    "como preparo",
+    "como preparar",
+    "que receta",
+    "alguna receta",
+    "receta para",
+    "receta con",
+    "cocinar con",
+    "preparar con",
   ],
 
   [BOT_INTENTS.PROMOTIONS]: [
@@ -462,7 +473,17 @@ export function detectIntent(text = "", context = {}) {
     scores[BOT_INTENTS.PRICE] = (scores[BOT_INTENTS.PRICE] || 0) + 5;
   }
 
+  const asksRecipe =
+    normalizedText.includes("receta") ||
+    normalizedText.includes("cocinar") ||
+    normalizedText.includes("preparar") ||
+    normalizedText.includes("como hago") ||
+    normalizedText.includes("como preparo") ||
+    normalizedText.includes("que puedo cocinar") ||
+    normalizedText.includes("que puedo hacer");
+
   if (
+    asksRecipe ||
     signals.dish ||
     signals.cookingMethod ||
     signals.wantsCheap ||

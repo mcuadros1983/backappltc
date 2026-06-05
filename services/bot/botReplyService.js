@@ -541,7 +541,7 @@ async function getAdministrationBranch() {
 
 function shouldRequestHandoff(intent, incomingText) {
   const text = String(incomingText || "").toLowerCase();
-if (isAdminContactRequest(incomingText)) return false;
+  if (isAdminContactRequest(incomingText)) return false;
   if (isScheduleQuery(text)) return false;
 
   if ([BOT_INTENTS.HUMAN_HANDOFF, BOT_INTENTS.COMPLAINT].includes(intent)) {
@@ -615,6 +615,11 @@ export async function buildBotReply({
   const intent = detectIntent(incomingText, {
     ultima_intencion: conversation.ultima_intencion || null,
   });
+
+  console.log("=================================");
+  console.log("MENSAJE:", incomingText);
+  console.log("INTENT DETECTADO:", intent);
+  console.log("=================================");
 
   const signals = extractCommercialSignals(incomingText);
 
@@ -740,6 +745,15 @@ export async function buildBotReply({
     });
   }
 
+  const isRecipeLikeQuestion =
+    normalizedIncomingText.includes("receta") ||
+    normalizedIncomingText.includes("cocinar") ||
+    normalizedIncomingText.includes("preparar") ||
+    normalizedIncomingText.includes("como hago") ||
+    normalizedIncomingText.includes("como preparo") ||
+    normalizedIncomingText.includes("que puedo cocinar") ||
+    normalizedIncomingText.includes("que puedo hacer");
+
   const canContinueBranchContactFlow =
     intent === BOT_INTENTS.BRANCHES ||
     isContinuingScheduleFlow ||
@@ -749,7 +763,8 @@ export async function buildBotReply({
       intent === BOT_INTENTS.FALLBACK &&
       !signals.wantsBenefit &&
       !signals.wantsPromotion &&
-      !signals.wantsEvent
+      !signals.wantsEvent &&
+      !isRecipeLikeQuestion
     );
 
   if (botAskedForBranchData && isAffirmative(incomingText)) {
@@ -959,38 +974,38 @@ export async function buildBotReply({
   }
 
   if (isAdminContactRequest(incomingText)) {
-  const adminBranch = await getAdministrationBranch();
+    const adminBranch = await getAdministrationBranch();
 
-  if (adminBranch) {
-    replyText = [
-      "Para reclamos, sugerencias o consultas con administración, te paso los datos de Atención al Cliente:",
-      "",
-      buildBranchContactReply(adminBranch),
-    ].join("\n");
+    if (adminBranch) {
+      replyText = [
+        "Para reclamos, sugerencias o consultas con administración, te paso los datos de Atención al Cliente:",
+        "",
+        buildBranchContactReply(adminBranch),
+      ].join("\n");
 
-    extraPayload = {
-      ...extraPayload,
-      branch_contact_flow: true,
-      selected_branch: adminBranch.toJSON ? adminBranch.toJSON() : adminBranch,
-      admin_contact_flow: true,
-    };
-  } else {
-    replyText = [
-      "Para reclamos, sugerencias o consultas con administración, podés comunicarte con Atención al Cliente.",
-      "",
-      "En este momento no tengo cargados los datos de la oficina central.",
-    ].join("\n");
+      extraPayload = {
+        ...extraPayload,
+        branch_contact_flow: true,
+        selected_branch: adminBranch.toJSON ? adminBranch.toJSON() : adminBranch,
+        admin_contact_flow: true,
+      };
+    } else {
+      replyText = [
+        "Para reclamos, sugerencias o consultas con administración, podés comunicarte con Atención al Cliente.",
+        "",
+        "En este momento no tengo cargados los datos de la oficina central.",
+      ].join("\n");
+    }
+
+    return saveAndReturnReply({
+      conversation,
+      replyText,
+      intent: BOT_INTENTS.BRANCHES,
+      modelUsed: null,
+      extraPayload,
+    });
   }
 
-  return saveAndReturnReply({
-    conversation,
-    replyText,
-    intent: BOT_INTENTS.BRANCHES,
-    modelUsed: null,
-    extraPayload,
-  });
-}
-    
   if (!settings.activo) {
     replyText =
       "En este momento el asistente automático no está activo. Te dejamos la consulta para que la revise el equipo.";
