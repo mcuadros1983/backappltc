@@ -130,13 +130,12 @@ import InspeccionItem from "./inspecciones/inspeccionItemModel.js";
 import Inspeccion from "./inspecciones/inspeccionModel.js";
 import InspeccionRespuesta from "./inspecciones/inspeccionRespuestaModel.js";
 import InspeccionEvidencia from "./inspecciones/inspeccionEvidenciaModel.js";
-import InspeccionHistorial from "./inspecciones/inspeccionHistorialModel.js";
-
+import InspeccionHistorial from "./inspecciones/inspeccionHistorialModel.js";G
 import InspeccionNotificacion from "./inspecciones/inspeccionNotificacionModel.js";
 
 import GestionProyecto from "./gestion/gestionProyectoModel.js";
 import GestionProyectoMiembro from "./gestion/gestionProyectoMiembroModel.js";
-import GestionProyectoActividad from "./gestion/gestionProyectoActividadModel.js";
+import GestionProyectoActividad from "./gestion/GestionProyectoActividadModel.js";
 import GestionProyectoDocumento from "./gestion/gestionProyectoDocumentoModel.js";
 import GestionTarea from "./gestion/gestionTareaModel.js";
 import GestionTareaParticipante from "./gestion/gestionTareaParticipanteModel.js";
