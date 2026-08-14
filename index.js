@@ -31,52 +31,29 @@ import motorConceptoService
 
 async function main() {
   try {
-    // await sequelize.authenticate();
-    // console.log("Antes notificationSeeder");
-    await notificationSeeder();
-    // console.log("Después notificationSeeder");
 
-    // console.log("Antes schedulerSeeder");
-    await schedulerSeeder();
-    // console.log("Después schedulerSeeder");
-
-    console.log("Connection has been established successfully.");
-
-    // Sincroniza las tablas después de que el servidor esté escuchando
-    const server = app.listen(PORT, async () => {
-      console.log(`Server is listening on port ${PORT}`);
-
-    });
-
-    setInterval(async () => {
-      await runFidelizacionJobs();
-    }, 1000 * 60 * 60);
-
-    // Inicializar WebSocket
-    const wss = new WebSocketServer({ server });
-
-    // Manejar las conexiones de WebSocket
-    wss.on("connection", (ws) => {
-      console.log("Cliente conectado a WebSocket");
-
-      // Manejar eventos de WebSocket en archivo separado
-      handleWebSocketConnection(ws);
-    });
+    /*
+    |--------------------------------------------------------------------------
+    | 1. CONEXIÓN BASE DE DATOS
+    |--------------------------------------------------------------------------
+    */
 
     console.log(
-      "[STARTUP] 1 - Iniciando seedEntidadTipos..."
+      "[STARTUP] Conectando a PostgreSQL..."
     );
 
-    await motorConceptoService.seedEntidadTipos();
+    await sequelize.authenticate();
 
     console.log(
-      "[STARTUP] 2 - seedEntidadTipos FINALIZADO"
+      "✅ Connection has been established successfully."
     );
 
 
-    // console.log(
-    //   "[STARTUP] 3 - Iniciando sequelize.sync..."
-    // );
+    /*
+    |--------------------------------------------------------------------------
+    | 2. SINCRONIZAR MODELOS
+    |--------------------------------------------------------------------------
+    */
 
     console.log(
       "[SYNC] Iniciando diagnóstico de modelos..."
@@ -103,101 +80,220 @@ async function main() {
       try {
 
         await modelo.sync();
-        // await modelo.sync({
-        //   alter: true,
-        // });
 
         console.log(
           `[SYNC] OK: ${nombre} (${Date.now() - inicio} ms)`
         );
 
-      }
-      catch (error) {
+      } catch (error) {
 
         console.error(
           `[SYNC] ERROR: ${nombre}`
         );
 
-        console.error(
-          error
-        );
+        console.error(error);
 
         throw error;
-
       }
-
     }
 
     console.log(
-      "[SYNC] Todos los modelos sincronizados."
-    );
-
-    // await sequelize.sync({
-    //   alter: true
-    // });
-
-    console.log(
-      "[STARTUP] 4 - sequelize.sync FINALIZADO"
-    );
-
-
-    console.log(
-      "[STARTUP] 5 - Registrando subscribers..."
-    );
-
-    registerSubscribers();
-
-    console.log(
-      "[STARTUP] 6 - Subscribers registrados"
-    );
-
-
-    console.log(
-      "[STARTUP] 7 - Cargando scheduler..."
-    );
-
-    await schedulerLoader.load();
-
-    console.log(
-      "[STARTUP] 8 - Scheduler cargado"
+      "[SYNC] ✅ Todos los modelos sincronizados."
     );
 
 
     /*
     |--------------------------------------------------------------------------
-    | PRUEBA CLIMA
+    | 3. SEED MOTOR CONCEPTOS
     |--------------------------------------------------------------------------
     */
 
     console.log(
-      "[PRUEBA CLIMA] Ejecutando job manualmente..."
+      "[STARTUP] Iniciando seedEntidadTipos..."
     );
 
-    const resultadoClima =
-      await schedulerService.runNow(
-        "inteligencia.clima.diario"
-      );
+    await motorConceptoService.seedEntidadTipos();
 
     console.log(
-      "[PRUEBA CLIMA] Resultado:",
-      resultadoClima
+      "[STARTUP] ✅ seedEntidadTipos finalizado"
     );
 
 
+    /*
+    |--------------------------------------------------------------------------
+    | 4. NOTIFICACIONES
+    |--------------------------------------------------------------------------
+    */
+
     console.log(
-      "[STARTUP] 9 - Iniciando scheduler..."
+      "[STARTUP] Ejecutando notificationSeeder..."
+    );
+
+    await notificationSeeder();
+
+    console.log(
+      "[STARTUP] ✅ notificationSeeder finalizado"
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 5. SCHEDULER SEEDER
+    |--------------------------------------------------------------------------
+    */
+
+    console.log(
+      "[STARTUP] Ejecutando schedulerSeeder..."
+    );
+
+    await schedulerSeeder();
+
+    console.log(
+      "[STARTUP] ✅ schedulerSeeder finalizado"
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 6. SUBSCRIBERS
+    |--------------------------------------------------------------------------
+    */
+
+    console.log(
+      "[STARTUP] Registrando subscribers..."
+    );
+
+    registerSubscribers();
+
+    console.log(
+      "[STARTUP] ✅ Subscribers registrados"
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 7. CARGAR SCHEDULER
+    |--------------------------------------------------------------------------
+    */
+
+    console.log(
+      "[STARTUP] Cargando scheduler..."
+    );
+
+    await schedulerLoader.load();
+
+    console.log(
+      "[STARTUP] ✅ Scheduler cargado"
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 8. INICIAR SCHEDULER
+    |--------------------------------------------------------------------------
+    */
+
+    console.log(
+      "[STARTUP] Iniciando scheduler..."
     );
 
     await schedulerService.start();
 
     console.log(
-      "[STARTUP] 10 - Scheduler iniciado"
+      "[STARTUP] ✅ Scheduler iniciado"
     );
 
 
+    /*
+    |--------------------------------------------------------------------------
+    | 9. LEVANTAR SERVIDOR
+    |--------------------------------------------------------------------------
+    */
+
+    const server = app.listen(PORT, () => {
+
+      console.log(
+        `🚀 Server is listening on port ${PORT}`
+      );
+
+    });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 10. WEBSOCKET
+    |--------------------------------------------------------------------------
+    */
+
+    const wss =
+      new WebSocketServer({
+        server,
+      });
+
+    wss.on(
+      "connection",
+      (ws) => {
+
+        console.log(
+          "Cliente conectado a WebSocket"
+        );
+
+        handleWebSocketConnection(ws);
+
+      }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | 11. JOB FIDELIZACIÓN
+    |--------------------------------------------------------------------------
+    */
+
+    setInterval(
+      async () => {
+
+        try {
+
+          await runFidelizacionJobs();
+
+        } catch (error) {
+
+          console.error(
+            "[FIDELIZACION JOB] Error:",
+            error
+          );
+
+        }
+
+      },
+      1000 * 60 * 60
+    );
+
+
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "✅ BACKEND INICIADO CORRECTAMENTE"
+    );
+
+    console.log(
+      "===================================="
+    );
+
   } catch (error) {
-    console.error("Unable to connect to the database:", error);
+
+    console.error(
+      "❌ ERROR DURANTE EL STARTUP:"
+    );
+
+    console.error(error);
+
+    process.exit(1);
   }
 }
 
 main();
+
