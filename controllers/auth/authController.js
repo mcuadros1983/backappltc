@@ -2,9 +2,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import Usuario from "../../models/auth/usuarioModel.js";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const generateToken = (user) => {
   const payload = {

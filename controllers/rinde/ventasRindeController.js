@@ -864,64 +864,149 @@ const obtenerVentasConArticuloFiltradas = async (req, res, next) => {
   }
 };
 
+// const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
+//   try {
+//     const { fechaDesde, fechaHasta, sucursalId, excludedCategories } = req.body;
+
+//     // Define los filtros para la consulta de VentasArticulo
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     // Realiza la consulta a la base de datos para obtener las ventas de artículos
+//     const ventasMontoConArticulo = await VentasArticulo.findAll({
+//       where: filters,
+//     });
+//     // Inicializa el monto total de la venta
+//     let montoTotalVenta = 0;
+//     const cantidades = [];
+
+//     // Recorre las ventas de artículos para calcular el monto total
+//     for (const ventaArticulo of ventasMontoConArticulo) {
+//       // Convertir ventaArticulo.articuloCodigo a string
+//       const articuloCodigoString = ventaArticulo.articuloCodigo.toString();
+
+//       // Busca el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
+//       const precioArticulo = await ArticuloPrecioTabla.findOne({
+//         include: [
+//           {
+//             model: ArticuloTabla,
+//             where: {
+//               codigobarra: articuloCodigoString, // Utiliza el valor convertido a string
+//               subcategoria_id: {
+//                 [Op.notIn]: excludedCategories, // Excluir artículos de estas categorías
+//               },
+//             },
+//           },
+//         ],
+//       });
+//       // Si se encuentra el precio del artículo y no está en una categoría excluida, se multiplica la cantidad de venta por el precio
+//       if (
+//         precioArticulo &&
+//         !excludedCategories.includes(
+//           precioArticulo.Articulotabla.subcategoria_id
+//         )
+//       ) {
+//         const cantidad = parseFloat(ventaArticulo.cantidad);
+//         const precio = parseFloat(precioArticulo.precio);
+//         montoTotalVenta += Number(cantidad) * Number(precio);
+//         cantidades.push(cantidad); // Agregar la cantidad al array
+//       }
+//     }
+//     // Retorna el monto total de la venta
+//     res.json({ montoTotalVenta });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
 const obtenerMontoVentasConArticuloFiltradas = async (req, res, next) => {
   try {
-    const { fechaDesde, fechaHasta, sucursalId, excludedCategories } = req.body;
+    const {
+      fechaDesde,
+      fechaHasta,
+      sucursalId,
+      excludedCategories = [],
+    } = req.body;
 
-    // Define los filtros para la consulta de VentasArticulo
     const filters = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],
       },
     };
 
-    // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
     if (sucursalId) {
       filters.sucursal_id = sucursalId;
     }
 
-    // Realiza la consulta a la base de datos para obtener las ventas de artículos
-    const ventasMontoConArticulo = await VentasArticulo.findAll({
+    // 1) Obtener todas las ventas
+    const ventas = await VentasArticulo.findAll({
       where: filters,
+      attributes: ["articuloCodigo", "cantidad"],
+      raw: true,
     });
-    // Inicializa el monto total de la venta
-    let montoTotalVenta = 0;
-    const cantidades = [];
 
-    // Recorre las ventas de artículos para calcular el monto total
-    for (const ventaArticulo of ventasMontoConArticulo) {
-      // Convertir ventaArticulo.articuloCodigo a string
-      const articuloCodigoString = ventaArticulo.articuloCodigo.toString();
+    if (!ventas.length) {
+      return res.json({ montoTotalVenta: 0 });
+    }
 
-      // Busca el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
-      const precioArticulo = await ArticuloPrecioTabla.findOne({
-        include: [
-          {
-            model: ArticuloTabla,
-            where: {
-              codigobarra: articuloCodigoString, // Utiliza el valor convertido a string
-              subcategoria_id: {
-                [Op.notIn]: excludedCategories, // Excluir artículos de estas categorías
-              },
+    // 2) Obtener códigos únicos
+    const codigos = [...new Set(ventas.map(v => String(v.articuloCodigo)))];
+
+    // 3) Obtener TODOS los precios en una sola consulta
+    const precios = await ArticuloPrecioTabla.findAll({
+      include: [
+        {
+          model: ArticuloTabla,
+          required: true,
+          attributes: ["codigobarra", "subcategoria_id"],
+          where: {
+            codigobarra: {
+              [Op.in]: codigos,
+            },
+            subcategoria_id: {
+              [Op.notIn]: excludedCategories,
             },
           },
-        ],
-      });
-      // Si se encuentra el precio del artículo y no está en una categoría excluida, se multiplica la cantidad de venta por el precio
-      if (
-        precioArticulo &&
-        !excludedCategories.includes(
-          precioArticulo.Articulotabla.subcategoria_id
-        )
-      ) {
-        const cantidad = parseFloat(ventaArticulo.cantidad);
-        const precio = parseFloat(precioArticulo.precio);
-        montoTotalVenta += Number(cantidad) * Number(precio);
-        cantidades.push(cantidad); // Agregar la cantidad al array
+        },
+      ],
+      attributes: ["precio"],
+      raw: false,
+    });
+
+    // 4) Crear mapa codigo -> precio
+    const mapaPrecios = new Map();
+
+    for (const item of precios) {
+      const codigo = String(item.Articulotabla.codigobarra);
+
+      // Si hubiera más de un precio para el mismo artículo,
+      // se queda con el primero.
+      if (!mapaPrecios.has(codigo)) {
+        mapaPrecios.set(codigo, Number(item.precio));
       }
     }
-    // Retorna el monto total de la venta
-    res.json({ montoTotalVenta });
+
+    // 5) Calcular el monto total sin volver a consultar la BD
+    let montoTotalVenta = 0;
+
+    for (const venta of ventas) {
+      const precio = mapaPrecios.get(String(venta.articuloCodigo));
+
+      if (precio !== undefined) {
+        montoTotalVenta += Number(venta.cantidad) * precio;
+      }
+    }
+
+    return res.json({ montoTotalVenta });
+
   } catch (error) {
     next(error);
   }

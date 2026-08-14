@@ -47,6 +47,12 @@ const DatosEmpleado = sequelize.define("DatosEmpleado", {
     allowNull: true,
     validate: { min: 1, max: 7 },
   },
+  tipo: {
+    type: DataTypes.ENUM("ENCARGADO", "VENDEDOR"),
+    allowNull: true,
+    defaultValue: "VENDEDOR",
+  },
+
 }, {
   tableName: "datosempleado",
   timestamps: false,

@@ -45,7 +45,7 @@ export const obtenerUsuarioPorId = async (req, res, next) => {
     const { id } = req.params;
 
     const usuario = await Usuario.findByPk(id, {
-      attributes: ["id", "usuario", "rol_id", "permissions", "shortcuts", "fecha"],
+      attributes: ["id", "usuario", "rol_id", "sucursal_id", "permissions", "shortcuts", "fecha"],
       include: [{ model: Rol, as: "roles", attributes: ["id", "nombre"] }],
     });
 
@@ -61,7 +61,7 @@ export const obtenerUsuarioPorId = async (req, res, next) => {
 };
 
 export const crearUsuario = async (req, res, next) => {
-  const { usuario, password, nombreRol } = req.body;
+  const { usuario, password, nombreRol, sucursal_id } = req.body;
   try {
     const userFound = await obtenerUsuarioPorNombre(usuario);
     if (userFound) {
@@ -74,6 +74,7 @@ export const crearUsuario = async (req, res, next) => {
       usuario,
       password, // se hashea en beforeCreate
       rol_id: rol?.dataValues?.id,
+      sucursal_id: sucursal_id || null,
       shortcuts: [], // por si acaso
     });
 
@@ -88,7 +89,7 @@ export const crearUsuario = async (req, res, next) => {
 // ✅ PUT /usuarios/:id (ahora soporta 'permissions')
 export const actualizarUsuario = async (req, res, next) => {
   const { id } = req.params;
-  const { usuario, password, nombreRol, permissions } = req.body;
+  const { usuario, password, nombreRol, sucursal_id, permissions } = req.body;
 
   const t = await sequelize.transaction();
   try {
@@ -101,6 +102,10 @@ export const actualizarUsuario = async (req, res, next) => {
     const nuevosDatos = {};
 
     if (usuario) nuevosDatos.usuario = usuario;
+
+    if (sucursal_id !== undefined) {
+      nuevosDatos.sucursal_id = sucursal_id || null;
+    }
 
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -124,7 +129,7 @@ export const actualizarUsuario = async (req, res, next) => {
 
     // Volver a cargar con relaciones y campos visibles
     const actualizado = await Usuario.findByPk(id, {
-      attributes: ["id", "usuario", "rol_id", "permissions", "shortcuts", "fecha"],
+      attributes: ["id", "usuario", "rol_id", "sucursal_id", "permissions", "shortcuts", "fecha"],
       include: [{ model: Rol, as: "roles", attributes: ["id", "nombre"] }],
       transaction: t,
     });
@@ -321,7 +326,7 @@ export const replaceUserShortcuts = async (req, res, next) => {
 
 export const getPermissions = async (req, res) => {
   const { id } = req.params;
-  const u = await Usuario.findByPk(id, { attributes: ["id","usuario","permissions"] });
+  const u = await Usuario.findByPk(id, { attributes: ["id", "usuario", "permissions"] });
   if (!u) return res.status(404).json({ message: "Usuario no encontrado" });
   res.json({ permissions: u.permissions || [] });
 };

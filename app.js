@@ -3,7 +3,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import morgan from "morgan";
-import dotenv from "dotenv";
+// import dotenv from "dotenv";
 import passport from "passport";            // 👈 NUEVO
 import path from 'path';
 
@@ -17,7 +17,7 @@ import { auditALSMiddleware } from "./middleware/auditALSMiddleware.js";
 // 👇 MUY IMPORTANTE: registra la estrategia "login"
 import "./config/passport.js";              // 👈 NUEVO (side-effect: passport.use('login', ...))
 
-dotenv.config();
+// dotenv.config();
 
 console.log("========== ENV BOT CHECK ==========");
 console.log("NODE_ENV:", process.env.NODE_ENV);

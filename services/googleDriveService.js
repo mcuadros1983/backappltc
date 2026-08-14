@@ -1,82 +1,168 @@
-// services/googleDriveService.js
 import { google } from "googleapis";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { Readable } from "stream";
 
 // Para __dirname en ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
-// 1. Cargar credenciales JSON de la service account
-const serviceAccountPath = path.join(
-  __dirname,
-  "../config/gdrive-service-account.json"
-);
-console.log("📁 [Drive] Leyendo credenciales desde:", serviceAccountPath);
+// // 1. Cargar credenciales JSON de la service account
+// const serviceAccountPath = path.join(
+//   __dirname,
+//   "../config/gdrive-service-account.json"
+// );
+// ======================================================
+// CREDENCIALES GOOGLE DRIVE
+// ======================================================
 
-if (!fs.existsSync(serviceAccountPath)) {
-  console.error("❌ [Drive] No se encontró el archivo de credenciales.");
+const GOOGLE_DRIVE_PROJECT_ID =
+  process.env.GOOGLE_DRIVE_PROJECT_ID;
+
+const GOOGLE_DRIVE_CLIENT_EMAIL =
+  process.env.GOOGLE_DRIVE_CLIENT_EMAIL;
+
+const GOOGLE_DRIVE_PRIVATE_KEY =
+  process.env.GOOGLE_DRIVE_PRIVATE_KEY
+    ?.replace(/\\n/g, "\n")
+    .trim();
+
+const DRIVE_PARENT_FOLDER_ID =
+  process.env.DRIVE_PARENT_FOLDER_ID;
+
+
+// ======================================================
+// VALIDACIONES
+// ======================================================
+
+if (!GOOGLE_DRIVE_PROJECT_ID) {
   throw new Error(
-    "gdrive-service-account.json no encontrado en /server/config/"
+    "GOOGLE_DRIVE_PROJECT_ID no está configurado"
   );
 }
 
-let serviceAccountRaw;
-try {
-  serviceAccountRaw = fs.readFileSync(serviceAccountPath, "utf8");
-} catch (readErr) {
-  console.error("❌ [Drive] Error leyendo el archivo de credenciales:", readErr);
-  throw readErr;
-}
-
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(serviceAccountRaw);
-} catch (parseErr) {
-  console.error("❌ [Drive] Error parseando JSON de credenciales:", parseErr);
-  throw parseErr;
-}
-
-// LOGS DE CONTROL (no imprimimos la key completa)
-console.log("🔑 [Drive] client_email:", serviceAccount.client_email);
-console.log("🔑 [Drive] project_id:", serviceAccount.project_id);
-if (!serviceAccount.private_key) {
-  console.error(
-    "❌ [Drive] private_key está undefined o vacía. El JSON NO es una service account válida o está corrupto."
-  );
-} else {
-  console.log(
-    "🔐 [Drive] private_key length:",
-    serviceAccount.private_key.length,
-    "starts with:",
-    serviceAccount.private_key.slice(0, 30)
+if (!GOOGLE_DRIVE_CLIENT_EMAIL) {
+  throw new Error(
+    "GOOGLE_DRIVE_CLIENT_EMAIL no está configurado"
   );
 }
 
-// carpeta destino en Drive
-const DRIVE_PARENT_FOLDER_ID = process.env.DRIVE_PARENT_FOLDER_ID;
+if (!GOOGLE_DRIVE_PRIVATE_KEY) {
+  throw new Error(
+    "GOOGLE_DRIVE_PRIVATE_KEY no está configurado"
+  );
+}
+
+
+// ======================================================
+// LOGS DE DIAGNÓSTICO SEGUROS
+// ======================================================
+
+console.log(
+  "🔑 [Drive] project_id:",
+  GOOGLE_DRIVE_PROJECT_ID
+);
+
+console.log(
+  "🔑 [Drive] client_email:",
+  GOOGLE_DRIVE_CLIENT_EMAIL
+);
+
+console.log(
+  "🔐 [Drive] private_key length:",
+  GOOGLE_DRIVE_PRIVATE_KEY.length
+);
+
+console.log(
+  "🔐 [Drive] private_key comienza correctamente:",
+  GOOGLE_DRIVE_PRIVATE_KEY.startsWith(
+    "-----BEGIN PRIVATE KEY-----"
+  )
+);
+
+console.log(
+  "🔐 [Drive] private_key termina correctamente:",
+  GOOGLE_DRIVE_PRIVATE_KEY.endsWith(
+    "-----END PRIVATE KEY-----"
+  )
+);
+
 console.log(
   "📂 [Drive] DRIVE_PARENT_FOLDER_ID:",
-  DRIVE_PARENT_FOLDER_ID || "(no seteado, se subirá a raíz de la cuenta de servicio)"
+  DRIVE_PARENT_FOLDER_ID || "(no configurado)"
 );
 
-// 2. Crear auth JWT con la service account
+
+// ======================================================
+// AUTENTICACIÓN GOOGLE
+// ======================================================
+
 const auth = new google.auth.JWT({
-  email: serviceAccount.client_email,
-  key: serviceAccount.private_key,
-  scopes: ["https://www.googleapis.com/auth/drive"],
+  email: GOOGLE_DRIVE_CLIENT_EMAIL,
+  key: GOOGLE_DRIVE_PRIVATE_KEY,
+  scopes: [
+    "https://www.googleapis.com/auth/drive",
+  ],
 });
+const testDriveAuth = async () => {
+
+  console.log(
+    "========== TEST GOOGLE AUTH =========="
+  );
+
+  try {
+
+    console.log(
+      "Service Account:",
+      GOOGLE_DRIVE_CLIENT_EMAIL
+    );
+
+    await auth.authorize();
+
+    console.log(
+      "✅ GOOGLE AUTH CORRECTO"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ GOOGLE AUTH FALLÓ"
+    );
+
+    console.error(
+      "message:",
+      error.message
+    );
+
+    console.error(
+      "response:",
+      error.response?.data
+    );
+  }
+
+  console.log(
+    "======================================"
+  );
+};
+
+testDriveAuth();
+
+
 
 // 3. Cliente de la API Drive
 const drive = google.drive({ version: "v3", auth });
 
 // 4. Función para subir al Drive
-export async function uploadToDrive({ originalName, mimeType, localPath }) {
+export async function uploadToDrive({ originalName, mimeType, localPath = null, buffer = null, folderId = null }) {
   console.log("🚀 [Drive] Iniciando upload...");
   console.log("   📄 originalName:", originalName);
   console.log("   📄 mimeType:", mimeType);
   console.log("   📄 localPath:", localPath);
+  console.log(
+    "   📦 buffer:",
+    Buffer.isBuffer(buffer)
+      ? `${buffer.length} bytes`
+      : "no recibido"
+  );
 
   try {
     console.log("🔐 [Drive] Pidiendo token (auth.authorize())...");
@@ -88,18 +174,104 @@ export async function uploadToDrive({ originalName, mimeType, localPath }) {
         : "(sin expiry_date)"
     );
 
+    console.log(
+      "========== GOOGLE SERVICE ACCOUNT =========="
+    );
+
+    GOOGLE_DRIVE_PROJECT_ID
+
+    console.log(
+      "Service Account:",
+      GOOGLE_DRIVE_CLIENT_EMAIL
+    );
+    console.log(
+      "private_key_id:",
+      GOOGLE_DRIVE_PRIVATE_KEY
+    );
+
+    console.log(
+      "private_key existe:",
+      Boolean(
+        GOOGLE_DRIVE_PRIVATE_KEY
+      )
+    );
+
+    console.log(
+      "private_key formato PEM:",
+      serviceAccount.private_key
+        ?.startsWith(
+          "-----BEGIN PRIVATE KEY-----"
+        )
+    );
+
+    console.log(
+      "private_key termina correctamente:",
+      serviceAccount.private_key
+        ?.trim()
+        .endsWith(
+          "-----END PRIVATE KEY-----"
+        )
+    );
+
+    console.log(
+      "============================================"
+    );
+
     // metadata del archivo en Drive
+    const targetFolderId =
+      folderId ||
+      DRIVE_PARENT_FOLDER_ID ||
+      null;
+
     const fileMetadata = {
-      name: originalName,
-      ...(DRIVE_PARENT_FOLDER_ID
-        ? { parents: [DRIVE_PARENT_FOLDER_ID] }
-        : {}),
+
+      name:
+        originalName,
+
+      ...(
+        targetFolderId
+          ? {
+            parents: [
+              targetFolderId,
+            ],
+          }
+          : {}
+      ),
+
     };
 
     // stream binario del archivo temporal
+    let body;
+
+    if (localPath) {
+
+      body =
+        fs.createReadStream(
+          localPath
+        );
+
+    } else if (
+      Buffer.isBuffer(
+        buffer
+      )
+    ) {
+
+      body =
+        Readable.from(
+          buffer
+        );
+
+    } else {
+
+      throw new Error(
+        "No se recibió localPath ni buffer para subir el archivo"
+      );
+
+    }
+
     const media = {
       mimeType,
-      body: fs.createReadStream(localPath),
+      body,
     };
 
     console.log("⬆ [Drive] Subiendo archivo a Drive.files.create()...");
@@ -126,11 +298,21 @@ export async function uploadToDrive({ originalName, mimeType, localPath }) {
     });
 
     const resultado = {
-      fileId,
-      webViewLink: response.data.webViewLink || "",
-      webContentLink: response.data.webContentLink || "",
-    };
 
+      id:
+        fileId,
+
+      fileId,
+
+      webViewLink:
+        response.data.webViewLink ||
+        "",
+
+      webContentLink:
+        response.data.webContentLink ||
+        "",
+
+    };
     console.log("🎯 [Drive] Todo OK. Resultado final:", resultado);
     return resultado;
   } catch (error) {

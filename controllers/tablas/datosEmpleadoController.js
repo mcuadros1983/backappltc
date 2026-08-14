@@ -15,6 +15,7 @@ const enteroPositivoONull = (x) =>
 //  UPSERT (POST/PUT /empleados/:empleado_id/datos)
 // ─────────────────────────────────────────────
 export const upsertPorEmpleado = async (req, res) => {
+  console.log("upsertPorEmpleado: req.body:", req.body);
   const t = await sequelize.transaction();
   try {
     const empleado_id = Number(req.params.empleado_id || req.body.empleado_id);
@@ -40,6 +41,11 @@ export const upsertPorEmpleado = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, "telefono")) {
       const v = req.body.telefono;
       changes.telefono = (v === null || v === "" ? null : String(v).trim());
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "tipo")) {
+      const v = req.body.tipo;
+      changes.tipo = (v === null || v === "" ? null : String(v).trim());
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "franco_am")) {

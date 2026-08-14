@@ -127,6 +127,84 @@ import { audioSegmentsRouter, audioSegmentsProtectedRouter } from "./audio/audio
 import promocionRouter from "./tablas/promocionRoute.js";
 import { publicBotRouter, privateBotRouter } from "./botRoute.js";
 import fidelizacionRoutes from "./fidelizacion/fidelizacionRoutes.js";
+import produccionLoteRoutes from "./fabrica/produccionLoteRoutes.js";
+import stockFabricaRoutes from "./fabrica/stockFabricaRoutes.js";
+import inspeccionRoutes from "./inspecciones/inspeccionRoutes.js";
+import gestionRouter from "./gestion/gestionRoute.js";
+// import evaluacionTipoRoutes from "./evaluacion/tipoRoutes.js";
+import configuracionEvaluacionRoutes from "./evaluacion/configuracionRoutes.js";
+import evaluacionRoutes
+  from "./evaluacion/evaluacionRoutes.js";
+import dashboardRoutes
+  from "./evaluacion/dashboardRoutes.js";
+import reporteRoutes
+  from "./evaluacion/reporteRoutes.js";
+import comunicacionRoutes
+  from "./evaluacion/comunicacionRoutes.js";
+import metaRoutes
+  from "./evaluacion/metaRoutes.js";
+
+import metaAsignacionRoutes
+  from "./evaluacion/metaAsignacionRoutes.js";
+
+import metaAvanceRoutes
+  from "./evaluacion/metaAvanceRoutes.js";
+
+import evaluacionSistemaRoutes
+  from "./evaluacion/evaluacionSistemaRoutes.js";
+
+import evaluacionEscalaRoutes
+  from "./evaluacion/evaluacionEscalaRoutes.js";
+
+import notificationRoutes from "./notification/notificationRoutes.js";
+
+import schedulerRoutes from "./scheduler/schedulerRoutes.js";
+
+import {
+
+  obtenerFormularioPublico
+
+} from "../controllers/evaluacion/evaluacionController.js";
+
+import {
+
+  responderFormulario
+
+} from "../services/evaluacion/evaluacionRespuestaService.js";
+
+import {
+
+  responderEvaluacionPublica
+
+} from "../controllers/evaluacion/evaluacionRespuestaController.js";
+
+import evaluacionNotificacionRoutes
+  from "./evaluacion/evaluacionNotificacionRoutes.js";
+
+// Archivo principal de rutas
+import motorConceptoRoutes from "./motorconceptos/motorConceptoRoutes.js";
+
+// import motorConceptoRoutes from "./routes/motorconceptos/motorConceptoRoutes.js";
+import motorConceptoRegistroRoutes from "./motorconceptos/motorConceptoRegistroRoutes.js";
+
+
+// import motorConceptoRegistroArchivoRoutes from "./motorconceptos/motorConceptoRegistroArchivoRoutes.js";
+
+import registroArchivoRoutes from "./motorconceptos/registroArchivoRoutes.js";
+
+import multerErrorHandler from "../middleware/multerErrorHandler.js";
+
+import motorConceptoReporteRoutes
+  from "./motorconceptos/motorConceptoReporteRoutes.js";
+
+
+import motorConceptoEntidadAsignacionRoutes
+  from "./motorconceptos/motorConceptoEntidadAsignacionRoutes.js";
+
+import inteligenciaRoutes
+  from "./inteligencia/inteligenciaRoutes.js";
+
+
 
 const router = Router();
 
@@ -178,9 +256,129 @@ router.use(privateBotRouter);
 
 router.use("/fidelizacion", fidelizacionRoutes);
 
+router.get(
+  "/evaluaciones/public/:token_publico",
+  obtenerFormularioPublico
+);
+
+router.post(
+
+  "/evaluaciones/public/:token/responder",
+
+  responderEvaluacionPublica
+
+);
+
+
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
 // protegidas para frontend ERP
+
+router.use("/motorconceptos/registros", motorConceptoRegistroRoutes);
+
+router.use("/motorconceptos", motorConceptoRoutes);
+
+router.use("/motorconceptos/reportes", motorConceptoReporteRoutes);
+
+router.use(
+  "/motorconceptos/asignaciones",
+  motorConceptoEntidadAsignacionRoutes
+);
+
+router.use(
+  "/inteligencia",
+  inteligenciaRoutes
+);
+
+
+// router.use(
+//   "/motorconceptos",
+//   registroArchivoRoutes
+// );
+
+router.use("/configuracion/notificaciones", evaluacionNotificacionRoutes);
+
+// router.use(
+//   "/motorconceptos",
+//   motorConceptoRegistroArchivoRoutes
+// );
+
+
+
+router.use(
+  "/reportes",
+  motorConceptoReporteRoutes
+);
+
+router.use(multerErrorHandler);
+
+
+router.use(
+  "/evaluacion",
+  configuracionEvaluacionRoutes
+);
+router.use(
+  "/evaluaciones",
+  evaluacionRoutes
+);
+
+router.use(
+  "/evaluacion/dashboard",
+  dashboardRoutes
+);
+
+router.use(
+
+  "/evaluacion/reportes",
+
+  reporteRoutes
+
+);
+
+router.use(
+
+  "/evaluacion/comunicaciones",
+
+  comunicacionRoutes
+
+);
+
+router.use(
+
+  "/evaluacion/metas",
+
+  metaRoutes
+
+);
+
+router.use(
+
+  "/evaluacion/meta-asignaciones",
+
+  metaAsignacionRoutes
+
+);
+
+router.use(
+
+  "/evaluacion/meta-avances",
+
+  metaAvanceRoutes
+
+);
+
+router.use(
+  "/evaluacion/sistema",
+  evaluacionSistemaRoutes
+);
+
+router.use(
+  "/evaluacion/escalas",
+  evaluacionEscalaRoutes
+);
+
+router.use(gestionRouter);
+router.use("/inspecciones", inspeccionRoutes);
 router.use(audioSegmentsProtectedRouter);
 router.use(indexRouter);
 router.use(meRouter);
@@ -322,6 +520,30 @@ router.use(detallesCobranzasRouter);
 router.use(detallesCuentasCorrientesRouter);
 router.use(formasPagoRouter);
 
+router.use(
+  "/produccion-lotes",
+  produccionLoteRoutes
+);
 
+router.use(
+  "/stock-fabrica",
+  stockFabricaRoutes
+);
+
+router.use(
+
+  "/notification",
+
+  notificationRoutes
+
+);
+
+router.use(
+
+  "/scheduler",
+
+  schedulerRoutes
+
+);
 
 export default router;

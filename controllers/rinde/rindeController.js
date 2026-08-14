@@ -208,22 +208,46 @@ const obtenerUltimoIdMovimiento = async () => {
 };
 
 // Función para buscar el precio de un artículo en la base de datos
+// async function buscarPrecioArticulo(articuloCodigo) {
+//   try {
+//     // Buscar el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
+//     const precioArticulo = await ArticuloPrecioTabla.findOne({
+//       include: [
+//         {
+//           model: ArticuloTabla,
+//           where: {
+//             codigobarra: articuloCodigo,
+//           },
+//         },
+//       ],
+//     });
+
+//     // Retornar el precio del artículo si se encuentra
+//     return precioArticulo ? parseFloat(precioArticulo.precio) : null;
+//   } catch (error) {
+//     console.error("Error al buscar el precio del artículo:", error);
+//     return null;
+//   }
+// }
+
 async function buscarPrecioArticulo(articuloCodigo) {
   try {
-    // Buscar el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
     const precioArticulo = await ArticuloPrecioTabla.findOne({
+      attributes: ["precio"],
       include: [
         {
           model: ArticuloTabla,
+          attributes: [],
+          required: true,
           where: {
-            codigobarra: articuloCodigo,
+            codigobarra: String(articuloCodigo),
           },
         },
       ],
+      raw: true,
     });
 
-    // Retornar el precio del artículo si se encuentra
-    return precioArticulo ? parseFloat(precioArticulo.precio) : null;
+    return precioArticulo ? Number(precioArticulo.precio) : null;
   } catch (error) {
     console.error("Error al buscar el precio del artículo:", error);
     return null;
@@ -443,80 +467,221 @@ const obtenerInventariosFiltrados = async (req, res, next) => {
   }
 };
 
+// const obtenerMontoInventariosFiltrados = async (req, res, next) => {
+//   try {
+//     // let { sucursalId } = req.body;
+//     // let { fechaDesde, fechaHasta } = req.body;
+//     let { sucursalId, fechaDesde, fechaHasta, excludedCategories } = req.body;
+
+//     let filters = {};
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     // Si se proporciona la fecha de inicio y la fecha de fin, agrega el filtro por fecha
+//     if (fechaDesde && fechaHasta) {
+//       // Agregar el filtro de fecha al objeto de filtros
+//       filters.fecha = {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       };
+//     }
+
+//     // Consultar todos los inventarios desde la base de datos con los filtros definidos
+//     const inventarios = await Inventario.findAll({
+//       include: [
+//         {
+//           model: InventarioArticulo,
+//           through: {
+//             model: InventarioInventarioArticulo,
+//             attributes: [], // No queremos obtener los atributos de la tabla intermedia
+//           },
+//         },
+//       ],
+//       where: filters,
+//     });
+
+//     // Calcular el monto total de cada inventario
+//     for (const inventario of inventarios) {
+//       let montoTotalInventario = 0;
+//       // for (const inventarioArticulo of inventario.Inventario_articulos) {
+//       //   const precioArticulo = await buscarPrecioArticulo(
+//       //     inventarioArticulo.articulocodigo
+//       //   );
+//       //   if (precioArticulo !== null) {
+//       //     // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
+//       //     montoTotalInventario +=
+//       //       Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
+//       //   }
+//       // }
+//       for (const inventarioArticulo of inventario.Inventario_articulos) {
+//         const articulo = await ArticuloTabla.findOne({
+//           where: { codigobarra: inventarioArticulo.articulocodigo },
+//         });
+
+//         // Excluir si la subcategoría está en excludedCategories
+//         if (
+//           articulo &&
+//           (!excludedCategories || !excludedCategories.includes(articulo.subcategoria_id))
+//         ) {
+//           const precioArticulo = await buscarPrecioArticulo(
+//             inventarioArticulo.articulocodigo
+//           );
+//           if (precioArticulo !== null) {
+//             montoTotalInventario +=
+//               Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
+//           }
+//         }
+//       }
+//       // Agregar el monto total al objeto del inventario
+//       inventario.total = Number(montoTotalInventario) / 1.4;
+//     }
+//     //    console.log("inventarios", inventarios);
+
+//     // Retornar los inventarios como respuesta
+//     res.status(200).json(inventarios);
+//   } catch (error) {
+//     console.error("Error al listar los inventarios filtrados:", error);
+//     next(error);
+//   }
+// };
+
 const obtenerMontoInventariosFiltrados = async (req, res, next) => {
   try {
-    // let { sucursalId } = req.body;
-    // let { fechaDesde, fechaHasta } = req.body;
-    let { sucursalId, fechaDesde, fechaHasta, excludedCategories } = req.body;
+    const {
+      sucursalId,
+      fechaDesde,
+      fechaHasta,
+      excludedCategories = [],
+    } = req.body;
 
-    let filters = {};
+    const filters = {};
 
-    // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
     if (sucursalId) {
       filters.sucursal_id = sucursalId;
     }
 
-    // Si se proporciona la fecha de inicio y la fecha de fin, agrega el filtro por fecha
     if (fechaDesde && fechaHasta) {
-      // Agregar el filtro de fecha al objeto de filtros
       filters.fecha = {
         [Op.between]: [fechaDesde, fechaHasta],
       };
     }
 
-    // Consultar todos los inventarios desde la base de datos con los filtros definidos
+    // =============================
+    // 1) Obtener inventarios
+    // =============================
     const inventarios = await Inventario.findAll({
       include: [
         {
           model: InventarioArticulo,
           through: {
             model: InventarioInventarioArticulo,
-            attributes: [], // No queremos obtener los atributos de la tabla intermedia
+            attributes: [],
           },
         },
       ],
       where: filters,
     });
 
-    // Calcular el monto total de cada inventario
+    if (!inventarios.length) {
+      return res.status(200).json([]);
+    }
+
+    // =============================
+    // 2) Obtener todos los códigos únicos
+    // =============================
+
+    const codigos = [
+      ...new Set(
+        inventarios.flatMap((inv) =>
+          inv.Inventario_articulos.map((a) => String(a.articulocodigo))
+        )
+      ),
+    ];
+
+    // =============================
+    // 3) Obtener todos los artículos
+    // =============================
+
+    const articulos = await ArticuloTabla.findAll({
+      where: {
+        codigobarra: {
+          [Op.in]: codigos,
+        },
+      },
+      raw: true,
+    });
+
+    const mapaArticulos = new Map();
+
+    articulos.forEach((articulo) => {
+      mapaArticulos.set(String(articulo.codigobarra), articulo);
+    });
+
+    // =============================
+    // 4) Obtener todos los precios
+    // =============================
+
+    const precios = await ArticuloPrecioTabla.findAll({
+      include: [
+        {
+          model: ArticuloTabla,
+          required: true,
+          where: {
+            codigobarra: {
+              [Op.in]: codigos,
+            },
+          },
+        },
+      ],
+      raw: false,
+    });
+
+    const mapaPrecios = new Map();
+
+    precios.forEach((precio) => {
+      const codigo = String(precio.Articulotabla.codigobarra);
+
+      if (!mapaPrecios.has(codigo)) {
+        mapaPrecios.set(codigo, Number(precio.precio));
+      }
+    });
+
+    // =============================
+    // 5) Calcular montos
+    // =============================
+
     for (const inventario of inventarios) {
       let montoTotalInventario = 0;
-      // for (const inventarioArticulo of inventario.Inventario_articulos) {
-      //   const precioArticulo = await buscarPrecioArticulo(
-      //     inventarioArticulo.articulocodigo
-      //   );
-      //   if (precioArticulo !== null) {
-      //     // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
-      //     montoTotalInventario +=
-      //       Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
-      //   }
-      // }
-      for (const inventarioArticulo of inventario.Inventario_articulos) {
-        const articulo = await ArticuloTabla.findOne({
-          where: { codigobarra: inventarioArticulo.articulocodigo },
-        });
 
-        // Excluir si la subcategoría está en excludedCategories
+      for (const item of inventario.Inventario_articulos) {
+        const codigo = String(item.articulocodigo);
+
+        const articulo = mapaArticulos.get(codigo);
+
+        if (!articulo) continue;
+
         if (
-          articulo &&
-          (!excludedCategories || !excludedCategories.includes(articulo.subcategoria_id))
+          excludedCategories.length &&
+          excludedCategories.includes(articulo.subcategoria_id)
         ) {
-          const precioArticulo = await buscarPrecioArticulo(
-            inventarioArticulo.articulocodigo
-          );
-          if (precioArticulo !== null) {
-            montoTotalInventario +=
-              Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
-          }
+          continue;
+        }
+
+        const precio = mapaPrecios.get(codigo);
+
+        if (precio !== undefined) {
+          montoTotalInventario +=
+            Number(precio) * Number(item.cantidadpeso);
         }
       }
-      // Agregar el monto total al objeto del inventario
-      inventario.total = Number(montoTotalInventario) / 1.4;
-    }
-    //    console.log("inventarios", inventarios);
 
-    // Retornar los inventarios como respuesta
-    res.status(200).json(inventarios);
+      inventario.total = montoTotalInventario / 1.4;
+    }
+
+    return res.status(200).json(inventarios);
+
   } catch (error) {
     console.error("Error al listar los inventarios filtrados:", error);
     next(error);

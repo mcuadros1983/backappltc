@@ -31,6 +31,7 @@ const loginMiddleware = (req, res, next) => {
             id: user.id,
             usuario: user.usuario,
             rol_id: user.rol_id,
+            sucursal_id: user.sucursal_id,
           };
 
 
