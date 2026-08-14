@@ -1,4 +1,4 @@
-import motorConceptoRegistroArchivoService from "../../services/motorConceptos/motorConceptoRegistroArchivoService.js";
+import motorConceptoRegistroArchivoService from "../../services/motorconceptos/motorConceptoRegistroArchivoService.js";
 
 const ok = (
   res,

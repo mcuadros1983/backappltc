@@ -13,7 +13,7 @@ import {
   remove,
   replace,
   uploadMultiple,
-} from "../../controllers/motorConceptos/motorConceptoRegistroArchivoController.js";
+} from "../../controllers/motorconceptos/motorConceptoRegistroArchivoController.js";
 
 import {
   uploadMultiple as uploadMultipleMiddleware,

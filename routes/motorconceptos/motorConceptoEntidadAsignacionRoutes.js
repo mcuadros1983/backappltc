@@ -3,7 +3,7 @@ import {
 } from "express";
 
 import motorConceptoEntidadAsignacionController
-    from "../../controllers/motorConceptos/motorConceptoEntidadAsignacionController.js";
+    from "../../controllers/motorconceptos/motorConceptoEntidadAsignacionController.js";
 
 // import auth
 //     from "../middleware/auth.js";

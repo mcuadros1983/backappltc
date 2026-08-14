@@ -15,7 +15,7 @@ import {
 import {
   validateUpload,
   validateReplacement,
-} from "../../validators/motorConceptos/motorConceptoRegistroArchivoValidator.js";
+} from "../../validators/motorconceptos/motorConceptoRegistroArchivoValidator.js";
 
 const getUserId = (user) => {
   if (!user?.id) {

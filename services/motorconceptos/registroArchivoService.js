@@ -14,12 +14,12 @@ import {
 
 import {
     validateReplacement
-} from "../../validators/motorConceptos/motorConceptoRegistroArchivoValidator.js";
+} from "../../validators/motorconceptos/motorConceptoRegistroArchivoValidator.js";
 
 import {
     resolveMaxFiles,
     validateUploadFiles,
-} from "../../validators/motorConceptos/registroArchivoValidator.js";
+} from "../../validators/motorconceptos/registroArchivoValidator.js";
 
 const findRegistro = async (user, registroId) => {
     const where = {

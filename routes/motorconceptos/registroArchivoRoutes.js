@@ -8,7 +8,7 @@ import {
     listByTipo,
     remove,
     uploadMultiple,
-} from "../../controllers/motorConceptos/registroArchivoController.js";
+} from "../../controllers/motorconceptos/registroArchivoController.js";
 
 import {
     registroArchivoUpload,

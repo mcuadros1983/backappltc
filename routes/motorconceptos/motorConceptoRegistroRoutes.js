@@ -12,7 +12,7 @@ import {
   listByTipo,
   remove as removeArchivo,
   uploadMultiple,
-} from "../../controllers/motorConceptos/registroArchivoController.js";
+} from "../../controllers/motorconceptos/registroArchivoController.js";
 
 import {
   registroArchivoUpload,

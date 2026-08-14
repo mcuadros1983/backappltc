@@ -1,5 +1,5 @@
 import motorConceptoEntidadAsignacionService
-    from "../../services/motorConceptos/motorConceptoEntidadAsignacionService.js";
+    from "../../services/motorconceptos/motorConceptoEntidadAsignacionService.js";
 
 const getAll = async (
     req,
