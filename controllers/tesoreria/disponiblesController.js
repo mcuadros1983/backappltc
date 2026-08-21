@@ -5,6 +5,8 @@ import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancoteso
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import MovimientoCtaCteProveedor from "../../models/tesoreria/movimientoctacteproveedor.js";
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
 
 function parseDateRange({ desde, hasta }) {
   const where = {};
@@ -31,57 +33,314 @@ export async function listarDisponibles(req, res) {
     const baseCommon = { comprobanteegreso_id: null };
     if (proveedor_id) baseCommon.proveedor_id = proveedor_id;
 
-    console.log("basecommon", baseCommon)
+
 
     let rows = [];
 
     switch (String(medio).toLowerCase()) {
-      case "caja": { // MovimientoCajaTesoreria
-        const where = { ...baseCommon, tipo: "egreso" };
+      case "caja": {
+        const where = {
+          ...baseCommon,
+          tipo: "egreso",
+          anulado: false,
+        };
+
+        if (desde || hasta) {
+          where.fecha =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+        if (like) {
+          where.descripcion =
+            like;
+        }
 
 
-        rows = await MovimientoCajaTesoreria.findAll({
-          where,
-          order: [["fecha", "DESC"], ["id", "DESC"]],
-        });
+        const movimientos =
+          await MovimientoCajaTesoreria.findAll({
+            where,
 
-        console.log("caja", rows)
+            order: [
+              ["fecha", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
 
-        // shape homogéneo
-        rows = rows.map(r => ({
-          tipo: "caja",
-          id: r.id,
-          fecha: r.fecha,
-          monto: Number(r.monto || 0),
-          descripcion: r.descripcion || null,
-          caja_id: r.caja_id || null,
-          proveedor_id: r.proveedor_id || null,
-          empresa_id: r.empresa_id || null,
-        }));
+
+        const movimientosNormalizados =
+          movimientos.map((r) => ({
+            tipo:
+              "caja",
+
+            id:
+              r.id,
+
+            fecha:
+              r.fecha,
+
+            monto:
+              Number(r.monto || 0),
+
+            descripcion:
+              r.descripcion || null,
+
+            caja_id:
+              r.caja_id || null,
+
+            proveedor_id:
+              r.proveedor_id || null,
+          }));
+
+
+        /*
+         * PAGOS PROGRAMADOS DE CAJA
+         *
+         * Solamente pendientes.
+         * Los acreditados NO aparecen como programados.
+         */
+        const whereProgramado = {
+          estado:
+            "pendiente",
+
+          medio:
+            "caja",
+
+          comprobanteegreso_id:
+            null,
+        };
+
+
+        if (proveedor_id) {
+          whereProgramado.proveedor_id =
+            Number(proveedor_id);
+        }
+
+
+        if (desde || hasta) {
+          whereProgramado.fecha_programada =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+
+        const programados =
+          await PagoProgramadoTesoreria.findAll({
+            where:
+              whereProgramado,
+
+            order: [
+              ["fecha_programada", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const programadosNormalizados =
+          programados.map((r) => ({
+            tipo:
+              "pago_programado",
+
+            id:
+              r.id,
+
+            medio:
+              "caja",
+
+            fecha:
+              r.fecha_programada,
+
+            monto:
+              Number(r.monto || 0),
+
+            descripcion:
+              `[PROGRAMADO] ${r.descripcion}`,
+
+            caja_id:
+              r.caja_id || null,
+
+            proveedor_id:
+              r.proveedor_id,
+
+            empresa_id:
+              r.empresa_id,
+
+            formapago_id:
+              r.formapago_id || null,
+
+            tipo_programado:
+              r.tipo,
+
+            estado:
+              r.estado,
+          }));
+
+
+        rows = [
+          ...movimientosNormalizados,
+          ...programadosNormalizados,
+        ];
+
+
         break;
       }
 
-      case "transferencia": { // MovimientoBancoTesoreria
-        const where = { ...baseCommon, tipo: "egreso" };
-        if (desde || hasta) where.fecha = parseDateRange({ desde, hasta });
-        if (like) where.descripcion = like;
+      case "transferencia": {
+        const where = {
+          ...baseCommon,
+          tipo: "egreso",
+          anulado: false,
+        };
 
-        rows = await MovimientoBancoTesoreria.findAll({
-          where,
-          order: [["fecha", "DESC"], ["id", "DESC"]],
-        });
 
-        rows = rows.map(r => ({
-          tipo: "banco",
-          id: r.id,
-          fecha: r.fecha,
-          monto: Number(r.monto || 0),
-          descripcion: r.descripcion || null,
-          banco_id: r.banco_id || null,
-          referencia: r.referencia || null,
-          proveedor_id: r.proveedor_id || null,
-          empresa_id: r.empresa_id || null,
-        }));
+        if (desde || hasta) {
+          where.fecha =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+
+        if (like) {
+          where.descripcion =
+            like;
+        }
+
+
+        const movimientos =
+          await MovimientoBancoTesoreria.findAll({
+            where,
+
+            order: [
+              ["fecha", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const movimientosNormalizados =
+          movimientos.map((r) => ({
+            tipo:
+              "banco",
+
+            id:
+              r.id,
+
+            fecha:
+              r.fecha,
+
+            monto:
+              Number(r.monto || 0),
+
+            descripcion:
+              r.descripcion || null,
+
+            banco_id:
+              r.banco_id || null,
+
+            proveedor_id:
+              r.proveedor_id || null,
+
+            empresa_id:
+              r.empresa_id || null,
+          }));
+
+
+        /*
+         * PAGOS PROGRAMADOS BANCARIOS
+         *
+         * Solamente pendientes.
+         */
+        const whereProgramado = {
+          estado:
+            "pendiente",
+
+          medio:
+            "banco",
+
+          comprobanteegreso_id:
+            null,
+        };
+
+
+        if (proveedor_id) {
+          whereProgramado.proveedor_id =
+            Number(proveedor_id);
+        }
+
+
+        if (desde || hasta) {
+          whereProgramado.fecha_programada =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+
+        const programados =
+          await PagoProgramadoTesoreria.findAll({
+            where:
+              whereProgramado,
+
+            order: [
+              ["fecha_programada", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const programadosNormalizados =
+          programados.map((r) => ({
+            tipo:
+              "pago_programado",
+
+            id:
+              r.id,
+
+            medio:
+              "banco",
+
+            fecha:
+              r.fecha_programada,
+
+            monto:
+              Number(r.monto || 0),
+
+            descripcion:
+              `[PROGRAMADO] ${r.descripcion}`,
+
+            banco_id:
+              r.banco_id || null,
+
+            proveedor_id:
+              r.proveedor_id,
+
+            empresa_id:
+              r.empresa_id,
+
+            formapago_id:
+              r.formapago_id || null,
+
+            tipo_programado:
+              r.tipo,
+
+            estado:
+              r.estado,
+          }));
+
+
+        rows = [
+          ...movimientosNormalizados,
+          ...programadosNormalizados,
+        ];
+
+
         break;
       }
 

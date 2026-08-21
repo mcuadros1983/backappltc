@@ -200,11 +200,13 @@ import InteligenciaEvento
 import InteligenciaClima
   from "./inteligencia/inteligenciaClimaModel.js";
 
-  import InteligenciaEventoSucursal
+import InteligenciaEventoSucursal
   from "./inteligencia/inteligenciaEventoSucursalModel.js";
 
 import InteligenciaEventoArticulo
   from "./inteligencia/inteligenciaEventoArticuloModel.js";
+
+import PagoProgramadoTesoreria from "../models/tesoreria/PagoProgramadoTesoreria.js";
 
 initMotorConceptosAssociations();
 initMotorConceptosOperacionAssociations();
@@ -1179,6 +1181,7 @@ export {
   InteligenciaEvento,
   InteligenciaClima,
   InteligenciaEventoSucursal,
-InteligenciaEventoArticulo,
+  InteligenciaEventoArticulo,
+  PagoProgramadoTesoreria,
 };
 

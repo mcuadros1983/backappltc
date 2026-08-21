@@ -2,7 +2,7 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
-const MovimientoCajaTesoreria = sequelize.define("MovimientoCajaTesoreria", { 
+const MovimientoCajaTesoreria = sequelize.define("MovimientoCajaTesoreria", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   tipo: {
     type: DataTypes.ENUM("ingreso", "egreso"),
@@ -58,6 +58,15 @@ const MovimientoCajaTesoreria = sequelize.define("MovimientoCajaTesoreria", {
   // Idempotencia (opcional recomendado)
   idempotency_key: { type: DataTypes.STRING, allowNull: true, unique: true },
   proyecto_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  proveedor_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  comprobanteegreso_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },

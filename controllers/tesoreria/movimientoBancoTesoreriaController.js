@@ -20,8 +20,13 @@ import ComprobanteEgreso from "../../models/iva/comprobanteegreso.js";
 import xlsx from "xlsx";
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoSueldoEmpleado from "../../models/sueldoempleado/pagosueldoempleado.js";
-import PagoTarjetaCredito  from "../../models/tesoreria/pagotarjetacredito.js"
+import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js"
 import AdelantoEmpleado from "../../models/sueldoempleado/adelantoempleado.js";
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
+import {
+  recalcularComprobanteEgreso,
+} from "./helpers/recalcularComprobanteEgreso.js";
 
 /* ===================== CRUD BÁSICO ===================== */
 
@@ -165,6 +170,325 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
     const mov = await MovimientoBancoTesoreria.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
     if (!mov) throw new Error("Movimiento bancario no encontrado");
 
+    const refPagoProgramado =
+      String(
+        mov.referencia_tipo || ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    // ============================================================
+    // PAGO PROGRAMADO YA ACREDITADO
+    // ============================================================
+
+    if (
+      refPagoProgramado === "pagoprogramadotesoreria" &&
+      mov.referencia_id
+    ) {
+
+      console.log(
+        "📅 Eliminando PAGO PROGRAMADO ACREDITADO desde BANCO:",
+        mov.referencia_id
+      );
+
+
+      // ============================================================
+      // 1. BUSCAR PAGO PROGRAMADO
+      // ============================================================
+
+      const pagoProgramado =
+        await PagoProgramadoTesoreria.findByPk(
+          mov.referencia_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!pagoProgramado) {
+        throw new Error(
+          "No se encontró el PagoProgramadoTesoreria asociado al movimiento."
+        );
+      }
+
+
+      if (
+        String(pagoProgramado.estado || "").toLowerCase()
+        !== "acreditado"
+      ) {
+        throw new Error(
+          `El pago programado asociado se encuentra en estado ${pagoProgramado.estado}.`
+        );
+      }
+
+      if (
+        String(pagoProgramado.medio || "")
+          .trim()
+          .toLowerCase() !== "banco"
+      ) {
+        throw new Error(
+          "El PagoProgramadoTesoreria asociado no corresponde a un pago por banco."
+        );
+      }
+
+      // ============================================================
+      // 2. GUARDAR DATOS ANTES DE ELIMINAR
+      // ============================================================
+
+      const comprobanteId =
+        mov.comprobanteegreso_id ||
+        pagoProgramado.comprobanteegreso_id ||
+        null;
+
+
+      const esAnticipo =
+        String(pagoProgramado.tipo || "")
+          .trim()
+          .toLowerCase()
+        === "anticipo";
+
+
+      // ============================================================
+      // 3. SI ERA ANTICIPO:
+      //
+      // eliminar aplicaciones del ABONO y luego el ABONO.
+      //
+      // Esto elimina el efecto del anticipo sobre la Cta.Cte.
+      // ============================================================
+
+      if (
+        esAnticipo &&
+        pagoProgramado.movimiento_ctacte_id
+      ) {
+
+        const abono =
+          await MovimientoCtaCteProveedor.findByPk(
+            pagoProgramado.movimiento_ctacte_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (abono) {
+
+          // ========================================================
+          // Buscar aplicaciones realizadas con este anticipo
+          // ========================================================
+
+          const aplicaciones =
+            await MovimientoCtaCteProveedorAplic.findAll({
+              where: {
+                abono_id: abono.id,
+              },
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          // ========================================================
+          // Guardar comprobantes afectados
+          // ========================================================
+
+          const comprobantesARecalcular =
+            new Set();
+
+
+          if (aplicaciones.length) {
+
+            const cargoIds = [
+              ...new Set(
+                aplicaciones
+                  .map(a => Number(a.cargo_id))
+                  .filter(Boolean)
+              ),
+            ];
+
+
+            if (cargoIds.length) {
+
+              const cargos =
+                await MovimientoCtaCteProveedor.findAll({
+                  where: {
+                    id: {
+                      [Op.in]: cargoIds,
+                    },
+                  },
+
+                  attributes: [
+                    "id",
+                    "comprobanteegreso_id",
+                  ],
+
+                  transaction: t,
+                });
+
+
+              for (const cargo of cargos) {
+
+                const compId =
+                  Number(
+                    cargo.comprobanteegreso_id || 0
+                  );
+
+
+                if (compId) {
+
+                  comprobantesARecalcular.add(
+                    compId
+                  );
+                }
+              }
+            }
+
+
+            // ======================================================
+            // Eliminar aplicaciones del anticipo
+            // ======================================================
+
+            await MovimientoCtaCteProveedorAplic.destroy({
+              where: {
+                abono_id: abono.id,
+              },
+
+              transaction: t,
+            });
+          }
+
+
+          // ========================================================
+          // Si el ABONO estaba vinculado directamente a un
+          // comprobante también debemos recalcularlo
+          // ========================================================
+
+          if (abono.comprobanteegreso_id) {
+
+            comprobantesARecalcular.add(
+              Number(
+                abono.comprobanteegreso_id
+              )
+            );
+          }
+
+
+          // ========================================================
+          // Eliminar ABONO de la cuenta corriente
+          // ========================================================
+
+          await abono.destroy({
+            transaction: t,
+          });
+
+
+          // ========================================================
+          // Recalcular comprobantes afectados
+          // ========================================================
+
+          for (
+            const compId
+            of comprobantesARecalcular
+          ) {
+
+            await recalcComprobanteEgreso(
+              compId,
+              t
+            );
+          }
+        }
+      }
+
+
+      // ============================================================
+      // 4. ELIMINAR MOVIMIENTO BANCARIO REAL
+      // ============================================================
+
+      await mov.destroy({
+        transaction: t,
+      });
+
+
+      // ============================================================
+      // 5. ANULAR PAGO PROGRAMADO
+      //
+      // MUY IMPORTANTE:
+      //
+      // NO vuelve a "pendiente".
+      // El compromiso deja de existir.
+      // ============================================================
+
+      await pagoProgramado.update(
+        {
+          estado:
+            "anulado",
+
+          fecha_acreditacion:
+            null,
+
+          movimiento_tipo:
+            null,
+
+          movimiento_id:
+            null,
+
+          /*
+           * NO ponemos ordenpago_id = null.
+           *
+           * La OP puede haber existido desde antes de acreditar
+           * el programado.
+           */
+        },
+
+        {
+          transaction: t,
+        }
+      );
+
+
+      // ============================================================
+      // 6. RECALCULAR COMPROBANTE
+      // ============================================================
+
+      let resultadoComprobante =
+        null;
+
+
+      if (comprobanteId) {
+
+        resultadoComprobante =
+          await recalcularComprobanteEgreso(
+            comprobanteId,
+            t
+          );
+      }
+
+
+      // ============================================================
+      // 7. COMMIT
+      // ============================================================
+
+      await t.commit();
+
+
+      return res.json({
+        ok: true,
+
+        mensaje:
+          esAnticipo
+            ? "Pago programado acreditado eliminado. Se eliminó el movimiento bancario y su efecto en la cuenta corriente."
+            : "Pago programado acreditado eliminado. Se eliminó el movimiento bancario.",
+
+        pagoProgramado_id:
+          pagoProgramado.id,
+
+        comprobante:
+          resultadoComprobante,
+      });
+    }
+
     const EPS = 0.009;
     const tipo = String(mov.tipo || "").toLowerCase(); // ingreso | egreso
     const refTipoRaw = String(mov.referencia_tipo || "");
@@ -172,7 +496,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
     // ⬇️ Sueldos
     const isPagoSueldoBanco = refTipo === "pagosueldoempleado";
-    const isAdelantoBanco   = refTipo === "adelantoempleado";
+    const isAdelantoBanco = refTipo === "adelantoempleado";
 
     console.log("🔎 Movimiento:", {
       id: mov.id,
@@ -188,6 +512,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
       comprobanteegreso_id: mov.comprobanteegreso_id,
       proveedor_id: mov.proveedor_id,
     });
+
 
     // ==================== 0) Revertir aplicaciones a Gasto Estimado ====================
     console.log("🔧 Paso 0: Revirtiendo GastoEstimadoPago vinculados al movimiento…");

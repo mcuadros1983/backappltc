@@ -10,6 +10,8 @@ import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancoteso
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
 
 // Crear movimiento
 export const crearMovimientoCtaCteProveedor = async (req, res) => {
@@ -1651,10 +1653,84 @@ export const aplicarAnticipoExistenteCtaCte = async (req, res) => {
           { where: { id: abono.referencia_id }, transaction: t }
         );
       } else if (refTipo === "echeqemitido") {
-        // ✅ vínculo directo con eCheq puntual
+
+        // vínculo directo con eCheq puntual
         await EcheqEmitido.update(
-          { proveedor_id, comprobanteegreso_id: compIdUnico },
-          { where: { id: abono.referencia_id }, transaction: t }
+          {
+            proveedor_id,
+            comprobanteegreso_id: compIdUnico,
+          },
+          {
+            where: {
+              id: abono.referencia_id,
+            },
+            transaction: t,
+          }
+        );
+
+      } else if (refTipo === "pagoprogramadotesoreria") {
+
+        // ========================================================
+        // ANTICIPO PROGRAMADO
+        //
+        // El ABONO fue creado por PagoProgramadoTesoreria.
+        // Al aplicarlo a un único comprobante debemos reflejar
+        // también ese vínculo en el pago programado.
+        //
+        // IMPORTANTE:
+        // esto NO acredita el pago.
+        // Sólo indica que el compromiso futuro ya pertenece
+        // a este ComprobanteEgreso.
+        // ========================================================
+
+        const pagoProgramado =
+          await PagoProgramadoTesoreria.findByPk(
+            abono.referencia_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (!pagoProgramado) {
+          throw new Error(
+            `PagoProgramadoTesoreria #${abono.referencia_id} no encontrado`
+          );
+        }
+
+
+        if (
+          Number(pagoProgramado.empresa_id) !==
+          Number(empresa_id) ||
+          Number(pagoProgramado.proveedor_id) !==
+          Number(proveedor_id)
+        ) {
+          throw new Error(
+            "El pago programado no pertenece a la empresa/proveedor indicado"
+          );
+        }
+
+
+        if (
+          String(pagoProgramado.tipo || "")
+            .trim()
+            .toLowerCase() !== "anticipo"
+        ) {
+          throw new Error(
+            "El PagoProgramadoTesoreria asociado no corresponde a un anticipo"
+          );
+        }
+
+
+        await pagoProgramado.update(
+          {
+            comprobanteegreso_id:
+              compIdUnico,
+          },
+          {
+            transaction: t,
+          }
         );
       }
     }
@@ -1794,6 +1870,137 @@ export const anularAplicacionAnticipoExistenteCtaCte = async (req, res) => {
 
         await comp.update(patch, { transaction: t });
       }
+    }
+
+    // ============================================================
+    // 6.5) SI EL ABONO PROVIENE DE UN PAGO PROGRAMADO,
+    //      REVISAR SI DEBE DESVINCULARSE DEL COMPROBANTE
+    // ============================================================
+
+    const refTipoAbono =
+      String(
+        abono.referencia_tipo || ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      refTipoAbono === "pagoprogramadotesoreria" &&
+      abono.referencia_id
+    ) {
+
+      /*
+       * Después de eliminar las aplicaciones seleccionadas,
+       * comprobamos qué aplicaciones conserva este ABONO.
+       */
+
+      const aplicacionesRestantes =
+        await MovCtaCteProvAplic.findAll({
+          where: {
+            abono_id: abono.id,
+          },
+
+          transaction: t,
+        });
+
+
+      const cargosRestantesIds = [
+        ...new Set(
+          aplicacionesRestantes
+            .map(a => Number(a.cargo_id))
+            .filter(Boolean)
+        ),
+      ];
+
+
+      let comprobantesRestantes =
+        [];
+
+
+      if (cargosRestantesIds.length) {
+
+        const cargosRestantes =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              id: {
+                [Op.in]:
+                  cargosRestantesIds,
+              },
+            },
+
+            attributes: [
+              "id",
+              "comprobanteegreso_id",
+            ],
+
+            transaction: t,
+          });
+
+
+        comprobantesRestantes = [
+          ...new Set(
+            cargosRestantes
+              .map(
+                c =>
+                  Number(
+                    c.comprobanteegreso_id ||
+                    0
+                  )
+              )
+              .filter(Boolean)
+          ),
+        ];
+      }
+
+
+      /*
+       * Regla:
+       *
+       * 0 comprobantes:
+       *   el anticipo vuelve a quedar libre.
+       *
+       * 1 comprobante:
+       *   continúa vinculado a ese comprobante.
+       *
+       * >1:
+       *   no podemos representar un único comprobante_id,
+       *   por lo tanto dejamos NULL.
+       */
+
+      const nuevoComprobanteId =
+        comprobantesRestantes.length === 1
+          ? comprobantesRestantes[0]
+          : null;
+
+
+      await abono.update(
+        {
+          comprobanteegreso_id:
+            nuevoComprobanteId,
+        },
+
+        {
+          transaction: t,
+        }
+      );
+
+
+      await PagoProgramadoTesoreria.update(
+        {
+          comprobanteegreso_id:
+            nuevoComprobanteId,
+        },
+
+        {
+          where: {
+            id:
+              abono.referencia_id,
+          },
+
+          transaction: t,
+        }
+      );
     }
 
     // 7) Recalcular saldo disponible del ABONO (no se toca el abono; solo se “libera” su cupo)

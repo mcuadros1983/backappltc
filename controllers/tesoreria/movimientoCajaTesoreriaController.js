@@ -16,7 +16,12 @@ import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import RetiroTesoreria from "../../models/tesoreria/retirotesoreria.js";
 import PagoSueldoEmpleado from "../../models/sueldoempleado/pagosueldoempleado.js";
-
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
+// import PagoProgramadoTesoreria from "../../models/tesoreria/PagoProgramadoTesoreria.js";
+import {
+  recalcularComprobanteEgreso,
+} from "./helpers/recalcularComprobanteEgreso.js";
 
 const norm = (s) => String(s || "").trim().toLowerCase();
 
@@ -107,7 +112,7 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
     // ===== Resolver formacobro_id (si no viene)
     let formaCobroId = formacobro_id ?? null;
 
-        // Si no hay modelo de formas de pago, exigimos que venga en el body:
+    // Si no hay modelo de formas de pago, exigimos que venga en el body:
     if (!formaCobroId) {
       await t.rollback();
       return res.status(400).json({ error: "formacobro_id es requerido (forma de cobro Caja/Efectivo)" });
@@ -317,8 +322,24 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
 
     // Pagos directos remanentes (caja, banco, tarjeta, eCheq)
     const [cajaComp, bancoComp, tarjetaComp, echeqComp] = await Promise.all([
-      MovimientoCajaTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
-      MovimientoBancoTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
+      // MovimientoCajaTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
+      // MovimientoBancoTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          anulado: { [Op.not]: true },
+        },
+        transaction: trx,
+      }),
+
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          anulado: { [Op.not]: true },
+        },
+        transaction: trx,
+      }),
+
       // si usas pagos con tarjeta ligados al comprobante:
       PagoTarjetaCredito?.findAll?.({ where: { comprobanteegreso_id: compId, anulado: { [Op.not]: true } }, transaction: trx }) || [],
       // si usas eCheqs ligados al comprobante:
@@ -396,6 +417,263 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
     const hasOP = !!mov.ordenpago_id;
     const provIsNull = mov.proveedor_id === null || mov.proveedor_id === undefined;
     const provExists = !!mov.proveedor_id;
+
+    // ============================================================
+    // PAGO PROGRAMADO YA ACREDITADO
+    // ============================================================
+
+    if (ref === "pagoprogramadotesoreria" && mov.referencia_id) {
+
+      console.log(
+        "📅 Caso PAGO PROGRAMADO ACREDITADO desde CAJA:",
+        mov.referencia_id
+      );
+
+      const pagoProgramado =
+        await PagoProgramadoTesoreria.findByPk(
+          mov.referencia_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+      if (!pagoProgramado) {
+        throw new Error(
+          "No se encontró el PagoProgramadoTesoreria asociado al movimiento."
+        );
+      }
+
+      if (pagoProgramado.estado !== "acreditado") {
+        throw new Error(
+          `El pago programado asociado se encuentra en estado ${pagoProgramado.estado}.`
+        );
+      }
+
+      if (
+        String(pagoProgramado.medio || "")
+          .trim()
+          .toLowerCase() !== "caja"
+      ) {
+        throw new Error(
+          "El PagoProgramadoTesoreria asociado no corresponde a un pago por caja."
+        );
+      }
+
+      const comprobanteId =
+        mov.comprobanteegreso_id ||
+        pagoProgramado.comprobanteegreso_id ||
+        null;
+
+
+      // ============================================================
+      // SI ERA ANTICIPO A PROVEEDOR
+      // ============================================================
+
+      if (
+        String(pagoProgramado.tipo || "").toLowerCase() === "anticipo" &&
+        pagoProgramado.movimiento_ctacte_id
+      ) {
+
+        const abono =
+          await MovimientoCtaCteProveedor.findByPk(
+            pagoProgramado.movimiento_ctacte_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+        if (abono) {
+
+          // ========================================================
+          // Buscar aplicaciones realizadas con este anticipo
+          // ========================================================
+
+          const aplicaciones =
+            await MovimientoCtaCteProveedorAplic.findAll({
+              where: {
+                abono_id: abono.id,
+              },
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          // ========================================================
+          // Guardar comprobantes que deberán recalcularse
+          // ========================================================
+
+          const comprobantesARecalcular =
+            new Set();
+
+
+          if (aplicaciones.length) {
+
+            const cargoIds = [
+              ...new Set(
+                aplicaciones
+                  .map(a => Number(a.cargo_id))
+                  .filter(Boolean)
+              ),
+            ];
+
+
+            if (cargoIds.length) {
+
+              const cargos =
+                await MovimientoCtaCteProveedor.findAll({
+                  where: {
+                    id: {
+                      [Op.in]: cargoIds,
+                    },
+                  },
+
+                  attributes: [
+                    "id",
+                    "comprobanteegreso_id",
+                  ],
+
+                  transaction: t,
+                });
+
+
+              for (const cargo of cargos) {
+
+                const compId =
+                  Number(
+                    cargo.comprobanteegreso_id || 0
+                  );
+
+                if (compId) {
+                  comprobantesARecalcular.add(
+                    compId
+                  );
+                }
+              }
+            }
+
+
+            // ======================================================
+            // Eliminar aplicaciones del anticipo
+            // ======================================================
+
+            await MovimientoCtaCteProveedorAplic.destroy({
+              where: {
+                abono_id: abono.id,
+              },
+              transaction: t,
+            });
+          }
+
+
+          // ========================================================
+          // Si el propio abono estaba asociado a un comprobante
+          // también debemos recalcularlo
+          // ========================================================
+
+          if (abono.comprobanteegreso_id) {
+
+            comprobantesARecalcular.add(
+              Number(
+                abono.comprobanteegreso_id
+              )
+            );
+          }
+
+
+          // ========================================================
+          // Eliminar ABONO de Cta.Cte.
+          // ========================================================
+
+          await abono.destroy({
+            transaction: t,
+          });
+
+
+          // ========================================================
+          // Recalcular comprobantes afectados
+          // ========================================================
+
+          for (
+            const compId
+            of comprobantesARecalcular
+          ) {
+
+            await recalcComprobanteEgreso(
+              compId,
+              t
+            );
+          }
+        }
+      }
+
+      // ============================================================
+      // ELIMINAR MOVIMIENTO REAL DE CAJA
+      // ============================================================
+
+      await mov.destroy({
+        transaction: t,
+      });
+
+
+      // ============================================================
+      // ANULAR PAGO PROGRAMADO
+      //
+      // IMPORTANTE:
+      // NO vuelve a pendiente.
+      // NO recreamos el compromiso futuro.
+      // ============================================================
+
+      await pagoProgramado.update(
+        {
+          estado: "anulado",
+
+          movimiento_tipo: null,
+          movimiento_id: null,
+
+          fecha_acreditacion: null,
+        },
+        {
+          transaction: t,
+        }
+      );
+
+
+      // ============================================================
+      // RECALCULAR COMPROBANTE
+      // ============================================================
+
+      let resultadoComprobante = null;
+
+      if (comprobanteId) {
+
+        resultadoComprobante =
+          await recalcularComprobanteEgreso(
+            comprobanteId,
+            t
+          );
+      }
+
+
+      await t.commit();
+
+
+      return res.json({
+        ok: true,
+
+        mensaje:
+          pagoProgramado.tipo === "anticipo"
+            ? "Pago programado acreditado eliminado. Se eliminó el movimiento de caja y el anticipo de cuenta corriente."
+            : "Pago programado acreditado eliminado. Se eliminó el movimiento de caja.",
+
+        pagoProgramado_id:
+          pagoProgramado.id,
+
+        comprobante:
+          resultadoComprobante,
+      });
+    }
 
     // 1) Pago de Comprobante
     const isPagoDeComprobante = hasComp && (ref === "comprobanteegreso" || ref === "ordenpago");
@@ -784,14 +1062,14 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
 
       const parejaBanco = orden
         ? await MovimientoBancoTesoreria.findOne({
-            where: {
-              referencia_tipo: "OrdenPago",
-              referencia_id: orden.id,
-              comprobanteegreso_id: { [Op.or]: [null, 0] },
-              tipo: "ingreso",
-            },
-            transaction: t,
-          })
+          where: {
+            referencia_tipo: "OrdenPago",
+            referencia_id: orden.id,
+            comprobanteegreso_id: { [Op.or]: [null, 0] },
+            tipo: "ingreso",
+          },
+          transaction: t,
+        })
         : null;
 
       if (parejaBanco) {

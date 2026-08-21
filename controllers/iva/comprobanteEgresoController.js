@@ -5,6 +5,8 @@ import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import MovimientoCtaCteProveedor from "../../models/tesoreria/movimientoctacteproveedor.js";
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
 import { sequelize } from "../../config/database.js"; // <-- importa la instancia
 import GastoEstimado from "../../models/tesoreria/gastoestimado.js";
 import GastoEstimadoInstancia from "../../models/tesoreria/gastoestimadoinstancia.js";
@@ -531,18 +533,135 @@ export const emitirComprobanteEgreso = async (req, res) => {
 
         const { monto: usedMonto } = getMontoFechaDeExisting(found.tipo, r);
 
+        // ============================================================
+        // NUEVO:
+        // Detectar si el registro de Cta.Cte. seleccionado corresponde
+        // a un ANTICIPO PROGRAMADO todavía pendiente de acreditación.
+        // ============================================================
+
+        let pagoProgramado = null;
+
+        if (found.tipo === "ctacte") {
+
+          const refTipoCta =
+            String(r.referencia_tipo || "")
+              .trim()
+              .toLowerCase();
+
+          /*
+           * Cuando creamos el anticipo programado dejamos:
+           *
+           * referencia_tipo = "PagoProgramadoTesoreria"
+           * referencia_id   = pagoProgramado.id
+           */
+          if (
+            refTipoCta ===
+            "pagoprogramadotesoreria"
+          ) {
+
+            const pagoProgramadoId =
+              Number(r.referencia_id || 0);
+
+            if (!pagoProgramadoId) {
+              throw new Error(
+                `El anticipo #${r.id} indica PagoProgramadoTesoreria pero no tiene referencia_id`
+              );
+            }
+
+            pagoProgramado =
+              await PagoProgramadoTesoreria.findByPk(
+                pagoProgramadoId,
+                {
+                  transaction: t,
+                  lock: t.LOCK.UPDATE,
+                }
+              );
+
+            if (!pagoProgramado) {
+              throw new Error(
+                `No se encontró PagoProgramadoTesoreria #${pagoProgramadoId}`
+              );
+            }
+
+            if (
+              String(pagoProgramado.estado || "")
+                .toLowerCase() !== "pendiente"
+            ) {
+              throw new Error(
+                `El pago programado #${pagoProgramado.id} no está pendiente`
+              );
+            }
+
+            if (
+              pagoProgramado.comprobanteegreso_id
+            ) {
+              throw new Error(
+                `El pago programado #${pagoProgramado.id} ya está asociado a otro comprobante`
+              );
+            }
+
+            if (
+              Number(pagoProgramado.proveedor_id) !==
+              Number(comprobante.proveedor_id)
+            ) {
+              throw new Error(
+                "El anticipo programado pertenece a otro proveedor"
+              );
+            }
+          }
+        }
+
         // Vincular
         const attrs = r.constructor?.rawAttributes || {};
         const hasAttr = (name) => Object.prototype.hasOwnProperty.call(attrs, name);
         const compRef = `Pago Comprobante Nro ${String(comp.nrocomprobante ?? "").trim()}`.trim();
 
         const patch = {
-          comprobanteegreso_id: comp.id,
-          ordenpago_id: orden.id,
+          comprobanteegreso_id:
+            comp.id,
         };
 
-        if (hasAttr("referencia_tipo")) patch.referencia_tipo = "ComprobanteEgreso";
-        if (hasAttr("referencia_id")) patch.referencia_id = comp.id;
+        /*
+         * Registros normales:
+         * comportamiento histórico.
+         */
+        if (!pagoProgramado) {
+
+          patch.ordenpago_id =
+            orden.id;
+        }
+
+        /*
+         * Anticipo programado:
+         *
+         * conserva ordenpago_id original porque pertenece
+         * al compromiso creado antes del comprobante.
+         */
+
+        /*
+         * Para registros normales mantenemos el comportamiento actual.
+         *
+         * Para un anticipo proveniente de PagoProgramadoTesoreria
+         * NO cambiamos referencia_tipo/referencia_id.
+         *
+         * Esa referencia es necesaria para conservar:
+         *
+         * MovimientoCtaCteProveedor
+         *          ↓
+         * PagoProgramadoTesoreria
+         */
+        if (!pagoProgramado) {
+
+          if (hasAttr("referencia_tipo")) {
+            patch.referencia_tipo =
+              "ComprobanteEgreso";
+          }
+
+          if (hasAttr("referencia_id")) {
+            patch.referencia_id =
+              comp.id;
+          }
+        }
 
         // Si el registro existente fuese de ctacte y se pasa formapago_id, lo preservamos
         if (found.tipo === "ctacte" && hasAttr("formapago_id") && p.formapago_id) {
@@ -556,6 +675,36 @@ export const emitirComprobanteEgreso = async (req, res) => {
         });
 
         await r.update(patch, { transaction: t });
+
+        // ============================================================
+        // NUEVO:
+        // Si el anticipo pertenece a PagoProgramadoTesoreria,
+        // vinculamos también el compromiso al comprobante.
+        // ============================================================
+
+        if (pagoProgramado) {
+
+          await pagoProgramado.update(
+            {
+              comprobanteegreso_id:
+                comp.id,
+
+              /*
+               * IMPORTANTE:
+               *
+               * NO reemplazamos ordenpago_id.
+               *
+               * PagoProgramadoTesoreria conserva la OP que se
+               * generó originalmente al crear el compromiso.
+               *
+               * El comprobante conserva su propia OrdenPago.
+               */
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
 
         if (esEfectivoAhora(found.tipo)) {
           sumaEfectivosReal += usedMonto;
@@ -815,12 +964,58 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
     }
 
     let pagos = [];
+
     if (orden?.id) {
-      //pagos = await collectPagosOrden(orden.id);
-      pagos = await collectPagosComprobante(comp.id);
+
+      // pagos = await collectPagosOrden(orden.id);
+
+      pagos =
+        await collectPagosComprobante(
+          comp.id
+        );
     }
 
-    return res.json({ comprobante: comp, ordenpago: orden, pagos });
+
+    /*
+     * ============================================================
+     * NUEVO:
+     * compromisos programados vinculados al comprobante.
+     *
+     * Los devolvemos SEPARADOS de "pagos".
+     *
+     * No son todavía desembolsos reales.
+     * ============================================================
+     */
+
+    const pagosProgramados =
+      await PagoProgramadoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id:
+            comp.id,
+
+          estado:
+            "pendiente",
+        },
+
+        order: [
+          ["fecha_programada", "ASC"],
+          ["id", "ASC"],
+        ],
+      });
+
+
+    return res.json({
+      comprobante:
+        comp,
+
+      ordenpago:
+        orden,
+
+      pagos,
+
+      pagos_programados:
+        pagosProgramados,
+    });
   } catch (e) {
     console.error("getComprobanteEgresoDetalle:", e);
     return res.status(400).json({ error: e.message || "No se pudo obtener el detalle" });
@@ -1063,31 +1258,31 @@ async function collectPagosComprobante(comprobanteId) {
 
   const makeKey = (tipo, id) => `${tipo}:${Number(id) || 0}`;
   const seenRef = new Set();
-  cajas.forEach((r)   => seenRef.add(makeKey(CANON.CAJA,  r.id)));
-  bancos.forEach((r)  => seenRef.add(makeKey(CANON.BANCO, r.id)));
-  tarjetas.forEach((r)=> seenRef.add(makeKey(CANON.TARJ,  r.id)));
-  echeqs.forEach((r)  => seenRef.add(makeKey(CANON.ECHEQ, r.id)));
+  cajas.forEach((r) => seenRef.add(makeKey(CANON.CAJA, r.id)));
+  bancos.forEach((r) => seenRef.add(makeKey(CANON.BANCO, r.id)));
+  tarjetas.forEach((r) => seenRef.add(makeKey(CANON.TARJ, r.id)));
+  echeqs.forEach((r) => seenRef.add(makeKey(CANON.ECHEQ, r.id)));
 
   const canonicalize = (s) => {
     const k = String(s || "").trim().toLowerCase().replace(/\s+/g, "");
     if (!k) return "";
-    if (k.includes("movimientocajatesoreria"))   return CANON.CAJA;
-    if (k.includes("movimientobancotesoreria"))  return CANON.BANCO;
-    if (k.includes("pagotarjetacredito"))        return CANON.TARJ;
+    if (k.includes("movimientocajatesoreria")) return CANON.CAJA;
+    if (k.includes("movimientobancotesoreria")) return CANON.BANCO;
+    if (k.includes("pagotarjetacredito")) return CANON.TARJ;
     if (k.includes("echeqemitido") || k.includes("echeq")) return CANON.ECHEQ;
-    if (k.includes("ordenpago"))                 return CANON.OP;
-    if (k.includes("notacredito"))               return CANON.NC;
+    if (k.includes("ordenpago")) return CANON.OP;
+    if (k.includes("notacredito")) return CANON.NC;
     if (k.includes("aplicacionctacte") || k.includes("ctacte")) return CANON.ABONO;
     return k; // fallback
   };
 
   const medioByRefTipo = {
-    [CANON.CAJA]:  "caja",
+    [CANON.CAJA]: "caja",
     [CANON.BANCO]: "transferencia",
-    [CANON.TARJ]:  "tarjeta",
+    [CANON.TARJ]: "tarjeta",
     [CANON.ECHEQ]: "echeq",
-    [CANON.OP]:    "ctacte",
-    [CANON.NC]:    "nota_credito",
+    [CANON.OP]: "ctacte",
+    [CANON.NC]: "nota_credito",
     [CANON.ABONO]: "ctacte",
   };
 
@@ -1096,7 +1291,7 @@ async function collectPagosComprobante(comprobanteId) {
     .filter(a => String(a.tipo).toLowerCase() === "abono" && a.anulado !== true)
     .filter(a => {
       const tipo = canonicalize(a.referencia_tipo);
-      const rid  = Number(a.referencia_id || 0);
+      const rid = Number(a.referencia_id || 0);
       if (!tipo || !rid) return true; // sin referencia directa → mantener
       return !seenRef.has(makeKey(tipo, rid));
     });

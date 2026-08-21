@@ -233,7 +233,7 @@ export async function registrarAnticipoProveedorEcheq(req, res) {
         proveedor_id: toNum(proveedor_id),
         empresa_id: toNum(empresa_id),
         fecha: fechaOP,
-        fecha_pago: fechaOP,
+        fecha_pago: fechaVto,
         descripcion: `Anticipo proveedor por Echeq - OP #${orden.id}`,
         tipo: "abono",
         importe: N(pago.importe),

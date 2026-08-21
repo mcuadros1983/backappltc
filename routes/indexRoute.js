@@ -78,6 +78,8 @@ import retiroTesoreriaRouter from "./tesoreria/retiroTesoreriaRoute.js";
 import cobroTarjetaCreditoRouter from "./tesoreria/cobroTarjetaCreditoRoute.js";
 import movimientoBancoTesoreriaRouter from "./tesoreria/movimientoBancoTesoreriaRoute.js";
 import movimientoCajaTesoreriaRouter from "./tesoreria/movimientoCajaTesoreriaRoute.js";
+import pagoProgramadoTesoreriaRouter
+  from "./tesoreria/pagoProgramadoTesoreriaRouter.js";
 import tarjetaPlanPagoRouter from "./tesoreria/tarjetaPlanPagoRoute.js";
 import pagoTransferenciaBancariaRouter from "./tesoreria/pagoTransferenciaBancariaRoute.js";
 import pagoEcheqRouter from "./tesoreria/pagoEcheqRoute.js";
@@ -486,6 +488,7 @@ router.use(retiroTesoreriaRouter);
 router.use(cobroTarjetaCreditoRouter);
 router.use(movimientoBancoTesoreriaRouter);
 router.use(movimientoCajaTesoreriaRouter);
+router.use(pagoProgramadoTesoreriaRouter);
 router.use(pagoTransferenciaBancariaRouter);
 router.use(pagoEcheqRouter);
 router.use(movimientoCtaCteProveedorRouter);

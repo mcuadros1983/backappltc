@@ -5,6 +5,7 @@ import {
   completarHistorico,
   listar,
   obtenerPorFecha,
+  capturar,
 } from "../../controllers/inteligencia/inteligenciaClimaController.js";
 
 
@@ -55,6 +56,23 @@ router.post(
   completarHistorico
 );
 
+
+/*
+|--------------------------------------------------------------------------
+| SINCRONIZAR CLIMA MANUALMENTE
+|--------------------------------------------------------------------------
+|
+| Ejecuta el mismo mecanismo utilizado por el scheduler.
+|
+| POST /inteligencia/clima/capturar
+|
+|--------------------------------------------------------------------------
+*/
+
+router.post(
+  "/clima/capturar",
+  capturar
+);
 
 /*
 |--------------------------------------------------------------------------

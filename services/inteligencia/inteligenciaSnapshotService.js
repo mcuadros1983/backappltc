@@ -1,5 +1,5 @@
 import { sequelize } from "../../config/database.js";
-import { Op } from "sequelize";
+// import { Op } from "sequelize";
 import ArticuloPrecioTabla from "../../models/tablas/articuloPrecioModel.js";
 
 import PromocionTabla from "../../models/tablas/promocionModel.js";
@@ -13,6 +13,67 @@ import InteligenciaPromocionHistorico from "../../models/inteligencia/inteligenc
 import ArticuloTabla
   from "../../models/tablas/articuloModel.js";
 
+
+
+/*
+|--------------------------------------------------------------------------
+| OBTENER PROMOCIONES PARA SNAPSHOT
+|--------------------------------------------------------------------------
+|
+| El snapshot comercial no debe limitarse únicamente a promociones
+| vigentes exactamente en la fecha de captura.
+|
+| Conservamos:
+|
+| - promociones actualmente activas/configuradas
+| - promociones que ya finalizaron pero intersectan el período comercial
+|   que queremos preservar
+| - promociones futuras ya configuradas
+|
+| De esta manera el snapshot conserva la configuración comercial existente
+| en el sistema al momento de realizar la captura.
+|
+|--------------------------------------------------------------------------
+*/
+
+const obtenerPromocionesParaSnapshot =
+  async ({
+    transaction,
+  }) => {
+
+    const promociones =
+      await PromocionTabla.findAll({
+
+        where: {
+
+          /*
+          | Conservamos únicamente promociones que continúan formando
+          | parte de la configuración operativa.
+          |
+          | IMPORTANTE:
+          | No filtramos por fecha_desde / fecha_hasta.
+          |
+          | Una promoción futura ya configurada también constituye
+          | información comercial que queremos preservar.
+          */
+
+          activa: true,
+
+        },
+
+        order: [
+          ["fecha_desde", "ASC"],
+          ["id", "ASC"],
+        ],
+
+        transaction,
+
+      });
+
+
+    return promociones;
+
+  };
 
 export const crearSnapshotComercial = async ({
   fecha,
@@ -208,23 +269,27 @@ export const crearSnapshotComercial = async ({
     | 6. Obtener promociones vigentes para la fecha del snapshot
     |--------------------------------------------------------------------------
     */
-
     const promociones =
-      await PromocionTabla.findAll({
-        where: {
-          activa: true,
-
-          fecha_desde: {
-            [Op.lte]: fecha,
-          },
-
-          fecha_hasta: {
-            [Op.gte]: fecha,
-          },
-        },
-
+      await obtenerPromocionesParaSnapshot({
         transaction,
       });
+
+    // const promociones =
+    //   await PromocionTabla.findAll({
+    //     where: {
+    //       activa: true,
+
+    //       fecha_desde: {
+    //         [Op.lte]: fecha,
+    //       },
+
+    //       fecha_hasta: {
+    //         [Op.gte]: fecha,
+    //       },
+    //     },
+
+    //     transaction,
+    //   });
 
     /*
     |--------------------------------------------------------------------------
@@ -402,68 +467,68 @@ export const listarSnapshots = async () => {
 
 
 export const obtenerSnapshotPorId =
-    async (id) => {
+  async (id) => {
 
-        const snapshot =
-            await InteligenciaSnapshot.findByPk(
-                id,
+    const snapshot =
+      await InteligenciaSnapshot.findByPk(
+        id,
+        {
+
+          include: [
+
+            {
+              model:
+                InteligenciaPrecioHistorico,
+
+              as:
+                "precios",
+
+              include: [
+
                 {
+                  model:
+                    ArticuloTabla,
 
-                    include: [
+                  as:
+                    "articulo",
 
-                        {
-                            model:
-                                InteligenciaPrecioHistorico,
+                  attributes: [
+                    "id",
+                    "codigobarra",
+                    "descripcion",
+                    "descripcionreducida",
+                  ],
+                },
 
-                            as:
-                                "precios",
+              ],
+            },
 
-                            include: [
+            {
+              model:
+                InteligenciaPromocionHistorico,
 
-                                {
-                                    model:
-                                        ArticuloTabla,
+              as:
+                "promociones",
+            },
 
-                                    as:
-                                        "articulo",
-
-                                    attributes: [
-                                        "id",
-                                        "codigobarra",
-                                        "descripcion",
-                                        "descripcionreducida",
-                                    ],
-                                },
-
-                            ],
-                        },
-
-                        {
-                            model:
-                                InteligenciaPromocionHistorico,
-
-                            as:
-                                "promociones",
-                        },
-
-                    ],
-
-                }
-            );
-
-
-        if (!snapshot) {
-
-            throw new Error(
-                "La instantánea comercial no existe"
-            );
+          ],
 
         }
+      );
 
 
-        return snapshot;
+    if (!snapshot) {
 
-    };
+      throw new Error(
+        "La instantánea comercial no existe"
+      );
+
+    }
+
+
+    return snapshot;
+
+  };
 
 
 export const eliminarSnapshot = async (id) => {

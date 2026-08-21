@@ -116,11 +116,31 @@ export async function vencenEn(req, res) {
     const today = ymd(new Date());
     const hasta = ymd(new Date(Date.now() + Number(dias) * 24 * 3600 * 1000));
 
-    const where = buildWhereFromQuery({
+    // const where = buildWhereFromQuery({
+    //   ...req.query,
+    //   desde: req.query.desde || today,
+    //   hasta: req.query.hasta || hasta,
+    // });
+
+    const queryFiltros = {
       ...req.query,
-      desde: req.query.desde || today,
       hasta: req.query.hasta || hasta,
-    });
+    };
+
+    // En modo "próximos X días" NO limitamos desde hoy.
+    // De esta manera también se incluyen todas las
+    // obligaciones históricas vencidas que continúan
+    // pendientes o parcialmente pagadas.
+    //
+    // Si el usuario seleccionó expresamente una fecha
+    // "desde", sí respetamos ese filtro.
+    if (req.query.desde) {
+      queryFiltros.desde = req.query.desde;
+    }
+
+    const where = buildWhereFromQuery(
+      queryFiltros
+    );
 
     where.estado = { [Op.in]: ["pendiente", "parcial", "vencido"] };
 

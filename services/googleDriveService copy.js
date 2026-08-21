@@ -34,30 +34,62 @@ const DRIVE_PARENT_FOLDER_ID =
 // VALIDACIONES
 // ======================================================
 
-//if (!GOOGLE_DRIVE_PROJECT_ID) {
-  //throw new Error(
-   // "GOOGLE_DRIVE_PROJECT_ID no está configurado"
-  //);
-//}
+if (!GOOGLE_DRIVE_PROJECT_ID) {
+  throw new Error(
+    "GOOGLE_DRIVE_PROJECT_ID no está configurado"
+  );
+}
 
+if (!GOOGLE_DRIVE_CLIENT_EMAIL) {
+  throw new Error(
+    "GOOGLE_DRIVE_CLIENT_EMAIL no está configurado"
+  );
+}
 
-//if (!GOOGLE_DRIVE_CLIENT_EMAIL) {
-  //throw new Error(
-    //"GOOGLE_DRIVE_CLIENT_EMAIL no está configurado"
-  //);
-//}
-
-//if (!GOOGLE_DRIVE_PRIVATE_KEY) {
- // throw new Error(
-  //  "GOOGLE_DRIVE_PRIVATE_KEY no está configurado"
-  //);
-//}
+if (!GOOGLE_DRIVE_PRIVATE_KEY) {
+  throw new Error(
+    "GOOGLE_DRIVE_PRIVATE_KEY no está configurado"
+  );
+}
 
 
 // ======================================================
 // LOGS DE DIAGNÓSTICO SEGUROS
 // ======================================================
 
+console.log(
+  "🔑 [Drive] project_id:",
+  GOOGLE_DRIVE_PROJECT_ID
+);
+
+console.log(
+  "🔑 [Drive] client_email:",
+  GOOGLE_DRIVE_CLIENT_EMAIL
+);
+
+console.log(
+  "🔐 [Drive] private_key length:",
+  GOOGLE_DRIVE_PRIVATE_KEY.length
+);
+
+console.log(
+  "🔐 [Drive] private_key comienza correctamente:",
+  GOOGLE_DRIVE_PRIVATE_KEY.startsWith(
+    "-----BEGIN PRIVATE KEY-----"
+  )
+);
+
+console.log(
+  "🔐 [Drive] private_key termina correctamente:",
+  GOOGLE_DRIVE_PRIVATE_KEY.endsWith(
+    "-----END PRIVATE KEY-----"
+  )
+);
+
+console.log(
+  "📂 [Drive] DRIVE_PARENT_FOLDER_ID:",
+  DRIVE_PARENT_FOLDER_ID || "(no configurado)"
+);
 
 
 // ======================================================
@@ -112,7 +144,7 @@ const testDriveAuth = async () => {
   );
 };
 
-//testDriveAuth();
+testDriveAuth();
 
 
 

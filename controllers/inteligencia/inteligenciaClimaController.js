@@ -21,6 +21,65 @@ import {
 |--------------------------------------------------------------------------
 */
 
+/*
+|--------------------------------------------------------------------------
+| CAPTURA / SINCRONIZACIÓN MANUAL
+|--------------------------------------------------------------------------
+|
+| Ejecuta manualmente el mismo proceso utilizado por el scheduler.
+|
+| Si no existe histórico:
+|   -> realiza carga inicial
+|
+| Si ya existe histórico:
+|   -> completa hasta ayer
+|
+|--------------------------------------------------------------------------
+*/
+
+export const capturar =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const resultado =
+        await sincronizarHistoricoClima();
+
+
+      return res.status(200).json({
+
+        ok: true,
+
+        ...resultado,
+
+      });
+
+    }
+    catch (error) {
+
+      console.error(
+        "[Inteligencia Comercial] Error capturando clima:",
+        error
+      );
+
+
+      return res.status(500).json({
+
+        ok: false,
+
+        error:
+          error.message ||
+          "No se pudo sincronizar el clima.",
+
+      });
+
+    }
+
+  };
+
 export const importar = async (
   req,
   res
@@ -238,10 +297,10 @@ export const completarHistorico = async (
 
       message:
         resultado.tipo ===
-        "CARGA_INICIAL"
+          "CARGA_INICIAL"
           ? "Histórico climático inicial cargado correctamente"
           : resultado
-              .ya_estaba_actualizado
+            .ya_estaba_actualizado
             ? "El histórico climático ya estaba actualizado"
             : "Histórico climático actualizado correctamente",
 
