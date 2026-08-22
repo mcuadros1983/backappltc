@@ -147,8 +147,18 @@ export async function vencenEn(req, res) {
     const items = await GastoEstimadoInstancia.findAll({
       where,
       attributes: [
-        "id", "descripcion", "fecha_vencimiento", "estado",
-        "empresa_id", "proveedor_id", "sucursal_id", "categoriaegreso_id",
+        "id",
+        "descripcion",
+        "fecha_vencimiento",
+        "estado",
+        "empresa_id",
+        "proveedor_id",
+        "sucursal_id",
+        "categoriaegreso_id",
+
+        // Forma de pago acordada de la instancia
+        "formapago_id",
+
         [BASE_FIELD, "monto_base"],
       ],
       include: [
