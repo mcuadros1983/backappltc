@@ -1,6 +1,6 @@
 // controllers/comun/proveedorController.js
 import Proveedor from "../../models/comun/proveedor.js";
-
+import { sequelize }  from "../../config/database.js";
 // // Crear nuevo proveedor
 // export const crearProveedor = async (req, res) => {
 //   try {
@@ -13,26 +13,81 @@ import Proveedor from "../../models/comun/proveedor.js";
 
 export const crearProveedor = async (req, res) => {
   try {
-    const { cuit } = req.body;
+    const {
+      cuit
+    } = req.body || {};
 
-    // 🔎 Verificar si ya existe
-    const proveedorExistente = await Proveedor.findOne({
-      where: { cuit }
-    });
 
-    if (proveedorExistente) {
-      return res.status(400).json({
-        error: "Ya existe un proveedor con ese CUIT"
-      });
+    // ==================================================
+    // NORMALIZAR CUIT
+    // ==================================================
+
+    const cuitNormalizado =
+      cuit &&
+        String(cuit).trim()
+        ? String(cuit).trim()
+        : null;
+
+
+    // ==================================================
+    // VERIFICAR CUIT DUPLICADO
+    // Solo si realmente se informó un CUIT
+    // ==================================================
+
+    if (cuitNormalizado) {
+
+      const proveedorExistente =
+        await Proveedor.findOne({
+          where: {
+            cuit:
+              cuitNormalizado,
+          },
+        });
+
+
+      if (proveedorExistente) {
+
+        return res.status(400).json({
+          error:
+            "Ya existe un proveedor con ese CUIT",
+        });
+      }
     }
 
-    const proveedor = await Proveedor.create(req.body);
 
-    res.status(201).json(proveedor);
+    // ==================================================
+    // CREAR PROVEEDOR
+    // ==================================================
+
+    const proveedor =
+      await Proveedor.create({
+        ...req.body,
+
+        cuit:
+          cuitNormalizado,
+      });
+
+
+    return res.status(201).json(
+      proveedor
+    );
 
   } catch (error) {
-    res.status(500).json({
-      error: "Error al crear el proveedor"
+
+    // ==================================================
+    // MOSTRAR ERROR REAL EN BACKEND
+    // ==================================================
+
+    console.error(
+      "❌ crearProveedor:",
+      error
+    );
+
+
+    return res.status(500).json({
+      error:
+        error.message ||
+        "Error al crear el proveedor",
     });
   }
 };
@@ -40,10 +95,24 @@ export const crearProveedor = async (req, res) => {
 // Listar todos los proveedores
 export const listarProveedores = async (req, res) => {
   try {
-    const proveedores = await Proveedor.findAll();
+    const proveedores = await Proveedor.findAll({
+      order: [
+        [sequelize.fn("LOWER", sequelize.col("nombre")), "ASC"],
+      ],
+    });
     res.status(200).json(proveedores);
   } catch (error) {
-    res.status(500).json({ error: "Error al listar los proveedores" });
+
+    console.error(
+      "❌ crearProveedor:",
+      error
+    );
+
+    res.status(500).json({
+      error:
+        error.message ||
+        "Error al crear el proveedor"
+    });
   }
 };
 
