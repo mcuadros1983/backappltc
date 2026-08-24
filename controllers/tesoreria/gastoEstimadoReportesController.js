@@ -148,17 +148,21 @@ export async function vencenEn(req, res) {
       where,
       attributes: [
         "id",
+        "gastoestimado_id",
         "descripcion",
+        "periodo",
         "fecha_vencimiento",
         "estado",
         "empresa_id",
         "proveedor_id",
         "sucursal_id",
         "categoriaegreso_id",
-
-        // Forma de pago acordada de la instancia
+        "tipocomprobante_id",
         "formapago_id",
-
+        "monto_estimado",
+        "monto_real",
+        "monto_pagado",
+        "observaciones",
         [BASE_FIELD, "monto_base"],
       ],
       include: [
