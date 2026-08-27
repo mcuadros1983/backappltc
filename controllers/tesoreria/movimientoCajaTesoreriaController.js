@@ -140,6 +140,62 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       { transaction: t }
     );
 
+    let movCtaCte = null;
+
+if (egreso.generar_abono_ctacte === true) {
+
+  movCtaCte =
+    await MovimientoCtaCteProveedor.create(
+      {
+        proveedor_id:
+          Number(egreso.proveedor_id),
+
+        empresa_id:
+          Number(empresa_id),
+
+        fecha,
+
+        fecha_pago:
+          fecha,
+
+        descripcion:
+          `Pago disponible desde Caja OP #${orden.id}`,
+
+        tipo:
+          "abono",
+
+        importe:
+          monto,
+
+        origen_tipo:
+          "OrdenPago",
+
+        origen_id:
+          orden.id,
+
+        comprobanteegreso_id:
+          null,
+
+        anulado:
+          false,
+
+        ordenpago_id:
+          orden.id,
+
+        referencia_tipo:
+          "MovimientoCajaTesoreria",
+
+        referencia_id:
+          movimiento.id,
+
+        formapago_id:
+          egreso.formapago_id || null,
+      },
+      {
+        transaction: t,
+      }
+    );
+}
     // ===== 2) Crear Cobranza vinculada a CC y al movimiento de caja
     const cobranza = await Cobranza.create(
       {
@@ -200,6 +256,7 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
       movimiento,
       cobranza,
       cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
+      movCtaCte
     });
   } catch (err) {
     await t.rollback();

@@ -64,6 +64,10 @@ export const registrarPagoProgramado = async (req, res) => {
       proyecto_id,
 
       idempotencyKey,
+
+      // Si es true, el movimiento quedará disponible
+      // como abono para aplicar a varias facturas.
+      generar_abono_ctacte = false,
     } = req.body || {};
 
 
@@ -743,6 +747,71 @@ export const acreditarPagoProgramado = async (req, res) => {
     // Y PASA A APUNTAR AL MOVIMIENTO REAL
     // ==================================================
 
+    // ==================================================
+    // EGRESO PROGRAMADO DISPONIBLE PARA VARIAS FACTURAS
+    // ==================================================
+
+    let nuevoAbonoCtaCte = null;
+
+    if (
+      generar_abono_ctacte === true &&
+      pago.tipo !== "anticipo"
+    ) {
+
+      nuevoAbonoCtaCte =
+        await MovimientoCtaCteProveedor.create(
+          {
+            proveedor_id:
+              pago.proveedor_id,
+
+            empresa_id:
+              pago.empresa_id,
+
+            fecha,
+
+            fecha_pago:
+              fecha,
+
+            descripcion:
+              `Pago programado disponible OP #${ordenpago_id}`,
+
+            tipo:
+              "abono",
+
+            importe:
+              N(pago.monto),
+
+            origen_tipo:
+              "OrdenPago",
+
+            origen_id:
+              ordenpago_id,
+
+            comprobanteegreso_id:
+              null,
+
+            anulado:
+              false,
+
+            ordenpago_id,
+
+            referencia_tipo:
+              pago.medio === "caja"
+                ? "MovimientoCajaTesoreria"
+                : "MovimientoBancoTesoreria",
+
+            referencia_id:
+              movimiento.id,
+
+            formapago_id:
+              pago.formapago_id || null,
+          },
+          {
+            transaction: t,
+          }
+        );
+    }
+
     if (
       pago.tipo === "anticipo" &&
       pago.movimiento_ctacte_id
@@ -847,6 +916,9 @@ export const acreditarPagoProgramado = async (req, res) => {
 
       comprobante:
         resultadoComprobante,
+
+      abonoCtaCte:
+        nuevoAbonoCtaCte,
     });
 
   } catch (error) {

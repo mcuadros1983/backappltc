@@ -1046,6 +1046,63 @@ export const registrarEgresoBancoIndependiente = async (req, res) => {
       { transaction: t }
     );
 
+    let movCtaCte = null;
+
+if (egreso.generar_abono_ctacte === true) {
+
+  movCtaCte =
+    await MovimientoCtaCteProveedor.create(
+      {
+        proveedor_id:
+          Number(egreso.proveedor_id),
+
+        empresa_id:
+          Number(empresa_id),
+
+        fecha,
+
+        fecha_pago:
+          fecha,
+
+        descripcion:
+          `Pago disponible desde Banco OP #${orden.id}`,
+
+        tipo:
+          "abono",
+
+        importe:
+          monto,
+
+        origen_tipo:
+          "OrdenPago",
+
+        origen_id:
+          orden.id,
+
+        comprobanteegreso_id:
+          null,
+
+        anulado:
+          false,
+
+        ordenpago_id:
+          orden.id,
+
+        referencia_tipo:
+          "MovimientoBancoTesoreria",
+
+        referencia_id:
+          movimiento.id,
+
+        formapago_id:
+          egreso.formapago_id || null,
+      },
+      {
+        transaction: t,
+      }
+    );
+}
+
     await t.commit();
     return res.status(201).json({
       ok: true,
@@ -1053,6 +1110,7 @@ export const registrarEgresoBancoIndependiente = async (req, res) => {
       ordenpago: orden,
       movimiento: movimiento,            // 👈 igual que Caja
       movimientoBanco: movimiento,       // (temporal, por compatibilidad)
+      movCtaCte,
     });
   } catch (error) {
     await t.rollback();
