@@ -346,167 +346,1528 @@ function periodFromDate(yyyy_mm_dd) {
 // ---------- IMPORTAR ÚNICOS DESDE EXCEL/CSV ----------
 // POST /gasto-estimado/importar-unicos  (usa upload.single("file") en las rutas)
 export async function importarPlantillasUnicas(req, res) {
+
+  console.log("\n==================================================");
+  console.log("🚀 INICIO importarPlantillasUnicas");
+  console.log("==================================================");
+
   try {
-    const empresa_id = Number(req.body?.empresa_id);
-    if (!(empresa_id > 0)) {
-      return res.status(400).json({ error: "empresa_id requerido en el body (FormData)" });
+
+    // =====================================================
+    // 1. REQUEST RECIBIDO
+    // =====================================================
+
+    console.log("📦 req.body:", req.body);
+
+    console.log(
+      "📎 req.file:",
+      req.file
+        ? {
+            fieldname: req.file.fieldname,
+            originalname: req.file.originalname,
+            encoding: req.file.encoding,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            bufferLength: req.file.buffer?.length,
+          }
+        : null
+    );
+
+
+    // =====================================================
+    // 2. EMPRESA
+    // =====================================================
+
+    const empresa_id =
+      Number(
+        req.body?.empresa_id
+      );
+
+
+    console.log(
+      "🏢 empresa_id RAW:",
+      req.body?.empresa_id
+    );
+
+    console.log(
+      "🏢 empresa_id convertido:",
+      empresa_id
+    );
+
+
+    if (
+      !(empresa_id > 0)
+    ) {
+
+      console.error(
+        "❌ empresa_id inválido"
+      );
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "empresa_id requerido en el body (FormData)"
+        });
     }
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ error: "Subí un archivo (xlsx/csv) en el campo 'file'." });
+
+
+    // =====================================================
+    // 3. ARCHIVO
+    // =====================================================
+
+    if (
+      !req.file ||
+      !req.file.buffer
+    ) {
+
+      console.error(
+        "❌ No llegó req.file o req.file.buffer"
+      );
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "Subí un archivo (xlsx/csv) en el campo 'file'."
+        });
     }
 
-    // Parsear Excel/CSV
-    const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-    const wsName = wb.SheetNames[0];
-    const ws = wb.Sheets[wsName];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
 
-    // Catálogos para resolver por nombre
-    const [proveedores, categorias] = await Promise.all([
-      Proveedor.findAll(),
-      CategoriaEgreso.findAll(),
-    ]);
+    console.log(
+      "✅ Archivo recibido correctamente"
+    );
 
-    // Mapas normalizados
-    const provMap = new Map(); // nombre -> array (para detectar ambigüedad)
-    proveedores.forEach(p => {
-      const visible = p.razonsocial || p.nombre || p.descripcion || `Proveedor ${p.id}`;
-      const key = normName(visible);
-      if (!provMap.has(key)) provMap.set(key, []);
-      provMap.get(key).push(p);
-    });
 
-    const catMap = new Map(); // nombre -> categoría
-    categorias.forEach(c => catMap.set(normName(c.nombre), c));
+    // =====================================================
+    // 4. PARSEAR EXCEL / CSV
+    // =====================================================
 
-    const results = [];
-    let created = 0;
-    let failed = 0;
+    console.log(
+      "\n📖 Leyendo archivo con XLSX..."
+    );
 
-    for (let i = 0; i < rows.length; i++) {
-      const raw = rows[i] || {};
-      // Columnas principales por nombre
-      const descripcion = String(raw.descripcion || "").trim();
-      const proveedorNombre = String(raw.proveedor || "").trim();
-      const categoriaNombre = String(raw.categoria || "").trim();
-      // Fecha y monto
-      let fecha_vencimiento = null;
-      if (raw.fecha_vencimiento) {
-        // soporta Date excel / yyyy-mm-dd / dd-mm-yyyy / dd/mm/yyyy
-        if (raw.fecha_vencimiento instanceof Date && !isNaN(raw.fecha_vencimiento)) {
-          fecha_vencimiento = raw.fecha_vencimiento.toISOString().slice(0, 10);
+
+    const wb =
+      XLSX.read(
+        req.file.buffer,
+        {
+          type: "buffer",
+
+          /*
+           * Importante para intentar obtener
+           * fechas reales de Excel como Date.
+           */
+          cellDates: true,
+        }
+      );
+
+
+    console.log(
+      "📚 Hojas encontradas:",
+      wb.SheetNames
+    );
+
+
+    const wsName =
+      wb.SheetNames[0];
+
+
+    console.log(
+      "📄 Hoja seleccionada:",
+      wsName
+    );
+
+
+    const ws =
+      wb.Sheets[
+        wsName
+      ];
+
+
+    if (!ws) {
+
+      console.error(
+        "❌ No se encontró la primera hoja"
+      );
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "El archivo no contiene una hoja válida"
+        });
+    }
+
+
+    console.log(
+      "📐 Rango de hoja:",
+      ws["!ref"]
+    );
+
+
+    const rows =
+      XLSX.utils.sheet_to_json(
+        ws,
+        {
+          defval: null,
+          raw: true,
+        }
+      );
+
+
+    console.log(
+      "📊 Cantidad de filas detectadas:",
+      rows.length
+    );
+
+
+    if (
+      rows.length === 0
+    ) {
+
+      console.error(
+        "❌ Excel sin registros"
+      );
+
+      return res
+        .status(400)
+        .json({
+          error:
+            "El archivo no contiene registros para importar"
+        });
+    }
+
+
+    // =====================================================
+    // 5. VERIFICAR ENCABEZADOS
+    // =====================================================
+
+    console.log(
+      "\n🔑 COLUMNAS DETECTADAS:"
+    );
+
+    console.log(
+      Object.keys(
+        rows[0]
+      )
+    );
+
+
+    console.log(
+      "\n🧾 PRIMERA FILA RAW:"
+    );
+
+    console.log(
+      rows[0]
+    );
+
+
+    console.log(
+      "\n🧾 SEGUNDA FILA RAW:"
+    );
+
+    console.log(
+      rows[1] || "No existe"
+    );
+
+
+    // =====================================================
+    // 6. CATÁLOGOS
+    // =====================================================
+
+    console.log(
+      "\n🔎 Cargando catálogos..."
+    );
+
+
+    const [
+      proveedores,
+      categorias
+    ] =
+      await Promise.all([
+
+        Proveedor.findAll(),
+
+        CategoriaEgreso.findAll(),
+
+      ]);
+
+
+    console.log(
+      "👤 Cantidad proveedores:",
+      proveedores.length
+    );
+
+
+    console.log(
+      "📂 Cantidad categorías:",
+      categorias.length
+    );
+
+
+    // =====================================================
+    // 7. MAPA PROVEEDORES
+    // =====================================================
+
+    const provMap =
+      new Map();
+
+
+    proveedores.forEach(
+      (p) => {
+
+        const visible =
+          p.razonsocial ||
+          p.nombre ||
+          p.descripcion ||
+          `Proveedor ${p.id}`;
+
+
+        const key =
+          normName(
+            visible
+          );
+
+
+        if (
+          !provMap.has(key)
+        ) {
+
+          provMap.set(
+            key,
+            []
+          );
+        }
+
+
+        provMap
+          .get(key)
+          .push(p);
+      }
+    );
+
+
+    console.log(
+      "🗺️ Claves proveedor generadas:",
+      provMap.size
+    );
+
+
+    // =====================================================
+    // 8. MAPA CATEGORÍAS
+    // =====================================================
+
+    const catMap =
+      new Map();
+
+
+    categorias.forEach(
+      (c) => {
+
+        const key =
+          normName(
+            c.nombre
+          );
+
+
+        catMap.set(
+          key,
+          c
+        );
+      }
+    );
+
+
+    console.log(
+      "🗺️ Claves categoría generadas:",
+      catMap.size
+    );
+
+
+    // =====================================================
+    // 9. RESULTADOS
+    // =====================================================
+
+    const results =
+      [];
+
+
+    let created =
+      0;
+
+
+    let failed =
+      0;
+
+
+    // =====================================================
+    // 10. RECORRER FILAS
+    // =====================================================
+
+    for (
+      let i = 0;
+      i < rows.length;
+      i++
+    ) {
+
+      const raw =
+        rows[i] ||
+        {};
+
+
+      const filaExcel =
+        i + 2;
+
+
+      console.log(
+        "\n--------------------------------------------------"
+      );
+
+      console.log(
+        `➡️ PROCESANDO FILA EXCEL ${filaExcel}`
+      );
+
+      console.log(
+        "--------------------------------------------------"
+      );
+
+
+      console.log(
+        "📦 RAW:",
+        raw
+      );
+
+
+      // ===================================================
+      // CAMPOS PRINCIPALES
+      // ===================================================
+
+      const descripcion =
+        String(
+          raw.descripcion ||
+          ""
+        ).trim();
+
+
+      const proveedorNombre =
+        String(
+          raw.proveedor ||
+          ""
+        ).trim();
+
+
+      const categoriaNombre =
+        String(
+          raw.categoria ||
+          ""
+        ).trim();
+
+
+      console.log(
+        "📝 descripcion:",
+        JSON.stringify(
+          descripcion
+        )
+      );
+
+
+      console.log(
+        "👤 proveedor:",
+        JSON.stringify(
+          proveedorNombre
+        )
+      );
+
+
+      console.log(
+        "📂 categoria:",
+        JSON.stringify(
+          categoriaNombre
+        )
+      );
+
+
+      // ===================================================
+      // FECHA
+      // ===================================================
+
+      let fecha_vencimiento =
+        null;
+
+
+      console.log(
+        "📅 fecha_vencimiento RAW:",
+        raw.fecha_vencimiento
+      );
+
+
+      console.log(
+        "📅 typeof fecha_vencimiento:",
+        typeof raw.fecha_vencimiento
+      );
+
+
+      console.log(
+        "📅 instanceof Date:",
+        raw.fecha_vencimiento
+          instanceof Date
+      );
+
+
+      if (
+        raw.fecha_vencimiento
+      ) {
+
+        /*
+         * CASO 1:
+         * XLSX devuelve Date real.
+         */
+        if (
+          raw.fecha_vencimiento
+            instanceof Date &&
+          !isNaN(
+            raw.fecha_vencimiento
+              .getTime()
+          )
+        ) {
+
+          fecha_vencimiento =
+            raw.fecha_vencimiento
+              .toISOString()
+              .slice(
+                0,
+                10
+              );
+
+
+          console.log(
+            "📅 Detectada como Date:",
+            fecha_vencimiento
+          );
+
         } else {
-          const s = String(raw.fecha_vencimiento).trim();
-          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) fecha_vencimiento = s;
-          else {
-            const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-            if (m) {
-              const [_, d, mo, y] = m;
-              fecha_vencimiento = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+          /*
+           * CASO 2:
+           * viene como string.
+           */
+
+          const s =
+            String(
+              raw.fecha_vencimiento
+            ).trim();
+
+
+          console.log(
+            "📅 Fecha como String:",
+            JSON.stringify(
+              s
+            )
+          );
+
+
+          /*
+           * YYYY-MM-DD
+           */
+          if (
+            /^\d{4}-\d{2}-\d{2}$/
+              .test(s)
+          ) {
+
+            fecha_vencimiento =
+              s;
+
+
+            console.log(
+              "📅 Formato detectado: YYYY-MM-DD"
+            );
+
+          } else {
+
+            /*
+             * DD/MM/YYYY
+             * DD-MM-YYYY
+             */
+
+            const m =
+              s.match(
+                /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/
+              );
+
+
+            console.log(
+              "📅 Resultado regex DD/MM/YYYY:",
+              m
+            );
+
+
+            if (
+              m
+            ) {
+
+              const [
+                _,
+                d,
+                mo,
+                y
+              ] =
+                m;
+
+
+              fecha_vencimiento =
+                `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+
+              console.log(
+                "📅 Fecha convertida:",
+                fecha_vencimiento
+              );
             }
           }
         }
       }
-      const monto = Number(raw.monto || raw.monto_estimado || raw.importe);
 
-      // Opcionales
-      const sucursal_id = raw["sucursal_id (op)"] != null ? Number(raw["sucursal_id (op)"]) :
-        raw.sucursal_id != null ? Number(raw.sucursal_id) : null;
-      const requiere_factura = raw.requiere_factura != null ? parseBool(raw.requiere_factura) : null;
-      const observaciones = raw["observaciones (op)"] != null ? String(raw["observaciones (op)"]).trim() :
-        raw.observaciones != null ? String(raw.observaciones).trim() : null;
-      const tipocomprobante_id = raw.tipocomprobante_id != null ? Number(raw.tipocomprobante_id) : null;
-      const formapago_id = raw.formapago_id != null ? Number(raw.formapago_id) : null;
 
-      // Validaciones mínimas
-      const errs = [];
-      if (!descripcion) errs.push("descripcion requerida");
-      if (!proveedorNombre) errs.push("proveedor requerido");
-      if (!categoriaNombre) errs.push("categoria requerida");
-      if (!fecha_vencimiento || !/^\d{4}-\d{2}-\d{2}$/.test(fecha_vencimiento)) errs.push("fecha_vencimiento (YYYY-MM-DD) requerida");
-      if (!(monto > 0)) errs.push("monto > 0 requerido");
+      console.log(
+        "📅 FECHA FINAL:",
+        fecha_vencimiento
+      );
 
-      // Resolver proveedor
-      let proveedor_id = null;
-      if (proveedorNombre) {
-        const list = provMap.get(normName(proveedorNombre)) || [];
-        if (list.length === 1) proveedor_id = list[0].id;
-        else if (list.length === 0) errs.push(`Proveedor '${proveedorNombre}' no encontrado`);
-        else errs.push(`Proveedor '${proveedorNombre}' ambiguo (${list.length} coincidencias)`);
+
+      // ===================================================
+      // MONTO
+      // ===================================================
+
+      const montoRaw =
+        raw.monto ??
+        raw.monto_estimado ??
+        raw.importe;
+
+
+      console.log(
+        "💰 monto RAW:",
+        montoRaw
+      );
+
+
+      console.log(
+        "💰 typeof monto RAW:",
+        typeof montoRaw
+      );
+
+
+      const monto =
+        Number(
+          montoRaw
+        );
+
+
+      console.log(
+        "💰 monto convertido:",
+        monto
+      );
+
+
+      console.log(
+        "💰 isNaN:",
+        Number.isNaN(
+          monto
+        )
+      );
+
+
+      // ===================================================
+      // CAMPOS OPCIONALES
+      // ===================================================
+
+      const sucursal_id =
+        raw[
+          "sucursal_id (op)"
+        ] != null
+
+          ? Number(
+              raw[
+                "sucursal_id (op)"
+              ]
+            )
+
+          : raw.sucursal_id != null
+
+            ? Number(
+                raw.sucursal_id
+              )
+
+            : null;
+
+
+      const requiere_factura =
+        raw.requiere_factura != null
+
+          ? parseBool(
+              raw.requiere_factura
+            )
+
+          : null;
+
+
+      const observaciones =
+        raw[
+          "observaciones (op)"
+        ] != null
+
+          ? String(
+              raw[
+                "observaciones (op)"
+              ]
+            ).trim()
+
+          : raw.observaciones != null
+
+            ? String(
+                raw.observaciones
+              ).trim()
+
+            : null;
+
+
+      const tipocomprobante_id =
+        raw.tipocomprobante_id != null
+
+          ? Number(
+              raw.tipocomprobante_id
+            )
+
+          : null;
+
+
+      const formapago_id =
+        raw.formapago_id != null
+
+          ? Number(
+              raw.formapago_id
+            )
+
+          : null;
+
+
+      console.log(
+        "⚙️ CAMPOS OPCIONALES:",
+        {
+          sucursal_id,
+          requiere_factura,
+          observaciones,
+          tipocomprobante_id,
+          formapago_id
+        }
+      );
+
+
+      // ===================================================
+      // VALIDACIONES
+      // ===================================================
+
+      const errs =
+        [];
+
+
+      if (
+        !descripcion
+      ) {
+
+        errs.push(
+          "descripcion requerida"
+        );
       }
 
-      // Resolver categoría
-      let categoriaegreso_id = null;
-      if (categoriaNombre) {
-        const c = catMap.get(normName(categoriaNombre));
-        if (!c) errs.push(`Categoría '${categoriaNombre}' no encontrada`);
-        else categoriaegreso_id = c.id;
+
+      if (
+        !proveedorNombre
+      ) {
+
+        errs.push(
+          "proveedor requerido"
+        );
       }
 
-      if (errs.length) {
+
+      if (
+        !categoriaNombre
+      ) {
+
+        errs.push(
+          "categoria requerida"
+        );
+      }
+
+
+      if (
+        !fecha_vencimiento ||
+        !/^\d{4}-\d{2}-\d{2}$/
+          .test(
+            fecha_vencimiento
+          )
+      ) {
+
+        errs.push(
+          "fecha_vencimiento (YYYY-MM-DD) requerida"
+        );
+      }
+
+
+      if (
+        !(monto > 0)
+      ) {
+
+        errs.push(
+          "monto > 0 requerido"
+        );
+      }
+
+
+      // ===================================================
+      // RESOLVER PROVEEDOR
+      // ===================================================
+
+      let proveedor_id =
+        null;
+
+
+      if (
+        proveedorNombre
+      ) {
+
+        const proveedorKey =
+          normName(
+            proveedorNombre
+          );
+
+
+        console.log(
+          "🔎 Proveedor original:",
+          proveedorNombre
+        );
+
+
+        console.log(
+          "🔎 Proveedor normalizado:",
+          proveedorKey
+        );
+
+
+        const list =
+          provMap.get(
+            proveedorKey
+          ) ||
+          [];
+
+
+        console.log(
+          "🔎 Cantidad coincidencias proveedor:",
+          list.length
+        );
+
+
+        console.log(
+          "🔎 Coincidencias proveedor:",
+          list.map(
+            (p) => ({
+              id:
+                p.id,
+
+              razonsocial:
+                p.razonsocial,
+
+              nombre:
+                p.nombre,
+
+              descripcion:
+                p.descripcion
+            })
+          )
+        );
+
+
+        if (
+          list.length === 1
+        ) {
+
+          proveedor_id =
+            list[0].id;
+
+
+          console.log(
+            "✅ proveedor_id resuelto:",
+            proveedor_id
+          );
+
+        } else if (
+          list.length === 0
+        ) {
+
+          console.error(
+            "❌ Proveedor NO encontrado:",
+            proveedorNombre
+          );
+
+
+          errs.push(
+            `Proveedor '${proveedorNombre}' no encontrado`
+          );
+
+        } else {
+
+          console.error(
+            "❌ Proveedor ambiguo:",
+            proveedorNombre,
+            list.length
+          );
+
+
+          errs.push(
+            `Proveedor '${proveedorNombre}' ambiguo (${list.length} coincidencias)`
+          );
+        }
+      }
+
+
+      // ===================================================
+      // RESOLVER CATEGORÍA
+      // ===================================================
+
+      let categoriaegreso_id =
+        null;
+
+
+      if (
+        categoriaNombre
+      ) {
+
+        const categoriaKey =
+          normName(
+            categoriaNombre
+          );
+
+
+        console.log(
+          "🔎 Categoría original:",
+          categoriaNombre
+        );
+
+
+        console.log(
+          "🔎 Categoría normalizada:",
+          categoriaKey
+        );
+
+
+        const c =
+          catMap.get(
+            categoriaKey
+          );
+
+
+        console.log(
+          "🔎 Categoría encontrada:",
+          c
+            ? {
+                id:
+                  c.id,
+
+                nombre:
+                  c.nombre,
+
+                imputacioncontable_id:
+                  c.imputacioncontable_id
+              }
+            : null
+        );
+
+
+        if (
+          !c
+        ) {
+
+          console.error(
+            "❌ Categoría NO encontrada:",
+            categoriaNombre
+          );
+
+
+          errs.push(
+            `Categoría '${categoriaNombre}' no encontrada`
+          );
+
+        } else {
+
+          categoriaegreso_id =
+            c.id;
+
+
+          console.log(
+            "✅ categoriaegreso_id resuelto:",
+            categoriaegreso_id
+          );
+        }
+      }
+
+
+      // ===================================================
+      // ERRORES DE VALIDACIÓN
+      // ===================================================
+
+      if (
+        errs.length
+      ) {
+
+        console.error(
+          `❌ FILA ${filaExcel} RECHAZADA`
+        );
+
+
+        console.error(
+          "Errores:",
+          errs
+        );
+
+
         failed++;
-        results.push({ row: i + 2, ok: false, error: errs.join("; ") });
+
+
+        results.push({
+          row:
+            filaExcel,
+
+          ok:
+            false,
+
+          error:
+            errs.join(
+              "; "
+            )
+        });
+
+
         continue;
       }
 
-      const periodo = String(fecha_vencimiento).slice(0, 7); // 'YYYY-MM'
-      const t = await sequelize.transaction();
-      try {
-        // 1) Plantilla (UNICO, sin rollover)
-        const plantilla = await GastoEstimado.create({
-          empresa_id,
-          proveedor_id,
-          categoriaegreso_id,
-          descripcion,
-          periodicidad: "unico",
-          dia_vencimiento_default: Number(fecha_vencimiento.slice(8, 10)),
-          monto_estimado_default: monto,
-          sucursal_id,
-          tipocomprobante_id,
-          formapago_id,
-          requiere_factura: requiere_factura ?? null,
-          activo: true,
-          observaciones,
-        }, { transaction: t });
 
-        // 2) Instancia única
-        const instancia = await GastoEstimadoInstancia.create({
-          gastoestimado_id: plantilla.id,
+      // ===================================================
+      // PERIODO
+      // ===================================================
+
+      const periodo =
+        String(
+          fecha_vencimiento
+        ).slice(
+          0,
+          7
+        );
+
+
+      console.log(
+        "📆 periodo:",
+        periodo
+      );
+
+
+      console.log(
+        "✅ FILA VALIDADA CORRECTAMENTE"
+      );
+
+
+      console.log(
+        "📦 DATOS FINALES:",
+        {
           empresa_id,
           proveedor_id,
           categoriaegreso_id,
+          descripcion,
+          fecha_vencimiento,
+          periodo,
+          monto,
           sucursal_id,
           tipocomprobante_id,
           formapago_id,
+          requiere_factura,
+          observaciones
+        }
+      );
+
+
+      // ===================================================
+      // TRANSACCIÓN
+      // ===================================================
+
+      console.log(
+        "🔐 Iniciando transacción..."
+      );
+
+
+      const t =
+        await sequelize
+          .transaction();
+
+
+      try {
+
+        // =================================================
+        // 11. CREAR PLANTILLA
+        // =================================================
+
+        console.log(
+          "💾 Creando GastoEstimado..."
+        );
+
+
+        const datosPlantilla = {
+
+          empresa_id,
+
+          proveedor_id,
+
+          categoriaegreso_id,
+
           descripcion,
-          periodo,
-          fecha_vencimiento,
-          monto_estimado: monto,
-          monto_real: null,
-          monto_pagado: 0,
-          estado: "pendiente",
-          anulado: false,
-          created_from: "importado",
+
+          periodicidad:
+            "unico",
+
+          dia_vencimiento_default:
+            Number(
+              fecha_vencimiento
+                .slice(
+                  8,
+                  10
+                )
+            ),
+
+          monto_estimado_default:
+            monto,
+
+          sucursal_id,
+
+          tipocomprobante_id,
+
+          formapago_id,
+
+          requiere_factura:
+            requiere_factura ??
+            null,
+
+          activo:
+            true,
+
           observaciones,
-        }, { transaction: t });
+
+        };
+
+
+        console.log(
+          "📦 Payload GastoEstimado:",
+          datosPlantilla
+        );
+
+
+        const plantilla =
+          await GastoEstimado
+            .create(
+              datosPlantilla,
+              {
+                transaction:
+                  t
+              }
+            );
+
+
+        console.log(
+          "✅ GastoEstimado creado"
+        );
+
+
+        console.log(
+          "🆔 plantilla.id:",
+          plantilla.id
+        );
+
+
+        // =================================================
+        // 12. CREAR INSTANCIA
+        // =================================================
+
+        console.log(
+          "💾 Creando GastoEstimadoInstancia..."
+        );
+
+
+        const datosInstancia = {
+
+          gastoestimado_id:
+            plantilla.id,
+
+          empresa_id,
+
+          proveedor_id,
+
+          categoriaegreso_id,
+
+          sucursal_id,
+
+          tipocomprobante_id,
+
+          formapago_id,
+
+          descripcion,
+
+          periodo,
+
+          fecha_vencimiento,
+
+          monto_estimado:
+            monto,
+
+          monto_real:
+            null,
+
+          monto_pagado:
+            0,
+
+          estado:
+            "pendiente",
+
+          anulado:
+            false,
+
+          created_from:
+            "importado",
+
+          observaciones,
+
+        };
+
+
+        console.log(
+          "📦 Payload GastoEstimadoInstancia:",
+          datosInstancia
+        );
+
+
+        const instancia =
+          await GastoEstimadoInstancia
+            .create(
+              datosInstancia,
+              {
+                transaction:
+                  t
+              }
+            );
+
+
+        console.log(
+          "✅ GastoEstimadoInstancia creada"
+        );
+
+
+        console.log(
+          "🆔 instancia.id:",
+          instancia.id
+        );
+
+
+        // =================================================
+        // COMMIT
+        // =================================================
 
         await t.commit();
+
+
+        console.log(
+          `🎉 FILA ${filaExcel}: COMMIT OK`
+        );
+
+
         created++;
-        results.push({ row: i + 2, ok: true, plantilla_id: plantilla.id, instancia_id: instancia.id });
+
+
+        results.push({
+
+          row:
+            filaExcel,
+
+          ok:
+            true,
+
+          plantilla_id:
+            plantilla.id,
+
+          instancia_id:
+            instancia.id
+
+        });
+
+
       } catch (e) {
-        await t.rollback();
+
+        // =================================================
+        // ERROR DE BASE DE DATOS
+        // =================================================
+
+        console.error(
+          "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        );
+
+        console.error(
+          `💥 ERROR BD FILA ${filaExcel}`
+        );
+
+        console.error(
+          "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        );
+
+
+        console.error(
+          "Nombre error:",
+          e?.name
+        );
+
+
+        console.error(
+          "Mensaje:",
+          e?.message
+        );
+
+
+        console.error(
+          "SQL:",
+          e?.sql
+        );
+
+
+        console.error(
+          "Parameters:",
+          e?.parameters
+        );
+
+
+        console.error(
+          "Sequelize errors:",
+          e?.errors
+        );
+
+
+        console.error(
+          "Original:",
+          e?.original
+        );
+
+
+        console.error(
+          "Parent:",
+          e?.parent
+        );
+
+
+        console.error(
+          "Stack:",
+          e?.stack
+        );
+
+
+        try {
+
+          await t.rollback();
+
+
+          console.log(
+            `↩️ ROLLBACK FILA ${filaExcel} OK`
+          );
+
+        } catch (
+          rollbackError
+        ) {
+
+          console.error(
+            "💥 ERROR HACIENDO ROLLBACK:",
+            rollbackError
+          );
+        }
+
+
         failed++;
-        results.push({ row: i + 2, ok: false, error: e.message || "Error creando registros" });
+
+
+        results.push({
+
+          row:
+            filaExcel,
+
+          ok:
+            false,
+
+          error:
+            e?.message ||
+            "Error creando registros"
+
+        });
       }
     }
 
+
+    // =====================================================
+    // 13. RESULTADO FINAL
+    // =====================================================
+
+    console.log(
+      "\n=================================================="
+    );
+
+    console.log(
+      "🏁 FIN importarPlantillasUnicas"
+    );
+
+    console.log(
+      "=================================================="
+    );
+
+
+    console.log(
+      "📊 RESUMEN:",
+      {
+        total:
+          rows.length,
+
+        created,
+
+        failed
+      }
+    );
+
+
+    if (
+      failed > 0
+    ) {
+
+      console.log(
+        "❌ FILAS FALLIDAS:"
+      );
+
+
+      console.table(
+        results.filter(
+          (r) =>
+            !r.ok
+        )
+      );
+    }
+
+
+    console.log(
+      "==================================================\n"
+    );
+
+
     return res.json({
-      ok: true, created, failed, total: rows.length, results,
-      hint: "Usá el template XLSX: columnas obligatorias = descripcion, proveedor, categoria, fecha_vencimiento, monto."
+
+      ok:
+        true,
+
+      created,
+
+      failed,
+
+      total:
+        rows.length,
+
+      results,
+
+      hint:
+        "Usá el template XLSX: columnas obligatorias = descripcion, proveedor, categoria, fecha_vencimiento, monto."
+
     });
+
+
   } catch (e) {
-    console.error("importarPlantillasUnicas", e);
-    return res.status(500).json({ error: "Error importando archivo" });
+
+    // =====================================================
+    // ERROR GENERAL
+    // =====================================================
+
+    console.error(
+      "\n##################################################"
+    );
+
+    console.error(
+      "💥 ERROR GENERAL importarPlantillasUnicas"
+    );
+
+    console.error(
+      "##################################################"
+    );
+
+
+    console.error(
+      "Nombre:",
+      e?.name
+    );
+
+
+    console.error(
+      "Mensaje:",
+      e?.message
+    );
+
+
+    console.error(
+      "SQL:",
+      e?.sql
+    );
+
+
+    console.error(
+      "Parameters:",
+      e?.parameters
+    );
+
+
+    console.error(
+      "Original:",
+      e?.original
+    );
+
+
+    console.error(
+      "Parent:",
+      e?.parent
+    );
+
+
+    console.error(
+      "Stack:",
+      e?.stack
+    );
+
+
+    console.error(
+      "##################################################\n"
+    );
+
+
+    return res
+      .status(500)
+      .json({
+
+        error:
+          "Error importando archivo",
+
+        /*
+         * TEMPORAL mientras diagnosticamos.
+         * Después podemos eliminar detalle.
+         */
+        detalle:
+          e?.message ||
+          null
+
+      });
   }
 }
 
