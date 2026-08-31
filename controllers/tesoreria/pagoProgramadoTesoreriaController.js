@@ -481,15 +481,31 @@ export const acreditarPagoProgramado = async (req, res) => {
     const id =
       Number(req.params.id);
 
+    // const {
+    //   fecha_acreditacion,
+
+    //   // pueden enviarse al momento de acreditar
+    //   caja_id,
+    //   banco_id,
+    // } = req.body || {};
+
     const {
       fecha_acreditacion,
 
-      // pueden enviarse al momento de acreditar
+      // Datos que pueden ajustarse
+      // justo antes de acreditar
+      medio,
       caja_id,
       banco_id,
+      monto,
+      formapago_id,
+      descripcion,
+      observaciones,
+      proyecto_id,
+
+      generar_abono_ctacte = false,
+
     } = req.body || {};
-
-
     const pago =
       await PagoProgramadoTesoreria.findByPk(
         id,
@@ -512,7 +528,89 @@ export const acreditarPagoProgramado = async (req, res) => {
         `El pago se encuentra en estado ${pago.estado}`
       );
     }
+    // ==================================================
+    // DATOS FINALES DE ACREDITACIÓN
+    // ==================================================
 
+    const medioFinal =
+      medio ||
+      pago.medio;
+
+
+    if (
+      !["caja", "banco"].includes(
+        medioFinal
+      )
+    ) {
+      throw new Error(
+        "Medio de pago inválido"
+      );
+    }
+
+
+    const montoFinal =
+      monto !== undefined &&
+        monto !== null &&
+        monto !== ""
+        ? N(monto)
+        : N(pago.monto);
+
+
+    if (!(montoFinal > 0)) {
+      throw new Error(
+        "El monto debe ser mayor a cero"
+      );
+    }
+
+
+    const descripcionFinal =
+      descripcion !== undefined
+        ? String(descripcion).trim()
+        : String(
+          pago.descripcion || ""
+        ).trim();
+
+
+    if (!descripcionFinal) {
+      throw new Error(
+        "La descripción es requerida"
+      );
+    }
+
+
+    const observacionesFinal =
+      observaciones !== undefined
+        ? (
+          String(observaciones).trim() ||
+          null
+        )
+        : pago.observaciones;
+
+
+    const proyectoFinal =
+      proyecto_id !== undefined
+        ? (
+          proyecto_id
+            ? Number(proyecto_id)
+            : null
+        )
+        : pago.proyecto_id;
+
+    const formaPagoFinal =
+      formapago_id !== undefined &&
+        formapago_id !== null &&
+        formapago_id !== ""
+        ? Number(
+          formapago_id
+        )
+        : pago.formapago_id;
+
+
+    if (!formaPagoFinal) {
+      throw new Error(
+        "Debe indicar la forma de pago"
+      );
+    }
 
     const fecha =
       fecha_acreditacion ||
@@ -520,6 +618,49 @@ export const acreditarPagoProgramado = async (req, res) => {
         .toISOString()
         .slice(0, 10);
 
+    // ==================================================
+    // VALIDAR ANTICIPO YA APLICADO A FACTURAS
+    // ==================================================
+
+    if (
+      pago.tipo === "anticipo" &&
+      pago.movimiento_ctacte_id
+    ) {
+
+      const totalAplicadoRaw =
+        await MovCtaCteProvAplic.sum(
+          "importe",
+          {
+            where: {
+              abono_id:
+                pago.movimiento_ctacte_id,
+            },
+
+            transaction:
+              t,
+          }
+        );
+
+
+      const totalAplicado =
+        N(totalAplicadoRaw);
+
+
+      if (
+        montoFinal < totalAplicado
+      ) {
+
+        throw new Error(
+          `No se puede acreditar el anticipo por $${montoFinal.toLocaleString("es-AR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} porque ya tiene $${totalAplicado.toLocaleString("es-AR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} aplicados a facturas.`
+        );
+      }
+    }
 
     // ==================================================
     // ORDEN DE PAGO
@@ -545,7 +686,7 @@ export const acreditarPagoProgramado = async (req, res) => {
             fecha,
 
             total:
-              N(pago.monto),
+              montoFinal,
 
             estado:
               pago.comprobanteegreso_id
@@ -556,12 +697,12 @@ export const acreditarPagoProgramado = async (req, res) => {
               null,
 
             observaciones:
-              pago.observaciones || null,
+              observacionesFinal,
 
             origen:
               pago.tipo === "anticipo"
-                ? `anticipo_programado_${pago.medio}`
-                : `egreso_programado_${pago.medio}`,
+                ? `anticipo_programado_${medioFinal}`
+                : `egreso_programado_${medioFinal}`,
           },
 
           {
@@ -585,7 +726,7 @@ export const acreditarPagoProgramado = async (req, res) => {
     // BANCO
     // -------------------------------
 
-    if (pago.medio === "banco") {
+    if (medioFinal === "banco") {
       const bancoFinal =
         banco_id ||
         pago.banco_id;
@@ -611,10 +752,10 @@ export const acreditarPagoProgramado = async (req, res) => {
               "egreso",
 
             descripcion:
-              pago.descripcion,
+              descripcionFinal,
 
             monto:
-              N(pago.monto),
+              montoFinal,
 
             fecha,
 
@@ -622,7 +763,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               Number(bancoFinal),
 
             formapago_id:
-              pago.formapago_id || null,
+              formaPagoFinal,
 
             referencia_id:
               pago.id,
@@ -631,7 +772,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               "PagoProgramadoTesoreria",
 
             observaciones:
-              pago.observaciones || null,
+              observacionesFinal,
 
             anulado:
               false,
@@ -648,7 +789,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               pago.imputacioncontable_id || null,
 
             proyecto_id:
-              pago.proyecto_id || null,
+              proyectoFinal,
           },
 
           {
@@ -662,7 +803,7 @@ export const acreditarPagoProgramado = async (req, res) => {
     // CAJA
     // -------------------------------
 
-    if (pago.medio === "caja") {
+    if (medioFinal === "caja") {
       const cajaFinal =
         caja_id ||
         pago.caja_id;
@@ -682,10 +823,10 @@ export const acreditarPagoProgramado = async (req, res) => {
               "egreso",
 
             descripcion:
-              pago.descripcion,
+              descripcionFinal,
 
             monto:
-              N(pago.monto),
+              montoFinal,
 
             fecha,
 
@@ -693,7 +834,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               Number(cajaFinal),
 
             formapago_id:
-              pago.formapago_id || null,
+              formaPagoFinal,
 
             referencia_id:
               pago.id,
@@ -702,7 +843,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               "PagoProgramadoTesoreria",
 
             observaciones:
-              pago.observaciones || null,
+              observacionesFinal,
 
             anulado:
               false,
@@ -716,7 +857,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               pago.imputacioncontable_id || null,
 
             proyecto_id:
-              pago.proyecto_id || null,
+              proyectoFinal,
 
             // Campos que comprobamos que
             // existen físicamente en PostgreSQL
@@ -779,7 +920,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               "abono",
 
             importe:
-              N(pago.monto),
+              montoFinal,
 
             origen_tipo:
               "OrdenPago",
@@ -796,7 +937,7 @@ export const acreditarPagoProgramado = async (req, res) => {
             ordenpago_id,
 
             referencia_tipo:
-              pago.medio === "caja"
+              medioFinal === "caja"
                 ? "MovimientoCajaTesoreria"
                 : "MovimientoBancoTesoreria",
 
@@ -804,7 +945,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               movimiento.id,
 
             formapago_id:
-              pago.formapago_id || null,
+              formaPagoFinal,
           },
           {
             transaction: t,
@@ -820,24 +961,33 @@ export const acreditarPagoProgramado = async (req, res) => {
       await MovimientoCtaCteProveedor.update(
         {
           referencia_tipo:
-            pago.medio === "caja"
+            medioFinal === "caja"
               ? "MovimientoCajaTesoreria"
               : "MovimientoBancoTesoreria",
 
           referencia_id:
             movimiento.id,
 
-          ordenpago_id:
-            ordenpago_id,
+          ordenpago_id,
 
           comprobanteegreso_id:
-            pago.comprobanteegreso_id || null,
+            pago.comprobanteegreso_id ||
+            null,
 
           formapago_id:
-            pago.formapago_id || null,
+            formaPagoFinal,
+
+          fecha:
+            fecha,
 
           fecha_pago:
             fecha,
+
+          importe:
+            montoFinal,
+
+          descripcion:
+            `Anticipo acreditado OP #${ordenpago_id} - ${descripcionFinal}`,
         },
 
         {
@@ -850,7 +1000,8 @@ export const acreditarPagoProgramado = async (req, res) => {
             },
           },
 
-          transaction: t,
+          transaction:
+            t,
         }
       );
     }
@@ -868,10 +1019,45 @@ export const acreditarPagoProgramado = async (req, res) => {
         fecha_acreditacion:
           fecha,
 
+        // Datos definitivos
+        medio:
+          medioFinal,
+
+        monto:
+          montoFinal,
+
+          formapago_id:
+  formaPagoFinal,
+
+        descripcion:
+          descripcionFinal,
+
+        observaciones:
+          observacionesFinal,
+
+        proyecto_id:
+          proyectoFinal,
+
+        banco_id:
+          medioFinal === "banco"
+            ? Number(
+              banco_id ||
+              pago.banco_id
+            )
+            : null,
+
+        caja_id:
+          medioFinal === "caja"
+            ? Number(
+              caja_id ||
+              pago.caja_id
+            )
+            : null,
+
         ordenpago_id,
 
         movimiento_tipo:
-          pago.medio === "caja"
+          medioFinal === "caja"
             ? "MovimientoCajaTesoreria"
             : "MovimientoBancoTesoreria",
 
@@ -883,7 +1069,6 @@ export const acreditarPagoProgramado = async (req, res) => {
         transaction: t,
       }
     );
-
 
     // ==================================================
     // RECALCULAR COMPROBANTE
@@ -1091,3 +1276,492 @@ export const eliminarPagoProgramado = async (req, res) => {
   }
 };
 
+export const actualizarPagoProgramado = async (req, res) => {
+
+  const t =
+    await sequelize.transaction();
+
+
+  try {
+
+    const id =
+      Number(req.params.id);
+
+
+    const {
+      fecha_programada,
+      medio,
+      formapago_id,
+      caja_id,
+      banco_id,
+      monto,
+      descripcion,
+      observaciones,
+      categoriaegreso_id,
+      proyecto_id,
+    } = req.body || {};
+
+
+    // ==================================================
+    // BUSCAR Y BLOQUEAR PAGO PROGRAMADO
+    // ==================================================
+
+    const pago =
+      await PagoProgramadoTesoreria.findByPk(
+        id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+
+
+    if (!pago) {
+      throw new Error(
+        "Pago programado no encontrado"
+      );
+    }
+
+
+    if (pago.estado !== "pendiente") {
+      throw new Error(
+        "Sólo se pueden modificar pagos programados pendientes"
+      );
+    }
+
+
+    // ==================================================
+    // VALORES FINALES
+    // ==================================================
+
+    const fechaFinal =
+      fecha_programada ||
+      pago.fecha_programada;
+
+
+    if (!fechaFinal) {
+      throw new Error(
+        "La fecha programada es requerida"
+      );
+    }
+
+
+    const medioFinal =
+      medio ||
+      pago.medio;
+
+
+    if (
+      !["caja", "banco"].includes(
+        medioFinal
+      )
+    ) {
+      throw new Error(
+        "Medio de pago inválido"
+      );
+    }
+
+
+    const montoFinal =
+      monto !== undefined &&
+      monto !== null &&
+      monto !== ""
+        ? N(monto)
+        : N(pago.monto);
+
+
+    if (!(montoFinal > 0)) {
+      throw new Error(
+        "El monto debe ser mayor a cero"
+      );
+    }
+
+
+    const descripcionFinal =
+      descripcion !== undefined
+        ? String(
+            descripcion
+          ).trim()
+        : String(
+            pago.descripcion || ""
+          ).trim();
+
+
+    if (!descripcionFinal) {
+      throw new Error(
+        "La descripción es requerida"
+      );
+    }
+
+
+    const observacionesFinal =
+      observaciones !== undefined
+        ? (
+            String(
+              observaciones || ""
+            ).trim() ||
+            null
+          )
+        : pago.observaciones;
+
+
+    const proyectoFinal =
+      proyecto_id !== undefined
+        ? (
+            proyecto_id
+              ? Number(
+                  proyecto_id
+                )
+              : null
+          )
+        : pago.proyecto_id;
+
+
+    const formaPagoFinal =
+      formapago_id !== undefined &&
+      formapago_id !== null &&
+      formapago_id !== ""
+        ? Number(
+            formapago_id
+          )
+        : pago.formapago_id;
+
+
+    if (!formaPagoFinal) {
+      throw new Error(
+        "Debe indicar la forma de pago"
+      );
+    }
+
+
+    // ==================================================
+    // CATEGORÍA + IMPUTACIÓN CONTABLE
+    // ==================================================
+
+    const categoriaFinal =
+      categoriaegreso_id !== undefined &&
+      categoriaegreso_id !== null &&
+      categoriaegreso_id !== ""
+        ? Number(
+            categoriaegreso_id
+          )
+        : Number(
+            pago.categoriaegreso_id
+          );
+
+
+    if (!categoriaFinal) {
+      throw new Error(
+        "Debe indicar la categoría de egreso"
+      );
+    }
+
+
+    const categoria =
+      await CategoriaEgreso.findByPk(
+        categoriaFinal,
+        {
+          transaction: t,
+        }
+      );
+
+
+    if (!categoria) {
+      throw new Error(
+        "La categoría indicada no existe"
+      );
+    }
+
+
+    if (
+      !categoria.imputacioncontable_id
+    ) {
+      throw new Error(
+        "La categoría no tiene imputación contable asociada"
+      );
+    }
+
+
+    const imputacionFinal =
+      Number(
+        categoria.imputacioncontable_id
+      );
+
+
+    // ==================================================
+    // CAJA / BANCO DEFINITIVOS
+    // ==================================================
+
+    let bancoFinal =
+      null;
+
+    let cajaFinal =
+      null;
+
+
+    if (medioFinal === "banco") {
+
+      bancoFinal =
+        banco_id
+          ? Number(
+              banco_id
+            )
+          : (
+              pago.medio === "banco" &&
+              pago.banco_id
+                ? Number(
+                    pago.banco_id
+                  )
+                : null
+            );
+
+
+      if (!bancoFinal) {
+        throw new Error(
+          "Debe indicar el banco"
+        );
+      }
+    }
+
+
+    if (medioFinal === "caja") {
+
+      cajaFinal =
+        caja_id
+          ? Number(
+              caja_id
+            )
+          : (
+              pago.medio === "caja" &&
+              pago.caja_id
+                ? Number(
+                    pago.caja_id
+                  )
+                : null
+            );
+
+
+      if (!cajaFinal) {
+        throw new Error(
+          "Debe indicar la caja"
+        );
+      }
+    }
+
+
+    // ==================================================
+    // ANTICIPO:
+    // NO PERMITIR MONTO MENOR A LO YA APLICADO
+    // ==================================================
+
+    let movCtaCte =
+      null;
+
+
+    if (
+      pago.tipo === "anticipo"
+    ) {
+
+      if (
+        !pago.movimiento_ctacte_id
+      ) {
+        throw new Error(
+          "El anticipo programado no tiene asociado su movimiento de cuenta corriente"
+        );
+      }
+
+
+      movCtaCte =
+        await MovimientoCtaCteProveedor.findByPk(
+          pago.movimiento_ctacte_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!movCtaCte) {
+        throw new Error(
+          "No se encontró el anticipo asociado en la cuenta corriente del proveedor"
+        );
+      }
+
+
+      if (movCtaCte.anulado) {
+        throw new Error(
+          "El anticipo asociado en cuenta corriente se encuentra anulado"
+        );
+      }
+
+
+      const totalAplicadoRaw =
+        await MovCtaCteProvAplic.sum(
+          "importe",
+          {
+            where: {
+              abono_id:
+                pago.movimiento_ctacte_id,
+            },
+
+            transaction:
+              t,
+          }
+        );
+
+
+      const totalAplicado =
+        N(
+          totalAplicadoRaw
+        );
+
+
+      if (
+        montoFinal <
+        totalAplicado
+      ) {
+        throw new Error(
+          `No se puede reducir el anticipo a $${montoFinal.toLocaleString(
+            "es-AR",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }
+          )} porque ya tiene $${totalAplicado.toLocaleString(
+            "es-AR",
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }
+          )} aplicados a facturas.`
+        );
+      }
+    }
+
+
+    // ==================================================
+    // ACTUALIZAR PAGO PROGRAMADO
+    // ==================================================
+
+    await pago.update(
+      {
+        fecha_programada:
+          fechaFinal,
+
+        medio:
+          medioFinal,
+
+        formapago_id:
+          formaPagoFinal,
+
+        banco_id:
+          bancoFinal,
+
+        caja_id:
+          cajaFinal,
+
+        monto:
+          montoFinal,
+
+        descripcion:
+          descripcionFinal,
+
+        observaciones:
+          observacionesFinal,
+
+        categoriaegreso_id:
+          categoriaFinal,
+
+        imputacioncontable_id:
+          imputacionFinal,
+
+        proyecto_id:
+          proyectoFinal,
+      },
+
+      {
+        transaction:
+          t,
+      }
+    );
+
+
+    // ==================================================
+    // SI ES ANTICIPO:
+    // SINCRONIZAR ABONO DE CUENTA CORRIENTE
+    // ==================================================
+
+    if (
+      pago.tipo === "anticipo" &&
+      movCtaCte
+    ) {
+
+      const medioDescripcion =
+        medioFinal === "caja"
+          ? "Caja"
+          : "Transferencia/Banco";
+
+
+      await movCtaCte.update(
+        {
+          fecha:
+            fechaFinal,
+
+          fecha_pago:
+            fechaFinal,
+
+          descripcion:
+            `Anticipo programado por ${medioDescripcion} #${pago.id} - ${descripcionFinal}`,
+
+          importe:
+            montoFinal,
+
+          formapago_id:
+            formaPagoFinal,
+        },
+
+        {
+          transaction:
+            t,
+        }
+      );
+    }
+
+
+    await t.commit();
+
+
+    return res.json({
+      ok: true,
+
+      mensaje:
+        pago.tipo === "anticipo"
+          ? "Anticipo programado actualizado correctamente."
+          : "Pago programado actualizado correctamente.",
+
+      pagoProgramado:
+        pago,
+
+      movimientoCtaCte:
+        movCtaCte,
+    });
+
+
+  } catch (error) {
+
+    await t.rollback();
+
+
+    console.error(
+      "actualizarPagoProgramado:",
+      error
+    );
+
+
+    return res.status(400).json({
+      error:
+        error.message ||
+        "No se pudo actualizar el pago programado",
+    });
+  }
+};

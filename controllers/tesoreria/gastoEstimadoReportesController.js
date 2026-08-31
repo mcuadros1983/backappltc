@@ -142,7 +142,28 @@ export async function vencenEn(req, res) {
       queryFiltros
     );
 
-    where.estado = { [Op.in]: ["pendiente", "parcial", "vencido"] };
+    // Situación Financiera solamente debe considerar
+    // obligaciones vigentes.
+    where.anulado = false;
+
+    where.estado = {
+      [Op.in]: [
+        "pendiente",
+        "parcial",
+        "vencido",
+      ],
+    };
+
+    console.log(
+      "VENCEN EN - FILTROS",
+      {
+        dias,
+        today,
+        hastaCalculado: hasta,
+        queryRecibida: req.query,
+        where,
+      }
+    );
 
     const items = await GastoEstimadoInstancia.findAll({
       where,

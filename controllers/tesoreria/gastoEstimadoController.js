@@ -21,6 +21,9 @@ function normName(s) {
 function daysInMonth(year, month /* 1..12 */) {
   return new Date(year, month, 0).getDate();
 }
+
+
+
 function clampDay(day, year, month) {
   const mdays = daysInMonth(year, month);
   if (!day) return mdays; // si no hay default, uso fin de mes
@@ -58,46 +61,228 @@ async function recomputarEstado(instancia) {
 }
 
 // ---------- Plantillas ----------
-export async function crearPlantilla(req, res) {
-  try {
-    const body = req.body || {};
-    const row = await GastoEstimado.create(body);
 
-    // AUTOGENERAR instancia del período actual
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-    const periodo = periodStr(y, m);
-    const dia = clampDay(row.dia_vencimiento_default || 0, y, m);
-    const fecha_vencimiento = new Date(y, m - 1, dia).toISOString().slice(0, 10);
+function calcularProximaInstancia(
+  plantilla,
+  fechaBase = new Date()
+) {
+  let y = fechaBase.getFullYear();
+  let m = fechaBase.getMonth() + 1;
 
-    await GastoEstimadoInstancia.findOrCreate({
-      where: { gastoestimado_id: row.id, periodo },
-      defaults: {
-        gastoestimado_id: row.id,
-        empresa_id: row.empresa_id,
-        proveedor_id: row.proveedor_id,
-        categoriaegreso_id: row.categoriaegreso_id,
-        sucursal_id: row.sucursal_id,
-        tipocomprobante_id: row.tipocomprobante_id,
-        formapago_id: row.formapago_id ?? null,
+  const hoy = fechaBase
+    .toISOString()
+    .slice(0, 10);
 
-        descripcion: row.descripcion,
+  let dia = clampDay(
+    plantilla.dia_vencimiento_default || 0,
+    y,
+    m
+  );
+
+  let fechaVencimiento = new Date(
+    y,
+    m - 1,
+    dia
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  // Si el vencimiento de este mes ya pasó,
+  // avanzamos al mes siguiente
+  if (fechaVencimiento < hoy) {
+    m += 1;
+
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+
+    dia = clampDay(
+      plantilla.dia_vencimiento_default || 0,
+      y,
+      m
+    );
+
+    fechaVencimiento = new Date(
+      y,
+      m - 1,
+      dia
+    )
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  return {
+    periodo: periodStr(y, m),
+    fecha_vencimiento: fechaVencimiento,
+  };
+}
+
+
+async function asegurarProximaInstancia(
+  plantilla
+) {
+  const {
+    periodo,
+    fecha_vencimiento,
+  } = calcularProximaInstancia(
+    plantilla
+  );
+
+  const existente =
+    await GastoEstimadoInstancia.findOne({
+      where: {
+        gastoestimado_id: plantilla.id,
         periodo,
-        fecha_vencimiento,
-        monto_estimado: row.monto_estimado_default || 0,
-        monto_real: null,
-        monto_pagado: 0,
-        estado: "pendiente",
-        created_from: "generado",
-        observaciones: row.observaciones || null,
       },
     });
 
-    res.json(row);
+  console.log(
+    "REACTIVACION GASTO ESTIMADO",
+    {
+      plantilla_id: plantilla.id,
+      activo: plantilla.activo,
+      periodoCalculado: periodo,
+      fechaVencimientoCalculada: fecha_vencimiento,
+
+      instanciaEncontrada: existente
+        ? {
+          id: existente.id,
+          periodo: existente.periodo,
+          fecha_vencimiento: existente.fecha_vencimiento,
+          estado: existente.estado,
+          anulado: existente.anulado,
+          monto_pagado: existente.monto_pagado,
+        }
+        : null,
+    }
+  );
+
+  // Si ya existe una instancia para ese período
+  if (existente) {
+    // Si estaba anulada, reactivamos solamente
+    // esta próxima instancia válida
+    if (
+      existente.anulado === true ||
+      existente.estado === "anulado"
+    ) {
+      await existente.update({
+        empresa_id: plantilla.empresa_id,
+        proveedor_id: plantilla.proveedor_id,
+        categoriaegreso_id: plantilla.categoriaegreso_id,
+        sucursal_id: plantilla.sucursal_id,
+        tipocomprobante_id: plantilla.tipocomprobante_id,
+        formapago_id: plantilla.formapago_id ?? null,
+
+        descripcion: plantilla.descripcion,
+
+        fecha_vencimiento,
+
+        monto_estimado:
+          plantilla.monto_estimado_default || 0,
+
+        monto_real: null,
+        monto_pagado: 0,
+
+        estado: "pendiente",
+        anulado: false,
+
+        observaciones:
+          plantilla.observaciones || null,
+      });
+
+      console.log(
+        "INSTANCIA REACTIVADA",
+        existente.toJSON()
+      );
+    }
+
+
+    return existente;
+  }
+
+  // Si no existe, crear nueva instancia
+  return await GastoEstimadoInstancia.create({
+    gastoestimado_id: plantilla.id,
+
+    empresa_id: plantilla.empresa_id,
+    proveedor_id: plantilla.proveedor_id,
+    categoriaegreso_id: plantilla.categoriaegreso_id,
+    sucursal_id: plantilla.sucursal_id,
+    tipocomprobante_id: plantilla.tipocomprobante_id,
+    formapago_id: plantilla.formapago_id ?? null,
+
+    descripcion: plantilla.descripcion,
+
+    periodo,
+    fecha_vencimiento,
+
+    monto_estimado:
+      plantilla.monto_estimado_default || 0,
+
+    monto_real: null,
+    monto_pagado: 0,
+
+    estado: "pendiente",
+    anulado: false,
+
+    created_from: "generado",
+
+    observaciones:
+      plantilla.observaciones || null,
+  });
+}
+
+
+export async function crearPlantilla(
+  req,
+  res
+) {
+
+  try {
+
+    const body =
+      req.body ||
+      {};
+
+
+    const row =
+      await GastoEstimado.create(
+        body
+      );
+
+
+    // ==========================================
+    // CREAR PRÓXIMA INSTANCIA VÁLIDA
+    // ==========================================
+
+    if (
+      row.activo !== false
+    ) {
+
+      await asegurarProximaInstancia(
+        row
+      );
+    }
+
+
+    res.json(
+      row
+    );
+
   } catch (e) {
-    console.error("crearPlantilla", e);
-    res.status(500).json({ error: "Error creando la plantilla" });
+
+    console.error(
+      "crearPlantilla",
+      e
+    );
+
+    res
+      .status(500)
+      .json({
+        error:
+          "Error creando la plantilla",
+      });
   }
 }
 
@@ -132,36 +317,143 @@ export async function obtenerPlantilla(req, res) {
   }
 }
 
-export async function actualizarPlantilla(req, res) {
+export async function actualizarPlantilla(
+  req,
+  res
+) {
+
   try {
-    const row = await GastoEstimado.findByPk(req.params.id);
-    if (!row) return res.status(404).json({ error: "No encontrada" });
 
-    const wasActive = row.activo !== false;
-    await row.update(req.body || {});
+    const row =
+      await GastoEstimado.findByPk(
+        req.params.id
+      );
 
-    // Si se desactiva la plantilla ahora, anulamos instancias futuras no pagadas
-    if (wasActive && row.activo === false) {
-      const hoy = new Date().toISOString().slice(0, 10);
+
+    if (!row) {
+
+      return res
+        .status(404)
+        .json({
+          error:
+            "No encontrada",
+        });
+    }
+
+
+    // ==========================================
+    // ESTADO ANTERIOR
+    // ==========================================
+
+    const wasActive =
+      row.activo !== false;
+
+
+    // ==========================================
+    // ACTUALIZAR PLANTILLA
+    // ==========================================
+
+    await row.update(
+      req.body ||
+      {}
+    );
+
+
+    const isActive =
+      row.activo !== false;
+
+
+    // ==========================================
+    // ACTIVA → INACTIVA
+    // ==========================================
+
+    if (
+      wasActive &&
+      !isActive
+    ) {
+
+      /*
+       * Anulamos solamente obligaciones que
+       * no tienen pagos.
+       *
+       * No tocamos:
+       * - pagadas
+       * - parciales
+       */
+
       await GastoEstimadoInstancia.update(
-        { anulado: true, estado: "anulado" },
+        {
+          anulado: true,
+          estado: "anulado",
+        },
         {
           where: {
-            gastoestimado_id: row.id,
-            estado: { [Op.ne]: "pagado" },
-            fecha_vencimiento: { [Op.gte]: hoy },
+
+            gastoestimado_id:
+              row.id,
+
+            estado: {
+              [Op.in]: [
+                "pendiente",
+                "vencido",
+              ],
+            },
+
+            [Op.or]: [
+              {
+                monto_pagado: null,
+              },
+              {
+                monto_pagado: 0,
+              },
+            ],
           },
         }
       );
     }
 
-    res.json(row);
+
+    // ==========================================
+    // INACTIVA → ACTIVA
+    // ==========================================
+
+    if (
+      !wasActive &&
+      isActive
+    ) {
+
+      /*
+       * No reactivamos todo el historial.
+       *
+       * Solamente aseguramos que exista la
+       * próxima instancia válida.
+       */
+
+      await asegurarProximaInstancia(
+        row
+      );
+    }
+
+
+    res.json(
+      row
+    );
+
   } catch (e) {
-    console.error("actualizarPlantilla", e);
-    res.status(500).json({ error: "Error actualizando plantilla" });
+
+    console.error(
+      "actualizarPlantilla",
+      e
+    );
+
+    res
+      .status(500)
+      .json({
+        error:
+          "Error actualizando plantilla",
+      });
   }
 }
-
 
 export async function eliminarPlantilla(req, res) {
   try {
@@ -234,7 +526,9 @@ export async function listarInstancias(req, res) {
       q,
     } = req.query;
 
-    const where = {};
+    const where = {
+      anulado: false,
+    };
     if (empresa_id) where.empresa_id = empresa_id;
     if (proveedor_id) where.proveedor_id = proveedor_id;
     if (categoriaegreso_id) where.categoriaegreso_id = categoriaegreso_id;
@@ -267,7 +561,12 @@ export async function listarInstancias(req, res) {
 
     const hoy = new Date().toISOString().slice(0, 10);
     rows = rows.map(r => {
-      if (r.estado !== "pagado" && r.fecha_vencimiento < hoy) {
+      if (
+        !r.anulado &&
+        r.estado !== "pagado" &&
+        r.estado !== "anulado" &&
+        r.fecha_vencimiento < hoy
+      ) {
         const clone = r.toJSON();
         clone.estado = "vencido";
         return clone;
@@ -363,13 +662,13 @@ export async function importarPlantillasUnicas(req, res) {
       "📎 req.file:",
       req.file
         ? {
-            fieldname: req.file.fieldname,
-            originalname: req.file.originalname,
-            encoding: req.file.encoding,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-            bufferLength: req.file.buffer?.length,
-          }
+          fieldname: req.file.fieldname,
+          originalname: req.file.originalname,
+          encoding: req.file.encoding,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+          bufferLength: req.file.buffer?.length,
+        }
         : null
     );
 
@@ -481,7 +780,7 @@ export async function importarPlantillasUnicas(req, res) {
 
     const ws =
       wb.Sheets[
-        wsName
+      wsName
       ];
 
 
@@ -811,7 +1110,7 @@ export async function importarPlantillasUnicas(req, res) {
       console.log(
         "📅 instanceof Date:",
         raw.fecha_vencimiento
-          instanceof Date
+        instanceof Date
       );
 
 
@@ -825,7 +1124,7 @@ export async function importarPlantillasUnicas(req, res) {
          */
         if (
           raw.fecha_vencimiento
-            instanceof Date &&
+          instanceof Date &&
           !isNaN(
             raw.fecha_vencimiento
               .getTime()
@@ -987,16 +1286,16 @@ export async function importarPlantillasUnicas(req, res) {
         ] != null
 
           ? Number(
-              raw[
-                "sucursal_id (op)"
-              ]
-            )
+            raw[
+            "sucursal_id (op)"
+            ]
+          )
 
           : raw.sucursal_id != null
 
             ? Number(
-                raw.sucursal_id
-              )
+              raw.sucursal_id
+            )
 
             : null;
 
@@ -1005,8 +1304,8 @@ export async function importarPlantillasUnicas(req, res) {
         raw.requiere_factura != null
 
           ? parseBool(
-              raw.requiere_factura
-            )
+            raw.requiere_factura
+          )
 
           : null;
 
@@ -1017,16 +1316,16 @@ export async function importarPlantillasUnicas(req, res) {
         ] != null
 
           ? String(
-              raw[
-                "observaciones (op)"
-              ]
-            ).trim()
+            raw[
+            "observaciones (op)"
+            ]
+          ).trim()
 
           : raw.observaciones != null
 
             ? String(
-                raw.observaciones
-              ).trim()
+              raw.observaciones
+            ).trim()
 
             : null;
 
@@ -1035,8 +1334,8 @@ export async function importarPlantillasUnicas(req, res) {
         raw.tipocomprobante_id != null
 
           ? Number(
-              raw.tipocomprobante_id
-            )
+            raw.tipocomprobante_id
+          )
 
           : null;
 
@@ -1045,8 +1344,8 @@ export async function importarPlantillasUnicas(req, res) {
         raw.formapago_id != null
 
           ? Number(
-              raw.formapago_id
-            )
+            raw.formapago_id
+          )
 
           : null;
 
@@ -1271,15 +1570,15 @@ export async function importarPlantillasUnicas(req, res) {
           "🔎 Categoría encontrada:",
           c
             ? {
-                id:
-                  c.id,
+              id:
+                c.id,
 
-                nombre:
-                  c.nombre,
+              nombre:
+                c.nombre,
 
-                imputacioncontable_id:
-                  c.imputacioncontable_id
-              }
+              imputacioncontable_id:
+                c.imputacioncontable_id
+            }
             : null
         );
 
@@ -1683,7 +1982,7 @@ export async function importarPlantillasUnicas(req, res) {
           );
 
         } catch (
-          rollbackError
+        rollbackError
         ) {
 
           console.error(

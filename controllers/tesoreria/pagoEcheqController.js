@@ -662,7 +662,7 @@ export async function eliminarEcheqEmitido(req, res) {
             origen_tipo: "ComprobanteEgreso",
             origen_id: comp.id,
             comprobanteegreso_id: comp.id,
-            anulado: false,
+            anulado: true,
             ordenpago_id: null,              // evitar referencias colgantes si la OP se eliminó
             formapago_id: comp.formapago_id || null,
           },

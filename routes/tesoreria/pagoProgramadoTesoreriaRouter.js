@@ -16,6 +16,11 @@ pagoProgramadoTesoreriaRouter.post(
   controller.registrarPagoProgramado
 );
 
+pagoProgramadoTesoreriaRouter.put(
+  "/pagos-programados/:id",
+  controller.actualizarPagoProgramado
+);
+
 
 /*
  * Listar
