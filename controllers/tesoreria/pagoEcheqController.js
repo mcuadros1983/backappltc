@@ -412,8 +412,8 @@ export async function eliminarEcheqEmitido(req, res) {
   const t = await sequelize.transaction();
   const EPS = 0.0001;
 
-  const safeRollback = async () => { try { if (!t.finished) await t.rollback(); } catch {} };
-  const safeCommit   = async () => { if (!t.finished) await t.commit(); };
+  const safeRollback = async () => { try { if (!t.finished) await t.rollback(); } catch { } };
+  const safeCommit = async () => { if (!t.finished) await t.commit(); };
 
   // === Helper: recalcular saldo/estado de un ComprobanteEgreso de forma robusta ===
   async function recalcComprobanteEgreso(compId, trx) {
@@ -464,7 +464,7 @@ export async function eliminarEcheqEmitido(req, res) {
 
     const patch = { saldo };
     if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estadopago")) patch.estadopago = estadoComp;
-    if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estado"))     patch.estado     = estadoComp;
+    if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estado")) patch.estado = estadoComp;
 
     await comp.update(patch, { transaction: trx });
     console.log("[recalcComprobanteEgreso/echeq]", { compId, totalComp, pagosDirectos, aplicadoAbonos, saldo, estadoComp });
@@ -502,10 +502,10 @@ export async function eliminarEcheqEmitido(req, res) {
     // (b) Abonos por la misma OP (fallback)
     const abonosViaOP = ech.ordenpago_id
       ? await MovimientoCtaCteProveedor.findAll({
-          where: { ordenpago_id: ech.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        })
+        where: { ordenpago_id: ech.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      })
       : [];
 
     console.log("[echeq:delete] abonoRef?", !!abonoRef, abonoRef ? { abono_id: abonoRef.id, importe: abonoRef.importe } : {});
@@ -646,14 +646,14 @@ export async function eliminarEcheqEmitido(req, res) {
     if (debeCrearCargo && ech.comprobanteegreso_id) {
       const comp = await ComprobanteEgreso.findByPk(ech.comprobanteegreso_id, { transaction: t, lock: t.LOCK.UPDATE });
       if (comp) {
-        const descCtaCte  = `Reversión pago con eCheq de comp. ${comp.nrocomprobante ?? comp.id}`;
+        const descCtaCte = `Reversión pago con eCheq de comp. ${comp.nrocomprobante ?? comp.id}`;
         const fechaCtaCte = ech.fecha_emision || comp.fechacomprobante || new Date().toISOString().slice(0, 10);
         const importeCargo = Number(ech.importe || 0);
 
         await MovimientoCtaCteProveedor.create(
           {
             proveedor_id: comp.proveedor_id || ech.proveedor_id || null,
-            empresa_id:   comp.empresa_id   || ech.empresa_id   || null,
+            empresa_id: comp.empresa_id || ech.empresa_id || null,
             fecha: fechaCtaCte,
             fecha_pago: null,
             descripcion: descCtaCte,
@@ -752,26 +752,552 @@ export async function obtenerEcheqEmitidoPorId(req, res) {
   }
 }
 
+// export async function actualizarEcheqEmitido(req, res) {
+//   try {
+//     const ech = await EcheqEmitido.findByPk(req.params.id);
+//     if (!ech) return res.status(404).json({ error: "eCheq no encontrado" });
+
+//     if (req.body?.fecha_vencimiento && ech.fecha_emision) {
+//       if (new Date(req.body.fecha_vencimiento) < new Date(ech.fecha_emision)) {
+//         return res.status(400).json({ error: "fecha_vencimiento no puede ser anterior a fecha_emision" });
+//       }
+//     }
+
+//     if (req.body?.categoriaegreso_id && !req.body?.imputacioncontable_id) {
+//       const imp = await ensureImputacionFromCategoria(req.body.categoriaegreso_id, null, null);
+//       req.body.imputacioncontable_id = imp;
+//     }
+
+//     await ech.update(req.body);
+//     return res.json(ech);
+//   } catch (e) {
+//     console.error("actualizarEcheqEmitido", e);
+//     return res.status(500).json({ error: "Error al actualizar eCheq" });
+//   }
+// }
+
 export async function actualizarEcheqEmitido(req, res) {
+
+  const t =
+    await sequelize.transaction();
+
   try {
-    const ech = await EcheqEmitido.findByPk(req.params.id);
-    if (!ech) return res.status(404).json({ error: "eCheq no encontrado" });
 
-    if (req.body?.fecha_vencimiento && ech.fecha_emision) {
-      if (new Date(req.body.fecha_vencimiento) < new Date(ech.fecha_emision)) {
-        return res.status(400).json({ error: "fecha_vencimiento no puede ser anterior a fecha_emision" });
+    const id =
+      Number(req.params.id);
+
+
+    const ech =
+      await EcheqEmitido.findByPk(
+        id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+
+
+    if (!ech) {
+      throw new Error(
+        "eCheq no encontrado"
+      );
+    }
+
+
+    if (ech.anulado) {
+      throw new Error(
+        "No se puede modificar un eCheq anulado"
+      );
+    }
+
+
+    if (
+      String(
+        ech.estado || ""
+      ).toLowerCase() === "acreditado"
+    ) {
+      throw new Error(
+        "No se puede modificar un eCheq acreditado"
+      );
+    }
+
+
+    // =====================================================
+    // DATOS ACTUALES
+    // =====================================================
+
+    // const tieneComprobante =
+    //   !!ech.comprobanteegreso_id;
+
+
+    // const esAnticipo =
+    //   !!ech.ordenpago_id;
+
+    const tieneComprobante =
+      !!ech.comprobanteegreso_id;
+
+
+    // =====================================================
+    // DETERMINAR SI REALMENTE ES UN ANTICIPO
+    // =====================================================
+    let ordenAsociada =
+      null;
+
+    let esAnticipo =
+      false;
+
+
+    if (ech.ordenpago_id) {
+
+      ordenAsociada =
+        await OrdenPago.findByPk(
+          ech.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!ordenAsociada) {
+        throw new Error(
+          "El eCheq tiene una orden de pago asociada que no existe"
+        );
       }
+
+
+      esAnticipo =
+        ordenAsociada.origen ===
+        "anticipo_echeq";
     }
 
-    if (req.body?.categoriaegreso_id && !req.body?.imputacioncontable_id) {
-      const imp = await ensureImputacionFromCategoria(req.body.categoriaegreso_id, null, null);
-      req.body.imputacioncontable_id = imp;
+    // =====================================================
+    // CAMPOS SIEMPRE MODIFICABLES
+    // =====================================================
+
+    const fechaEmision =
+      req.body?.fecha_emision ||
+      ech.fecha_emision;
+
+
+    const fechaVencimiento =
+      req.body?.fecha_vencimiento ||
+      ech.fecha_vencimiento;
+
+
+    if (
+      !fechaEmision ||
+      !fechaVencimiento
+    ) {
+      throw new Error(
+        "Debe indicar fecha de emisión y vencimiento"
+      );
     }
 
-    await ech.update(req.body);
-    return res.json(ech);
+
+    if (
+      new Date(fechaVencimiento) <
+      new Date(fechaEmision)
+    ) {
+      throw new Error(
+        "fecha_vencimiento no puede ser anterior a fecha_emision"
+      );
+    }
+
+
+    const patch = {
+
+      fecha_emision:
+        fechaEmision,
+
+      fecha_vencimiento:
+        fechaVencimiento,
+
+      numero_echeq:
+        req.body?.numero_echeq !== undefined
+          ? (
+            req.body.numero_echeq ||
+            null
+          )
+          : ech.numero_echeq,
+
+      proyecto_id:
+        req.body?.proyecto_id !== undefined
+          ? (
+            toNum(
+              req.body.proyecto_id
+            ) || null
+          )
+          : ech.proyecto_id,
+    };
+
+
+    // =====================================================
+    // CATEGORÍA + IMPUTACIÓN
+    // =====================================================
+
+    if (
+      req.body?.categoriaegreso_id !==
+      undefined
+    ) {
+
+      const categoriaId =
+        toNum(
+          req.body.categoriaegreso_id
+        );
+
+
+      if (!categoriaId) {
+        throw new Error(
+          "Debe seleccionar una categoría de egreso"
+        );
+      }
+
+
+      const imputacion =
+        await ensureImputacionFromCategoria(
+          categoriaId,
+          null,
+          t
+        );
+
+
+      patch.categoriaegreso_id =
+        categoriaId;
+
+      patch.imputacioncontable_id =
+        toNum(imputacion);
+    }
+
+
+    // =====================================================
+    // PROVEEDOR / MONTO
+    //
+    // Sólo pueden modificarse cuando el eCheq todavía
+    // NO está asignado a un comprobante.
+    // =====================================================
+
+    if (!tieneComprobante) {
+
+      const proveedorNuevo =
+        req.body?.proveedor_id !== undefined
+          ? (
+            toNum(
+              req.body.proveedor_id
+            ) || null
+          )
+          : (
+            ech.proveedor_id ||
+            null
+          );
+
+
+      const montoNuevo =
+        req.body?.importe !== undefined
+          ? N(
+            req.body.importe
+          )
+          : N(
+            ech.importe
+          );
+
+
+      if (!(montoNuevo > 0)) {
+        throw new Error(
+          "El importe debe ser mayor a cero"
+        );
+      }
+
+
+      // ===================================================
+      // SI ES ANTICIPO
+      // Debemos sincronizar OP + ABONO CTA CTE
+      // ===================================================
+
+      if (esAnticipo) {
+
+        if (!proveedorNuevo) {
+          throw new Error(
+            "El anticipo debe tener un proveedor"
+          );
+        }
+
+
+        // const orden =
+        //   await OrdenPago.findByPk(
+        //     ech.ordenpago_id,
+        //     {
+        //       transaction: t,
+        //       lock: t.LOCK.UPDATE,
+        //     }
+        //   );
+
+
+        // if (!orden) {
+        //   throw new Error(
+        //     "No se encontró la orden de pago asociada al anticipo"
+        //   );
+        // }
+
+
+        // Buscar primero por referencia directa al eCheq.
+        // Es la relación que crea registrarAnticipoProveedorEcheq.
+        let abono =
+          await MovimientoCtaCteProveedor.findOne({
+            where: {
+              referencia_tipo:
+                "EcheqEmitido",
+
+              referencia_id:
+                ech.id,
+
+              tipo:
+                "abono",
+
+              anulado: {
+                [Op.not]: true,
+              },
+            },
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        // Fallback por OP para registros históricos.
+        if (!abono) {
+
+          abono =
+            await MovimientoCtaCteProveedor.findOne({
+              where: {
+                ordenpago_id:
+                  ech.ordenpago_id,
+
+                tipo:
+                  "abono",
+
+                anulado: {
+                  [Op.not]: true,
+                },
+              },
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+        }
+
+
+        if (!abono) {
+          throw new Error(
+            "No se encontró el abono de cuenta corriente asociado al anticipo"
+          );
+        }
+
+
+        // =================================================
+        // VERIFICAR APLICACIONES DEL ABONO
+        // =================================================
+
+        const aplicaciones =
+          await MovimientoCtaCteProveedorAplic.findAll({
+            where: {
+              abono_id:
+                abono.id,
+            },
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        const totalAplicado =
+          aplicaciones.reduce(
+            (acc, item) =>
+              acc +
+              N(item.importe),
+            0
+          );
+
+
+        // No podemos reducir el anticipo por debajo
+        // de dinero que ya fue aplicado a comprobantes.
+        if (
+          montoNuevo + EPS <
+          totalAplicado
+        ) {
+          throw new Error(
+            `No se puede reducir el importe a $${montoNuevo.toFixed(
+              2
+            )} porque ya existen $${totalAplicado.toFixed(
+              2
+            )} aplicados a comprobantes`
+          );
+        }
+
+
+        const cambiaProveedor =
+          Number(
+            proveedorNuevo || 0
+          ) !==
+          Number(
+            ech.proveedor_id || 0
+          );
+
+
+        // Si ya existen aplicaciones, cambiar proveedor
+        // dejaría aplicaciones contra cargos del proveedor anterior.
+        if (
+          cambiaProveedor &&
+          aplicaciones.length > 0
+        ) {
+          throw new Error(
+            "No se puede cambiar el proveedor porque el anticipo ya tiene aplicaciones en cuenta corriente"
+          );
+        }
+
+
+        // =================================================
+        // ACTUALIZAR ORDEN DE PAGO
+        // =================================================
+
+        // =================================================
+        // ACTUALIZAR ORDEN DE PAGO
+        // =================================================
+
+        if (!ordenAsociada) {
+          throw new Error(
+            "No se encontró la orden de pago asociada al anticipo"
+          );
+        }
+
+        await ordenAsociada.update(
+          {
+            proveedor_id:
+              proveedorNuevo,
+
+            total:
+              montoNuevo,
+
+            fecha:
+              fechaEmision,
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+        // =================================================
+        // ACTUALIZAR ABONO CTA CTE
+        // =================================================
+
+        await abono.update(
+          {
+            proveedor_id:
+              proveedorNuevo,
+
+            importe:
+              montoNuevo,
+
+            fecha:
+              fechaEmision,
+
+            fecha_pago:
+              fechaVencimiento,
+          },
+          {
+            transaction: t,
+          }
+        );
+      }
+
+
+      // ===================================================
+      // ACTUALIZAR ECHEQ
+      // ===================================================
+
+      patch.proveedor_id =
+        proveedorNuevo;
+
+      patch.importe =
+        montoNuevo;
+
+    } else {
+
+      // ===================================================
+      // TIENE COMPROBANTE
+      //
+      // Ignoramos cualquier intento de cambiar proveedor
+      // o importe desde el cliente.
+      // ===================================================
+
+      patch.proveedor_id =
+        ech.proveedor_id;
+
+      patch.importe =
+        ech.importe;
+    }
+
+
+    // =====================================================
+    // BANCO
+    //
+    // Nunca editable desde esta operación.
+    // =====================================================
+
+    patch.banco_id =
+      ech.banco_id;
+
+
+    // =====================================================
+    // GUARDAR ECHEQ
+    // =====================================================
+
+    await ech.update(
+      patch,
+      {
+        transaction: t,
+      }
+    );
+
+
+    await t.commit();
+
+
+    return res.json({
+      ok: true,
+
+      echeq:
+        ech,
+
+      restricciones: {
+        tiene_comprobante:
+          tieneComprobante,
+
+        es_anticipo:
+          esAnticipo,
+
+        proveedor_monto_editables:
+          !tieneComprobante,
+      },
+    });
+
+
   } catch (e) {
-    console.error("actualizarEcheqEmitido", e);
-    return res.status(500).json({ error: "Error al actualizar eCheq" });
+
+    await t.rollback();
+
+
+    console.error(
+      "actualizarEcheqEmitido",
+      e
+    );
+
+
+    return res.status(400).json({
+      error:
+        e.message ||
+        "Error al actualizar eCheq",
+    });
   }
 }
