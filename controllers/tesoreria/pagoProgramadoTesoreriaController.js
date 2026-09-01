@@ -1026,8 +1026,8 @@ export const acreditarPagoProgramado = async (req, res) => {
         monto:
           montoFinal,
 
-          formapago_id:
-  formaPagoFinal,
+        formapago_id:
+          formaPagoFinal,
 
         descripcion:
           descripcionFinal,
@@ -1364,8 +1364,8 @@ export const actualizarPagoProgramado = async (req, res) => {
 
     const montoFinal =
       monto !== undefined &&
-      monto !== null &&
-      monto !== ""
+        monto !== null &&
+        monto !== ""
         ? N(monto)
         : N(pago.monto);
 
@@ -1380,11 +1380,11 @@ export const actualizarPagoProgramado = async (req, res) => {
     const descripcionFinal =
       descripcion !== undefined
         ? String(
-            descripcion
-          ).trim()
+          descripcion
+        ).trim()
         : String(
-            pago.descripcion || ""
-          ).trim();
+          pago.descripcion || ""
+        ).trim();
 
 
     if (!descripcionFinal) {
@@ -1397,34 +1397,36 @@ export const actualizarPagoProgramado = async (req, res) => {
     const observacionesFinal =
       observaciones !== undefined
         ? (
-            String(
-              observaciones || ""
-            ).trim() ||
-            null
-          )
+          String(
+            observaciones || ""
+          ).trim() ||
+          null
+        )
         : pago.observaciones;
 
 
     const proyectoFinal =
       proyecto_id !== undefined
         ? (
-            proyecto_id
-              ? Number(
-                  proyecto_id
-                )
-              : null
-          )
+          proyecto_id
+            ? Number(
+              proyecto_id
+            )
+            : null
+        )
         : pago.proyecto_id;
 
 
     const formaPagoFinal =
       formapago_id !== undefined &&
-      formapago_id !== null &&
-      formapago_id !== ""
+        formapago_id !== null &&
+        formapago_id !== ""
         ? Number(
-            formapago_id
-          )
-        : pago.formapago_id;
+          formapago_id
+        )
+        : Number(
+          pago.formapago_id
+        );
 
 
     if (!formaPagoFinal) {
@@ -1440,14 +1442,14 @@ export const actualizarPagoProgramado = async (req, res) => {
 
     const categoriaFinal =
       categoriaegreso_id !== undefined &&
-      categoriaegreso_id !== null &&
-      categoriaegreso_id !== ""
+        categoriaegreso_id !== null &&
+        categoriaegreso_id !== ""
         ? Number(
-            categoriaegreso_id
-          )
+          categoriaegreso_id
+        )
         : Number(
-            pago.categoriaegreso_id
-          );
+          pago.categoriaegreso_id
+        );
 
 
     if (!categoriaFinal) {
@@ -1487,7 +1489,6 @@ export const actualizarPagoProgramado = async (req, res) => {
         categoria.imputacioncontable_id
       );
 
-
     // ==================================================
     // CAJA / BANCO DEFINITIVOS
     // ==================================================
@@ -1504,16 +1505,16 @@ export const actualizarPagoProgramado = async (req, res) => {
       bancoFinal =
         banco_id
           ? Number(
-              banco_id
-            )
+            banco_id
+          )
           : (
-              pago.medio === "banco" &&
+            pago.medio === "banco" &&
               pago.banco_id
-                ? Number(
-                    pago.banco_id
-                  )
-                : null
-            );
+              ? Number(
+                pago.banco_id
+              )
+              : null
+          );
 
 
       if (!bancoFinal) {
@@ -1529,16 +1530,16 @@ export const actualizarPagoProgramado = async (req, res) => {
       cajaFinal =
         caja_id
           ? Number(
-              caja_id
-            )
+            caja_id
+          )
           : (
-              pago.medio === "caja" &&
+            pago.medio === "caja" &&
               pago.caja_id
-                ? Number(
-                    pago.caja_id
-                  )
-                : null
-            );
+              ? Number(
+                pago.caja_id
+              )
+              : null
+          );
 
 
       if (!cajaFinal) {
@@ -1547,8 +1548,6 @@ export const actualizarPagoProgramado = async (req, res) => {
         );
       }
     }
-
-
     // ==================================================
     // ANTICIPO:
     // NO PERMITIR MONTO MENOR A LO YA APLICADO
