@@ -811,13 +811,23 @@ export async function actualizarEcheqEmitido(req, res) {
     }
 
 
-    if (
+    const estadoActual =
       String(
         ech.estado || ""
-      ).toLowerCase() === "acreditado"
+      ).toLowerCase();
+
+
+    if (
+      ![
+        "emitido",
+        "entregado",
+        "presentado",
+      ].includes(
+        estadoActual
+      )
     ) {
       throw new Error(
-        "No se puede modificar un eCheq acreditado"
+        `No se puede modificar un eCheq en estado ${ech.estado}`
       );
     }
 
@@ -1238,16 +1248,32 @@ export async function actualizarEcheqEmitido(req, res) {
         ech.importe;
     }
 
-
     // =====================================================
     // BANCO
     //
-    // Nunca editable desde esta operación.
+    // Puede modificarse mientras el eCheq se encuentre
+    // en un estado previo a su acreditación.
     // =====================================================
 
-    patch.banco_id =
-      ech.banco_id;
+    const bancoFinal =
+      req.body?.banco_id !== undefined
+        ? toNum(
+          req.body.banco_id
+        )
+        : toNum(
+          ech.banco_id
+        );
 
+
+    if (!bancoFinal) {
+      throw new Error(
+        "Debe seleccionar un banco"
+      );
+    }
+
+
+    patch.banco_id =
+      bancoFinal;
 
     // =====================================================
     // GUARDAR ECHEQ
