@@ -149,8 +149,98 @@ function inferPerm(path = "") {
   // ===== Agenda =====
   if (p === "/agenda") return "agenda:view";
 
+  // ===== Documentación =====
+  if (p === "/documentos") return "documentacion:view";
+
+  // ===== Proyección =====
+  if (p === "/proyeccion") return "proyeccion:view";
+  if (p === "/proyeccion/config") return "proyeccion:config.view";
+  if (p === "/proyeccion/historico") return "proyeccion:historico.view";
+
+  // ===== Tesorería - nuevas aplicaciones =====
+  if (p === "/tesoreria/pagos-programados") return "tesoreria:pagosProgramados.view";
+  if (p === "/sitfinanciera") return "tesoreria:situacionFinanciera.view";
+
+  // ===== Inspecciones =====
+  if (p === "/inspecciones") return "inspecciones:view";
+  if (p === "/inspecciones/dashboard") return "inspecciones:dashboard.view";
+  if (p === "/inspecciones/plantillas") return "inspecciones:plantillas.view";
+  if (p === "/inspecciones/notificaciones") return "inspecciones:notificaciones.view";
+
+  // ===== Notificaciones / Scheduler =====
+  if (p === "/notification") return "notification:view";
+  if (p === "/scheduler") return "scheduler:view";
+
+  // ===== Gestión =====
+  if (p === "/gestion") return "gestion:dashboard.view";
+  if (p === "/gestion/kanban") return "gestion:kanban.view";
+  if (p === "/gestion/tareas") return "gestion:tareas.view";
+  if (p === "/gestion/proyectos") return "gestion:proyectos.view";
+  if (p === "/gestion/calendario") return "gestion:calendario.view";
+  if (p === "/gestion/supervisor") return "gestion:supervisor.view";
+  if (p === "/gestion/reportes") return "gestion:reportes.view";
+
+  // ===== Evaluación =====
+  if (p === "/evaluacion/configuracion") return "evaluacion:configuracion.view";
+  if (p === "/evaluaciones") return "evaluacion:evaluaciones.view";
+  if (p === "/evaluacion/avisos") return "evaluacion:avisos.view";
+  if (p === "/mis-evaluaciones") return "evaluacion:misEvaluaciones.view";
+  if (p === "/evaluacion/dashboard") return "evaluacion:dashboard.view";
+  if (p === "/evaluacion/reportes") return "evaluacion:reportes.view";
+  if (p === "/evaluacion/metas") return "evaluacion:metas.view";
+  if (p === "/evaluacion/reportes/empleado") return "evaluacion:reportes.empleado.view";
+  if (p === "/evaluacion/reportes/supervisor") return "evaluacion:reportes.supervisor.view";
+  if (p === "/evaluacion/reportes/mystery") return "evaluacion:reportes.mystery.view";
+
+  // ===== Motor de Conceptos / Legajos =====
+  if (p === "/motor-conceptos") return "motorConceptos:view";
+  if (p === "/motor-conceptos/registros") return "motorConceptos:registros.view";
+  if (p === "/motor-conceptos/documentacion/entidad") return "motorConceptos:documentacion.entidad.view";
+  if (p === "/motor-conceptos/documentacion/empleados") return "motorConceptos:documentacion.empleados.view";
+  if (p === "/motor-conceptos/documentacion/empresas") return "motorConceptos:documentacion.empresas.view";
+  if (p === "/motor-conceptos/documentacion/sucursales") return "motorConceptos:documentacion.sucursales.view";
+  if (p === "/motor-conceptos/reportes/registros") return "motorConceptos:reportes.registros.view";
+
+  // ===== Inteligencia Comercial =====
+  if (p === "/inteligencia") return "inteligencia:dashboard.view";
+  if (p === "/inteligencia/eventos") return "inteligencia:eventos.view";
+  if (p === "/inteligencia/snapshots") return "inteligencia:snapshots.view";
+  if (p === "/inteligencia/clima") return "inteligencia:clima.view";
+
+  // ===== Fábrica =====
+  if (p === "/fabrica/stock") return "fabrica:stock.view";
+  if (p === "/fabrica/transferencias") return "fabrica:transferencias.view";
+  if (p === "/fabrica/transferir") return "fabrica:transferencias.create";
+  if (p === "/fabrica/produccion-lotes") return "fabrica:produccion.view";
+
+  // ===== Audio =====
+  if (p === "/audio/dashboard") return "audio:dashboard.view";
+  if (p === "/audio/segments") return "audio:segments.view";
+
+  // ===== Bot =====
+  if (p === "/bot/product-meta") return "bot:productos.view";
+  if (p === "/bot/conversations") return "bot:conversaciones.view";
+  if (p === "/bot/branch-meta") return "bot:sucursales.view";
+  if (p === "/bot/benefit-meta") return "bot:beneficios.view";
+  if (p === "/bot/event-meta") return "bot:eventos.view";
+
+  // ===== Fidelización =====
+  if (p === "/fidelizacion/dashboard") return "fidelizacion:dashboard.view";
+  if (p === "/fidelizacion/comercios") return "fidelizacion:comercios.view";
+  if (p === "/fidelizacion/campanias") return "fidelizacion:campanias.view";
+  if (p === "/fidelizacion/premios-clientes") return "fidelizacion:premiosClientes.view";
+  if (p === "/fidelizacion/cupones") return "fidelizacion:cupones.view";
+  if (p === "/fidelizacion/canjes-cupones") return "fidelizacion:canjesCupones.view";
+  if (p === "/fidelizacion/clientes") return "fidelizacion:clientes.view";
+  if (p === "/fidelizacion/validar-cupon") return "fidelizacion:validarCupon.view";
+  if (p === "/fidelizacion/puntos-comercio") return "fidelizacion:puntosComercio.view";
+  if (p === "/fidelizacion/premios-comercios") return "fidelizacion:premiosComercios.view";
+  if (p === "/fidelizacion/canjes-comercios") return "fidelizacion:canjesComercios.view";
+  if (p === "/fidelizacion/alertas-fraude") return "fidelizacion:alertasFraude.view";
+
   return null;
 }
+
 
 /** --- Lista canónica de rutas conocidas --- */
 const KNOWN_PATHS = [
@@ -211,6 +301,95 @@ const KNOWN_PATHS = [
 
   // Agenda
   "/agenda",
+
+  // Documentación
+  "/documentos",
+
+  // Proyección
+  "/proyeccion",
+  "/proyeccion/config",
+  "/proyeccion/historico",
+
+  // Tesorería - nuevas aplicaciones
+  "/tesoreria/pagos-programados",
+  "/sitfinanciera",
+
+  // Inspecciones
+  "/inspecciones",
+  "/inspecciones/dashboard",
+  "/inspecciones/plantillas",
+  "/inspecciones/notificaciones",
+
+  // Notificaciones / Scheduler
+  "/notification",
+  "/scheduler",
+
+  // Gestión
+  "/gestion",
+  "/gestion/kanban",
+  "/gestion/tareas",
+  "/gestion/proyectos",
+  "/gestion/calendario",
+  "/gestion/supervisor",
+  "/gestion/reportes",
+
+  // Evaluación
+  "/evaluacion/configuracion",
+  "/evaluaciones",
+  "/evaluacion/avisos",
+  "/mis-evaluaciones",
+  "/evaluacion/dashboard",
+  "/evaluacion/reportes",
+  "/evaluacion/metas",
+  "/evaluacion/reportes/empleado",
+  "/evaluacion/reportes/supervisor",
+  "/evaluacion/reportes/mystery",
+
+  // Motor de Conceptos / Legajos
+  "/motor-conceptos",
+  "/motor-conceptos/registros",
+  "/motor-conceptos/documentacion/entidad",
+  "/motor-conceptos/documentacion/empleados",
+  "/motor-conceptos/documentacion/empresas",
+  "/motor-conceptos/documentacion/sucursales",
+  "/motor-conceptos/reportes/registros",
+
+  // Inteligencia Comercial
+  "/inteligencia",
+  "/inteligencia/eventos",
+  "/inteligencia/snapshots",
+  "/inteligencia/clima",
+
+  // Fábrica
+  "/fabrica/stock",
+  "/fabrica/transferencias",
+  "/fabrica/transferir",
+  "/fabrica/produccion-lotes",
+
+  // Audio
+  "/audio/dashboard",
+  "/audio/segments",
+
+  // Bot
+  "/bot/product-meta",
+  "/bot/conversations",
+  "/bot/branch-meta",
+  "/bot/benefit-meta",
+  "/bot/event-meta",
+
+  // Fidelización
+  "/fidelizacion/dashboard",
+  "/fidelizacion/comercios",
+  "/fidelizacion/campanias",
+  "/fidelizacion/premios-clientes",
+  "/fidelizacion/cupones",
+  "/fidelizacion/canjes-cupones",
+  "/fidelizacion/clientes",
+  "/fidelizacion/validar-cupon",
+  "/fidelizacion/puntos-comercio",
+  "/fidelizacion/premios-comercios",
+  "/fidelizacion/canjes-comercios",
+  "/fidelizacion/alertas-fraude",
 ];
 
 /** --- ETIQUETAS EN ESPAÑOL (personalizables) --- */
@@ -347,6 +526,95 @@ const LABELS_ES = {
 
   // Agenda
   "/agenda": "Agenda",
+
+  // Documentación
+  "/documentos": "Documentación",
+
+  // Proyección
+  "/proyeccion": "Proyección",
+  "/proyeccion/config": "Configuración de proyección",
+  "/proyeccion/historico": "Histórico de proyecciones",
+
+  // Tesorería
+  "/tesoreria/pagos-programados": "Pagos programados",
+  "/sitfinanciera": "Situación financiera",
+
+  // Inspecciones
+  "/inspecciones": "Inspecciones",
+  "/inspecciones/dashboard": "Dashboard de inspecciones",
+  "/inspecciones/plantillas": "Plantillas de inspección",
+  "/inspecciones/notificaciones": "Notificaciones de inspecciones",
+
+  // Notificaciones / Scheduler
+  "/notification": "Notificaciones",
+  "/scheduler": "Tareas programadas",
+
+  // Gestión
+  "/gestion": "Gestión - Dashboard",
+  "/gestion/kanban": "Gestión - Kanban",
+  "/gestion/tareas": "Gestión - Tareas",
+  "/gestion/proyectos": "Gestión - Proyectos",
+  "/gestion/calendario": "Gestión - Calendario",
+  "/gestion/supervisor": "Gestión - Supervisor",
+  "/gestion/reportes": "Gestión - Reportes",
+
+  // Evaluación
+  "/evaluacion/configuracion": "Evaluación - Configuración",
+  "/evaluaciones": "Evaluaciones",
+  "/evaluacion/avisos": "Evaluación - Avisos",
+  "/mis-evaluaciones": "Mis evaluaciones",
+  "/evaluacion/dashboard": "Evaluación - Dashboard",
+  "/evaluacion/reportes": "Evaluación - Reportes",
+  "/evaluacion/metas": "Evaluación - Metas",
+  "/evaluacion/reportes/empleado": "Evaluación - Reporte por empleado",
+  "/evaluacion/reportes/supervisor": "Evaluación - Reporte supervisor",
+  "/evaluacion/reportes/mystery": "Evaluación - Reporte Mystery",
+
+  // Motor de Conceptos / Legajos
+  "/motor-conceptos": "Motor de Conceptos",
+  "/motor-conceptos/registros": "Motor de Conceptos - Registros",
+  "/motor-conceptos/documentacion/entidad": "Documentación de entidades",
+  "/motor-conceptos/documentacion/empleados": "Legajos - Empleados",
+  "/motor-conceptos/documentacion/empresas": "Legajos - Empresas",
+  "/motor-conceptos/documentacion/sucursales": "Legajos - Sucursales",
+  "/motor-conceptos/reportes/registros": "Motor de Conceptos - Reporte de registros",
+
+  // Inteligencia Comercial
+  "/inteligencia": "Inteligencia Comercial",
+  "/inteligencia/eventos": "Inteligencia Comercial - Eventos",
+  "/inteligencia/snapshots": "Inteligencia Comercial - Snapshots",
+  "/inteligencia/clima": "Inteligencia Comercial - Clima",
+
+  // Fábrica
+  "/fabrica/stock": "Fábrica - Stock",
+  "/fabrica/transferencias": "Fábrica - Transferencias",
+  "/fabrica/transferir": "Fábrica - Nueva transferencia",
+  "/fabrica/produccion-lotes": "Fábrica - Producción",
+
+  // Audio
+  "/audio/dashboard": "Audio - Dashboard",
+  "/audio/segments": "Audio - Segmentos",
+
+  // Bot
+  "/bot/product-meta": "Bot - Productos",
+  "/bot/conversations": "Bot - Conversaciones",
+  "/bot/branch-meta": "Bot - Sucursales",
+  "/bot/benefit-meta": "Bot - Beneficios",
+  "/bot/event-meta": "Bot - Eventos",
+
+  // Fidelización
+  "/fidelizacion/dashboard": "Fidelización - Dashboard",
+  "/fidelizacion/comercios": "Fidelización - Comercios",
+  "/fidelizacion/campanias": "Fidelización - Campañas",
+  "/fidelizacion/premios-clientes": "Fidelización - Premios clientes",
+  "/fidelizacion/cupones": "Fidelización - Cupones",
+  "/fidelizacion/canjes-cupones": "Fidelización - Canjes de cupones",
+  "/fidelizacion/clientes": "Fidelización - Clientes",
+  "/fidelizacion/validar-cupon": "Fidelización - Validar cupón",
+  "/fidelizacion/puntos-comercio": "Fidelización - Puntos comercio",
+  "/fidelizacion/premios-comercios": "Fidelización - Premios comercios",
+  "/fidelizacion/canjes-comercios": "Fidelización - Canjes comercios",
+  "/fidelizacion/alertas-fraude": "Fidelización - Alertas de fraude",
 };
 
 /** --- Helpers (etiquetado) --- */
@@ -414,9 +682,32 @@ export const getNavLinks = async (req, res, next) => {
     const userPerms = await getUserPerms(userId);
     console.log(`[GET /nav/links] user perms (${userPerms.length})`);
 
-    const catalog = buildCatalogFromPaths(KNOWN_PATHS);
-    const links = filterByPerms(catalog, new Set(userPerms))
-      .sort((a, b) => a.label.localeCompare(b.label, "es"));
+    // const catalog = buildCatalogFromPaths(KNOWN_PATHS);
+    // const links = filterByPerms(catalog, new Set(userPerms))
+    //   .sort((a, b) => a.label.localeCompare(b.label, "es"));
+
+    const catalog =
+      buildCatalogFromPaths(
+        KNOWN_PATHS
+      );
+
+
+    const links =
+      (
+        roleId === 1
+          ? catalog
+          : filterByPerms(
+            catalog,
+            new Set(userPerms)
+          )
+      )
+        .sort(
+          (a, b) =>
+            a.label.localeCompare(
+              b.label,
+              "es"
+            )
+        );
 
     console.log(`[GET /nav/links] return ${links.length} links. sample=`, links.slice(0, 5).map(l => `${l.label} (${l.path})`));
     return res.status(200).json({ links });
@@ -435,15 +726,30 @@ export const searchNav = async (req, res, next) => {
 
     console.log(`[GET /nav/search] q="${q}" roleId=${roleId} userId=${userId}`);
 
+    // const userPerms = await getUserPerms(userId);
+    // const base = filterByPerms(buildCatalogFromPaths(KNOWN_PATHS), new Set(userPerms));
+
     const userPerms = await getUserPerms(userId);
-    const base = filterByPerms(buildCatalogFromPaths(KNOWN_PATHS), new Set(userPerms));
+
+    const catalog =
+      buildCatalogFromPaths(
+        KNOWN_PATHS
+      );
+
+    const base =
+      roleId === 1
+        ? catalog
+        : filterByPerms(
+          catalog,
+          new Set(userPerms)
+        );
 
     const byCatalog = q
       ? base.filter((l) =>
-          (l.label && l.label.toLowerCase().includes(q)) ||
-          (l.path && l.path.toLowerCase().includes(q)) ||
-          (Array.isArray(l.keywords) && l.keywords.some(k => k.toLowerCase().includes(q)))
-        )
+        (l.label && l.label.toLowerCase().includes(q)) ||
+        (l.path && l.path.toLowerCase().includes(q)) ||
+        (Array.isArray(l.keywords) && l.keywords.some(k => k.toLowerCase().includes(q)))
+      )
       : base.slice(0, 50);
 
     return res.status(200).json({

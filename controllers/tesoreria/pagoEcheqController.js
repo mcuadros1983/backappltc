@@ -643,34 +643,147 @@ export async function eliminarEcheqEmitido(req, res) {
     console.log("[echeq:delete] eCheq eliminado", { id });
 
     // ===== 4.bis) (CONDICIONAL) Generar CARGO si NO hubo abonoRef directo y el eCheq estaba ligado a un comprobante
-    if (debeCrearCargo && ech.comprobanteegreso_id) {
-      const comp = await ComprobanteEgreso.findByPk(ech.comprobanteegreso_id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (comp) {
-        const descCtaCte = `Reversión pago con eCheq de comp. ${comp.nrocomprobante ?? comp.id}`;
-        const fechaCtaCte = ech.fecha_emision || comp.fechacomprobante || new Date().toISOString().slice(0, 10);
-        const importeCargo = Number(ech.importe || 0);
+    // if (debeCrearCargo && ech.comprobanteegreso_id) {
+    //   const comp = await ComprobanteEgreso.findByPk(ech.comprobanteegreso_id, { transaction: t, lock: t.LOCK.UPDATE });
+    //   if (comp) {
+    //     const descCtaCte = `Reversión pago con eCheq de comp. ${comp.nrocomprobante ?? comp.id}`;
+    //     const fechaCtaCte = ech.fecha_emision || comp.fechacomprobante || new Date().toISOString().slice(0, 10);
+    //     const importeCargo = Number(ech.importe || 0);
 
-        await MovimientoCtaCteProveedor.create(
-          {
-            proveedor_id: comp.proveedor_id || ech.proveedor_id || null,
-            empresa_id: comp.empresa_id || ech.empresa_id || null,
-            fecha: fechaCtaCte,
-            fecha_pago: null,
-            descripcion: descCtaCte,
-            tipo: "cargo",
-            importe: importeCargo,           // mismo monto del eCheq eliminado
-            origen_tipo: "ComprobanteEgreso",
-            origen_id: comp.id,
-            comprobanteegreso_id: comp.id,
-            anulado: true,
-            ordenpago_id: null,              // evitar referencias colgantes si la OP se eliminó
-            formapago_id: comp.formapago_id || null,
-          },
-          { transaction: t }
-        );
+    //     await MovimientoCtaCteProveedor.create(
+    //       {
+    //         proveedor_id: comp.proveedor_id || ech.proveedor_id || null,
+    //         empresa_id: comp.empresa_id || ech.empresa_id || null,
+    //         fecha: fechaCtaCte,
+    //         fecha_pago: null,
+    //         descripcion: descCtaCte,
+    //         tipo: "cargo",
+    //         importe: importeCargo,           // mismo monto del eCheq eliminado
+    //         origen_tipo: "ComprobanteEgreso",
+    //         origen_id: comp.id,
+    //         comprobanteegreso_id: comp.id,
+    //         anulado: true,
+    //         ordenpago_id: null,              // evitar referencias colgantes si la OP se eliminó
+    //         formapago_id: comp.formapago_id || null,
+    //       },
+    //       { transaction: t }
+    //     );
+
+    //     compIdsAfectados.add(comp.id);
+    //     console.log("[echeq:delete] CARGO creado en ctacte (reversión eCheq)", { compId: comp.id, importe: importeCargo });
+    //   }
+    // }
+
+    // ===== 4.bis) Restaurar deuda en CtaCte si el eCheq estaba ligado a un comprobante
+    if (debeCrearCargo && ech.comprobanteegreso_id) {
+
+      const comp = await ComprobanteEgreso.findByPk(
+        ech.comprobanteegreso_id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+
+      if (comp) {
+
+        const descCtaCte =
+          `Reversión pago con eCheq de comp. ${comp.nrocomprobante ?? comp.id}`;
+
+        const fechaCtaCte =
+          ech.fecha_emision ||
+          comp.fechacomprobante ||
+          new Date().toISOString().slice(0, 10);
+
+        /*
+         * Primero verificamos si el comprobante ya posee
+         * un CARGO activo en cuenta corriente.
+         *
+         * No debemos generar dos deudas para la misma factura.
+         */
+        const cargoExistente =
+          await MovimientoCtaCteProveedor.findOne({
+            where: {
+              comprobanteegreso_id: comp.id,
+              tipo: "cargo",
+              anulado: { [Op.not]: true },
+            },
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+        if (!cargoExistente) {
+
+          const importeCargo =
+            Number(ech.importe || 0);
+
+          if (importeCargo > EPS) {
+
+            const nuevoCargo =
+              await MovimientoCtaCteProveedor.create(
+                {
+                  proveedor_id:
+                    comp.proveedor_id ||
+                    ech.proveedor_id ||
+                    null,
+
+                  empresa_id:
+                    comp.empresa_id ||
+                    ech.empresa_id ||
+                    null,
+
+                  fecha: fechaCtaCte,
+                  fecha_pago: null,
+
+                  descripcion: descCtaCte,
+
+                  tipo: "cargo",
+
+                  importe: importeCargo,
+
+                  origen_tipo: "ComprobanteEgreso",
+                  origen_id: comp.id,
+
+                  comprobanteegreso_id: comp.id,
+
+                  // IMPORTANTE:
+                  // debe quedar como deuda ACTIVA
+                  anulado: false,
+
+                  ordenpago_id: null,
+
+                  formapago_id:
+                    comp.formapago_id ||
+                    null,
+                },
+                {
+                  transaction: t,
+                }
+              );
+
+            console.log(
+              "[echeq:delete] CARGO activo creado en CtaCte",
+              {
+                cargo_id: nuevoCargo.id,
+                compId: comp.id,
+                importe: importeCargo,
+              }
+            );
+          }
+
+        } else {
+
+          console.log(
+            "[echeq:delete] CARGO activo ya existente; no se duplica",
+            {
+              cargo_id: cargoExistente.id,
+              compId: comp.id,
+              importe: cargoExistente.importe,
+            }
+          );
+        }
 
         compIdsAfectados.add(comp.id);
-        console.log("[echeq:delete] CARGO creado en ctacte (reversión eCheq)", { compId: comp.id, importe: importeCargo });
       }
     }
 
