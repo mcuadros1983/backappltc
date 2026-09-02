@@ -7,7 +7,7 @@ import { sequelize } from "../../config/database.js";
 import Proveedor from "../../models/comun/proveedor.js";           // Ajustá la ruta real del modelo
 import CategoriaEgreso from "../../models/tesoreria/categoriaEgreso.js"; // Ajustá la ruta real del modelo
 import ExcelJS from "exceljs"; // NUEVO: para generar XLSX con validaciones
-
+import FormaPagoTesoreria from "../../models/comun/formapagotesoreria.js";
 
 // ---------- helpers ----------
 
@@ -882,13 +882,16 @@ export async function importarPlantillasUnicas(req, res) {
 
     const [
       proveedores,
-      categorias
+      categorias,
+      formasPago
     ] =
       await Promise.all([
 
         Proveedor.findAll(),
 
         CategoriaEgreso.findAll(),
+
+        FormaPagoTesoreria.findAll(),
 
       ]);
 
@@ -899,11 +902,17 @@ export async function importarPlantillasUnicas(req, res) {
     );
 
 
+
     console.log(
       "📂 Cantidad categorías:",
       categorias.length
     );
 
+
+    console.log(
+      "💳 Cantidad formas de pago:",
+      formasPago.length
+    );
 
     // =====================================================
     // 7. MAPA PROVEEDORES
@@ -983,6 +992,38 @@ export async function importarPlantillasUnicas(req, res) {
       catMap.size
     );
 
+    // =====================================================
+    // 8.bis. MAPA FORMAS DE PAGO
+    // =====================================================
+
+    const formaPagoMap =
+      new Map();
+
+
+    formasPago.forEach(
+      (fp) => {
+
+        const key =
+          normName(
+            fp.descripcion
+          );
+
+
+        if (key) {
+
+          formaPagoMap.set(
+            key,
+            fp
+          );
+        }
+      }
+    );
+
+
+    console.log(
+      "🗺️ Claves forma de pago generadas:",
+      formaPagoMap.size
+    );
 
     // =====================================================
     // 9. RESULTADOS
@@ -1062,6 +1103,12 @@ export async function importarPlantillasUnicas(req, res) {
           ""
         ).trim();
 
+      const formaPagoNombre =
+        String(
+          raw.forma_pago ||
+          ""
+        ).trim();
+
 
       console.log(
         "📝 descripcion:",
@@ -1086,6 +1133,12 @@ export async function importarPlantillasUnicas(req, res) {
         )
       );
 
+      console.log(
+        "💳 forma_pago:",
+        JSON.stringify(
+          formaPagoNombre
+        )
+      );
 
       // ===================================================
       // FECHA
@@ -1340,26 +1393,19 @@ export async function importarPlantillasUnicas(req, res) {
           : null;
 
 
-      const formapago_id =
-        raw.formapago_id != null
+      // const formapago_id =
+      //   raw.formapago_id != null
 
-          ? Number(
-            raw.formapago_id
-          )
+      //     ? Number(
+      //       raw.formapago_id
+      //     )
 
-          : null;
+      //     : null;
+
+      let formapago_id =
+        null;
 
 
-      console.log(
-        "⚙️ CAMPOS OPCIONALES:",
-        {
-          sucursal_id,
-          requiere_factura,
-          observaciones,
-          tipocomprobante_id,
-          formapago_id
-        }
-      );
 
 
       // ===================================================
@@ -1399,6 +1445,14 @@ export async function importarPlantillasUnicas(req, res) {
         );
       }
 
+      if (
+        !formaPagoNombre
+      ) {
+
+        errs.push(
+          "forma_pago requerida"
+        );
+      }
 
       if (
         !fecha_vencimiento ||
@@ -1610,7 +1664,81 @@ export async function importarPlantillasUnicas(req, res) {
         }
       }
 
+      // ===================================================
+      // RESOLVER FORMA DE PAGO
+      // ===================================================
 
+      if (
+        formaPagoNombre
+      ) {
+
+        const formaPagoKey =
+          normName(
+            formaPagoNombre
+          );
+
+
+        console.log(
+          "🔎 Forma de pago original:",
+          formaPagoNombre
+        );
+
+
+        console.log(
+          "🔎 Forma de pago normalizada:",
+          formaPagoKey
+        );
+
+
+        const fp =
+          formaPagoMap.get(
+            formaPagoKey
+          );
+
+
+        console.log(
+          "🔎 Forma de pago encontrada:",
+          fp
+            ? {
+              id:
+                fp.id,
+
+              descripcion:
+                fp.descripcion,
+
+              nombre:
+                fp.nombre
+            }
+            : null
+        );
+
+
+        if (
+          !fp
+        ) {
+
+          console.error(
+            "❌ Forma de pago NO encontrada:",
+            formaPagoNombre
+          );
+
+
+          errs.push(
+            `Forma de pago '${formaPagoNombre}' no encontrada`
+          );
+
+        } else {
+
+          formapago_id =
+            fp.id;
+
+
+          console.log(
+            "✅ formapago_id resuelto:",
+            formapago_id
+          );
+        }
+      }
       // ===================================================
       // ERRORES DE VALIDACIÓN
       // ===================================================
@@ -2080,7 +2208,7 @@ export async function importarPlantillasUnicas(req, res) {
       results,
 
       hint:
-        "Usá el template XLSX: columnas obligatorias = descripcion, proveedor, categoria, fecha_vencimiento, monto."
+        "Usá el template XLSX: columnas obligatorias = descripcion, proveedor, categoria, fecha_vencimiento, monto, forma_pago."
 
     });
 
@@ -2173,70 +2301,299 @@ export async function importarPlantillasUnicas(req, res) {
 // GET /gasto-estimado/unicos/template.xlsx
 export async function descargarTemplateXlsxUnicos(req, res) {
   try {
-    const proveedores = await Proveedor.findAll({ order: [["nombre", "ASC"]] });
-    const categorias = await CategoriaEgreso.findAll({ order: [["nombre", "ASC"]] });
 
-    const wb = new ExcelJS.Workbook();
-    wb.created = new Date();
+    const proveedores =
+      await Proveedor.findAll({
+        order: [["nombre", "ASC"]],
+      });
 
-    // Hoja principal (Carga)
-    const ws = wb.addWorksheet("Carga");
+    const categorias =
+      await CategoriaEgreso.findAll({
+        order: [["nombre", "ASC"]],
+      });
+
+    const formasPago =
+      await FormaPagoTesoreria.findAll({
+        order: [["descripcion", "ASC"]],
+      });
+
+
+    const wb =
+      new ExcelJS.Workbook();
+
+    wb.created =
+      new Date();
+
+
+    // =====================================================
+    // HOJA PRINCIPAL
+    // =====================================================
+
+    const ws =
+      wb.addWorksheet("Carga");
+
+
     ws.columns = [
-      { header: "descripcion", key: "descripcion", width: 40 },
-      { header: "proveedor", key: "proveedor", width: 32 },
-      { header: "categoria", key: "categoria", width: 28 },
-      { header: "fecha_vencimiento", key: "fecha_venc", width: 16 },
-      { header: "monto", key: "monto", width: 14 },
+      {
+        header: "descripcion",
+        key: "descripcion",
+        width: 40,
+      },
+      {
+        header: "proveedor",
+        key: "proveedor",
+        width: 32,
+      },
+      {
+        header: "categoria",
+        key: "categoria",
+        width: 28,
+      },
+      {
+        header: "fecha_vencimiento",
+        key: "fecha_venc",
+        width: 16,
+      },
+      {
+        header: "monto",
+        key: "monto",
+        width: 14,
+      },
+      {
+        header: "forma_pago",
+        key: "forma_pago",
+        width: 28,
+      },
     ];
-    ws.getRow(1).font = { bold: true };
 
-    // Hojas de listas (ocultas)
-    const wsProv = wb.addWorksheet("Proveedores", { views: [{ state: "veryHidden" }] });
-    wsProv.columns = [{ header: "nombre_proveedor", key: "nombre", width: 60 }];
-    proveedores.forEach(p =>
-      wsProv.addRow({ nombre: p.razonsocial || p.nombre || p.descripcion || `Proveedor ${p.id}` })
+
+    ws.getRow(1).font = {
+      bold: true,
+    };
+
+
+    // =====================================================
+    // PROVEEDORES
+    // =====================================================
+
+    const wsProv =
+      wb.addWorksheet(
+        "Proveedores",
+        {
+          views: [
+            {
+              state: "veryHidden",
+            },
+          ],
+        }
+      );
+
+
+    wsProv.columns = [
+      {
+        header: "nombre_proveedor",
+        key: "nombre",
+        width: 60,
+      },
+    ];
+
+
+    proveedores.forEach((p) =>
+      wsProv.addRow({
+        nombre:
+          p.razonsocial ||
+          p.nombre ||
+          p.descripcion ||
+          `Proveedor ${p.id}`,
+      })
     );
 
-    const wsCat = wb.addWorksheet("Categorias", { views: [{ state: "veryHidden" }] });
-    wsCat.columns = [{ header: "nombre_categoria", key: "nombre", width: 50 }];
-    categorias.forEach(c => wsCat.addRow({ nombre: c.nombre }));
 
-    // Validaciones de lista (hasta 2000 filas)
+    // =====================================================
+    // CATEGORÍAS
+    // =====================================================
+
+    const wsCat =
+      wb.addWorksheet(
+        "Categorias",
+        {
+          views: [
+            {
+              state: "veryHidden",
+            },
+          ],
+        }
+      );
+
+
+    wsCat.columns = [
+      {
+        header: "nombre_categoria",
+        key: "nombre",
+        width: 50,
+      },
+    ];
+
+
+    categorias.forEach((c) =>
+      wsCat.addRow({
+        nombre: c.nombre,
+      })
+    );
+
+
+    // =====================================================
+    // FORMAS DE PAGO
+    // =====================================================
+
+    const wsFP =
+      wb.addWorksheet(
+        "FormasPago",
+        {
+          views: [
+            {
+              state: "veryHidden",
+            },
+          ],
+        }
+      );
+
+
+    wsFP.columns = [
+      {
+        header: "forma_pago",
+        key: "nombre",
+        width: 50,
+      },
+    ];
+
+
+    formasPago.forEach((fp) =>
+      wsFP.addRow({
+        nombre:
+          fp.descripcion ||
+          fp.nombre ||
+          `Forma de pago ${fp.id}`,
+      })
+    );
+
+
+    // =====================================================
+    // VALIDACIONES
+    // =====================================================
+
     const MAX = 2000;
-    ws.dataValidations.add(`B2:B${MAX}`, {
-      type: "list",
-      allowBlank: false,
-      formulae: [`=Proveedores!$A$2:$A$${proveedores.length + 1}`],
-      showErrorMessage: true,
-      errorTitle: "Proveedor inválido",
-      error: "Elegí un proveedor de la lista",
-    });
-    ws.dataValidations.add(`C2:C${MAX}`, {
-      type: "list",
-      allowBlank: false,
-      formulae: [`=Categorias!$A$2:$A$${categorias.length + 1}`],
-      showErrorMessage: true,
-      errorTitle: "Categoría inválida",
-      error: "Elegí una categoría de la lista",
-    });
 
-    // Ayuda
-    const help = wb.addWorksheet("Ayuda");
-    help.addRow(["Instrucciones"]).font = { bold: true };
+
+    ws.dataValidations.add(
+      `B2:B${MAX}`,
+      {
+        type: "list",
+        allowBlank: false,
+        formulae: [
+          `=Proveedores!$A$2:$A$${proveedores.length + 1}`,
+        ],
+        showErrorMessage: true,
+        errorTitle: "Proveedor inválido",
+        error: "Elegí un proveedor de la lista",
+      }
+    );
+
+
+    ws.dataValidations.add(
+      `C2:C${MAX}`,
+      {
+        type: "list",
+        allowBlank: false,
+        formulae: [
+          `=Categorias!$A$2:$A$${categorias.length + 1}`,
+        ],
+        showErrorMessage: true,
+        errorTitle: "Categoría inválida",
+        error: "Elegí una categoría de la lista",
+      }
+    );
+
+
+    ws.dataValidations.add(
+      `F2:F${MAX}`,
+      {
+        type: "list",
+        allowBlank: false,
+        formulae: [
+          `=FormasPago!$A$2:$A$${formasPago.length + 1}`,
+        ],
+        showErrorMessage: true,
+        errorTitle: "Forma de pago inválida",
+        error: "Elegí una forma de pago de la lista",
+      }
+    );
+
+
+    // =====================================================
+    // AYUDA
+    // =====================================================
+
+    const help =
+      wb.addWorksheet("Ayuda");
+
+
+    help
+      .addRow(["Instrucciones"])
+      .font = {
+      bold: true,
+    };
+
+
     help.addRows([
-      ["• Estos gastos se importan como 'unico' (sin rollover)."],
-      ["• Columnas obligatorias: descripcion, proveedor, categoria, fecha_vencimiento (YYYY-MM-DD), monto (>0)."],
-      ["• 'proveedor' y 'categoria' tienen listas desplegables actualizadas al momento de descargar."],
-      ["• 'requiere_factura' admite: true/false/1/0/si/no."],
-      ["• La empresa NO va en el archivo; se envía como empresa_id en el FormData del POST."],
+      [
+        "• Estos gastos se importan como 'unico' (sin rollover).",
+      ],
+      [
+        "• Columnas obligatorias: descripcion, proveedor, categoria, fecha_vencimiento (YYYY-MM-DD), monto (>0), forma_pago.",
+      ],
+      [
+        "• 'proveedor', 'categoria' y 'forma_pago' tienen listas desplegables actualizadas al momento de descargar.",
+      ],
+      [
+        "• La empresa NO va en el archivo; se envía como empresa_id en el FormData del POST.",
+      ],
     ]);
 
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", 'attachment; filename="gastos_unicos_template.xlsx"');
+
+    // =====================================================
+    // RESPUESTA
+    // =====================================================
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="gastos_unicos_template.xlsx"'
+    );
+
+
     await wb.xlsx.write(res);
+
     res.end();
+
   } catch (e) {
-    console.error("descargarTemplateXlsxUnicos", e);
-    res.status(500).json({ error: "No se pudo generar el template" });
+
+    console.error(
+      "descargarTemplateXlsxUnicos",
+      e
+    );
+
+
+    res
+      .status(500)
+      .json({
+        error:
+          "No se pudo generar el template",
+      });
   }
 }
