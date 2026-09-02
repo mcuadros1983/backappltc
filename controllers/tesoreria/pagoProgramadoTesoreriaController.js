@@ -474,7 +474,7 @@ export const listarPagosProgramados = async (req, res) => {
   }
 };
 
-export const acreditarPagoProgramado = async (req, res) => {
+export const acreditarPagoProgramado = async (req, res) => { 
   const t = await sequelize.transaction();
 
   try {
