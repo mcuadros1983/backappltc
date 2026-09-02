@@ -170,6 +170,7 @@ export async function vencenEn(req, res) {
       attributes: [
         "id",
         "gastoestimado_id",
+        "created_from",
         "descripcion",
         "periodo",
         "fecha_vencimiento",
@@ -194,7 +195,12 @@ export async function vencenEn(req, res) {
       raw: true,
     });
 
-    console.log("datos", items)
+    console.log(
+      "VENCEN EN - INSTANCIA 236:",
+      items.find(
+        (it) => Number(it.id) === 236
+      )
+    );
 
     const withDiff = items.map(it => {
       const dv = new Date(it.fecha_vencimiento + "T00:00:00Z");
@@ -208,6 +214,13 @@ export async function vencenEn(req, res) {
         dias_restantes: diff,
       };
     });
+
+    console.log(
+      "VENCEN EN - RESPUESTA 236:",
+      withDiff.find(
+        (it) => Number(it.id) === 236
+      )
+    );
 
     res.json(withDiff);
   } catch (err) {
