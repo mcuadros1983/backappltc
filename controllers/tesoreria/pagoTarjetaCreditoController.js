@@ -13,6 +13,7 @@ import MovimientoCajaTesoreria from "../../models/tesoreria/movimientocajatesore
 import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancotesoreria.js";
 import FormaPago from "../../models/comun/formapagotesoreria.js"
 
+import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 const toNum = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
 
 async function findTarjetaOrThrow({ tarjetacomun_id, empresa_id, transaction }) {
@@ -185,7 +186,7 @@ export async function registrarAnticipoProveedorTarjeta(req, res) {
     const hoy = new Date().toISOString().slice(0, 10);
     const fechaOP = fecha || pagos.find((p) => p.fecha)?.fecha || hoy;
 
-       // 🔎 resolver UNA VEZ el formapago_id para TARJETA
+    // 🔎 resolver UNA VEZ el formapago_id para TARJETA
     const formaPagoTarjetaId = await resolveFormaPagoIdTarjeta(t);
 
     // 1) Crear Orden de Pago (pendiente de aplicación)
@@ -412,14 +413,61 @@ export async function eliminarPagoTarjeta(req, res) {
       const EPS_REC = 0.0001;
       const comp = await ComprobanteEgreso.findByPk(compId, { transaction: trx });
       if (!comp) return;
-
-      const totalComp = Number(comp.total || 0);
+      const totalComp =
+        Number(comp.montoreal || 0) > 0
+          ? Number(comp.montoreal)
+          : Number(comp.total || 0);
 
       const [cajaComp, bancoComp, tarjetaComp, echeqComp] = await Promise.all([
-        MovimientoCajaTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
-        MovimientoBancoTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
-        PagoTarjetaCredito?.findAll?.({ where: { comprobanteegreso_id: compId, anulado: { [Op.not]: true } }, transaction: trx }) || [],
-        EcheqEmitido?.findAll?.({ where: { comprobanteegreso_id: compId, anulado: { [Op.not]: true } }, transaction: trx }) || [],
+
+        MovimientoCajaTesoreria.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+          transaction: trx,
+        }),
+
+        MovimientoBancoTesoreria.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+          transaction: trx,
+        }),
+
+        PagoTarjetaCredito.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            anulado: false,
+            estado: {
+              [Op.notIn]: [
+                "rechazado",
+              ],
+            },
+          },
+          transaction: trx,
+        }),
+
+        EcheqEmitido.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            anulado: false,
+            estado: {
+              [Op.notIn]: [
+                "anulado",
+                "rechazado",
+              ],
+            },
+          },
+          transaction: trx,
+        }),
       ]);
 
       const pagosDirectos =
@@ -429,7 +477,14 @@ export async function eliminarPagoTarjeta(req, res) {
         (echeqComp || []).reduce((a, r) => a + Number(r.importe || 0), 0);
 
       const cargosComp = await MovimientoCtaCteProveedor.findAll({
-        where: { comprobanteegreso_id: compId, tipo: "cargo", anulado: { [Op.not]: true } },
+        where: {
+          comprobanteegreso_id: compId,
+          tipo: "cargo",
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
         attributes: ["id"],
         transaction: trx,
       });
@@ -458,6 +513,212 @@ export async function eliminarPagoTarjeta(req, res) {
 
       await comp.update(patch, { transaction: trx });
       console.log("[recalcComprobanteEgreso/tarjeta]", { compId, totalComp, pagosDirectos, aplicadoAbonos, saldo, estadoComp });
+    }
+
+    async function actualizarFormaPagoActualComprobante(compId, trx) {
+
+      const comp = await ComprobanteEgreso.findByPk(
+        compId,
+        {
+          transaction: trx,
+          lock: trx.LOCK.UPDATE,
+        }
+      );
+
+      if (!comp) return;
+
+      const [
+        movimientosCaja,
+        movimientosBanco,
+        echeqs,
+        tarjetas,
+        cargosCtaCte,
+      ] = await Promise.all([
+
+        MovimientoCajaTesoreria.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+          attributes: ["id", "formapago_id"],
+          transaction: trx,
+        }),
+
+        MovimientoBancoTesoreria.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+          attributes: ["id", "formapago_id"],
+          transaction: trx,
+        }),
+
+        EcheqEmitido.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            anulado: false,
+            estado: {
+              [Op.notIn]: [
+                "anulado",
+                "rechazado",
+              ],
+            },
+          },
+          attributes: ["id"],
+          transaction: trx,
+        }),
+
+        PagoTarjetaCredito.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            anulado: false,
+            estado: {
+              [Op.notIn]: [
+                "rechazado",
+              ],
+            },
+          },
+          attributes: ["id"],
+          transaction: trx,
+        }),
+
+        MovimientoCtaCteProveedor.findAll({
+          where: {
+            comprobanteegreso_id: compId,
+            tipo: "cargo",
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+          attributes: ["id"],
+          transaction: trx,
+        }),
+      ]);
+
+      const formasCatalogo =
+        await FormaPagoTesoreria.findAll({
+          transaction: trx,
+        });
+
+      const buscarFormaPorDescripcion = (descripcion) => {
+
+        const buscada =
+          String(descripcion || "")
+            .trim()
+            .toUpperCase();
+
+        return formasCatalogo.find(
+          fp =>
+            String(fp.descripcion || "")
+              .trim()
+              .toUpperCase() === buscada
+        ) || null;
+      };
+
+      const formaEcheq =
+        buscarFormaPorDescripcion("ECHEQ");
+
+      const formaTarjetaCredito =
+        buscarFormaPorDescripcion(
+          "TARJETA CREDITO"
+        );
+
+      const formaCtaCte =
+        buscarFormaPorDescripcion(
+          "CTA CTE"
+        );
+
+      const formasPagoActuales =
+        new Set();
+
+      const agregarFormaRegistrada = (registros) => {
+
+        for (const registro of registros || []) {
+
+          const formaPagoId =
+            Number(
+              registro.formapago_id || 0
+            );
+
+          if (formaPagoId) {
+            formasPagoActuales.add(
+              formaPagoId
+            );
+          }
+        }
+      };
+
+      agregarFormaRegistrada(
+        movimientosCaja
+      );
+
+      agregarFormaRegistrada(
+        movimientosBanco
+      );
+
+      if (echeqs.length > 0) {
+
+        if (!formaEcheq) {
+          throw new Error(
+            'No se encontró la forma de pago "ECHEQ".'
+          );
+        }
+
+        formasPagoActuales.add(
+          Number(formaEcheq.id)
+        );
+      }
+
+      if (tarjetas.length > 0) {
+
+        if (!formaTarjetaCredito) {
+          throw new Error(
+            'No se encontró la forma de pago "TARJETA CREDITO".'
+          );
+        }
+
+        formasPagoActuales.add(
+          Number(formaTarjetaCredito.id)
+        );
+      }
+
+      if (cargosCtaCte.length > 0) {
+
+        if (!formaCtaCte) {
+          throw new Error(
+            'No se encontró la forma de pago "CTA CTE".'
+          );
+        }
+
+        formasPagoActuales.add(
+          Number(formaCtaCte.id)
+        );
+      }
+
+      const idsFormas =
+        [...formasPagoActuales];
+
+      const nuevaFormaPagoId =
+        idsFormas.length === 1
+          ? idsFormas[0]
+          : null;
+
+      await comp.update(
+        {
+          formapago_id:
+            nuevaFormaPagoId,
+        },
+        {
+          transaction: trx,
+        }
+      );
     }
 
     // === Cuerpo principal ===
@@ -493,18 +754,25 @@ export async function eliminarPagoTarjeta(req, res) {
     // (b) Abonos por la misma OP (pueden ser varios)
     const abonosViaOP = pago.ordenpago_id
       ? await MovimientoCtaCteProveedor.findAll({
-          where: { ordenpago_id: pago.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        })
+        where: { ordenpago_id: pago.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      })
       : [];
 
     // Set para acumular comprobantes a recalcular
     const compIdsAfectados = new Set();
     if (compIdDirecto) compIdsAfectados.add(compIdDirecto);
 
-    // Flag para decidir si crear CARGO de reversión
-    let debeCrearCargo = true;
+    /*
+   * Parte del pago que todavía debe restaurarse
+   * como deuda en Cuenta Corriente.
+   */
+    let importeCargoPendiente =
+      Number(montoPago || 0);
+
+    let debeCrearCargo =
+      importeCargoPendiente > EPS;
 
     // ===== 2) Si hay ABONO DIRECTO: eliminar aplicaciones y ajustar/eliminar el ABONO =====
     if (abonoRef) {
@@ -542,7 +810,12 @@ export async function eliminarPagoTarjeta(req, res) {
         await abonoRef.update({ importe: nuevoImporteAbono }, { transaction: t });
       }
 
-      // ⛔ Si existía abono directo, NO crear CARGO de reversión
+      /*
+ * El abono directo ya representaba este pago.
+ * Al revertirlo no necesitamos crear además
+ * una nueva deuda por el mismo importe.
+ */
+      importeCargoPendiente = 0;
       debeCrearCargo = false;
     }
 
@@ -600,7 +873,18 @@ export async function eliminarPagoTarjeta(req, res) {
           break;
         }
       }
-      // Nota: si quedara 'restante' > 0, lo absorberá el CARGO condicional (si corresponde).
+      /*
+       * Lo que los abonos vía OP no pudieron absorber
+       * deberá restaurarse como nueva deuda.
+       */
+      importeCargoPendiente =
+        Math.max(
+          0,
+          Number(restante.toFixed(2))
+        );
+
+      debeCrearCargo =
+        importeCargoPendiente > EPS;
     }
 
     // ===== 3) Eliminar el PAGO TARJETA =====
@@ -616,18 +900,21 @@ export async function eliminarPagoTarjeta(req, res) {
         await MovimientoCtaCteProveedor.create(
           {
             proveedor_id: comp.proveedor_id || pago.proveedor_id || null,
-            empresa_id:   comp.empresa_id   || pago.empresa_id   || null,
+            empresa_id: comp.empresa_id || pago.empresa_id || null,
             fecha: fechaCtaCte,
             fecha_pago: null,
             descripcion: descCtaCte,
             tipo: "cargo",
-            importe: Number(montoPago || 0),
+            importe:
+              Number(
+                importeCargoPendiente || 0
+              ),
             origen_tipo: "ComprobanteEgreso",
             origen_id: comp.id,
             comprobanteegreso_id: comp.id,
             anulado: false,
             ordenpago_id: null, // por si la OP se elimina más abajo
-            formapago_id: pago.formapago_id || comp.formapago_id || null,
+            formapago_id: null,
           },
           { transaction: t }
         );
@@ -647,8 +934,21 @@ export async function eliminarPagoTarjeta(req, res) {
 
     // ===== 5) Recalcular COMPROBANTES afectados =====
     if (compIdsAfectados.size > 0) {
-      for (const compId of compIdsAfectados) {
-        await recalcComprobanteEgreso(compId, t);
+
+      for (
+        const compId
+        of compIdsAfectados
+      ) {
+
+        await recalcComprobanteEgreso(
+          compId,
+          t
+        );
+
+        await actualizarFormaPagoActualComprobante(
+          compId,
+          t
+        );
       }
     }
 

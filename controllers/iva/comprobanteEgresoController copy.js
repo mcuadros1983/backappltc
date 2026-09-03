@@ -6,6 +6,8 @@ import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import MovimientoCtaCteProveedor from "../../models/tesoreria/movimientoctacteproveedor.js";
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
 import { sequelize } from "../../config/database.js"; // <-- importa la instancia
+import MovCtaCteProvAplic
+  from "../../models/tesoreria/MovimientoCtaCteProveedorAplicacion.js";
 
 // Crear nuevo comprobante de egreso
 export const crearComprobanteEgreso = async (req, res) => {
@@ -55,13 +57,571 @@ export const obtenerComprobanteEgresoPorId = async (req, res) => {
 
 // Actualizar
 export const actualizarComprobanteEgreso = async (req, res) => {
+  const t = await sequelize.transaction();
+
   try {
-    const item = await ComprobanteEgreso.findByPk(req.params.id);
-    if (!item) return res.status(404).json({ error: 'Comprobante de egreso no encontrado' });
-    await item.update(req.body);
-    res.status(200).json(item);
+    const EPS = 0.009;
+    const id = Number(req.params.id);
+
+    if (!id) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "ID de comprobante inválido",
+      });
+    }
+
+    /*
+     * ============================================================
+     * 1) CARGAR COMPROBANTE CON LOCK
+     * ============================================================
+     */
+    const comp = await ComprobanteEgreso.findByPk(id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    if (!comp) {
+      await t.rollback();
+
+      return res.status(404).json({
+        error: "Comprobante de egreso no encontrado",
+      });
+    }
+
+    /*
+     * ============================================================
+     * 2) VERIFICAR QUE EL COMPROBANTE HAYA SIDO EMITIDO
+     *    100% A CUENTA CORRIENTE
+     * ============================================================
+     *
+     * No confiamos solamente en formapago_id del encabezado.
+     *
+     * Revisamos los efectos financieros reales creados para
+     * el comprobante.
+     * ============================================================
+     */
+
+    const [
+      movimientosCaja,
+      movimientosBanco,
+      echeqs,
+      tarjetas,
+      cargosCtaCte,
+    ] = await Promise.all([
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }),
+
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }),
+
+      EcheqEmitido.findAll({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }),
+
+      PagoTarjetaCredito.findAll({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }),
+
+      MovimientoCtaCteProveedor.findAll({
+        where: {
+          comprobanteegreso_id: comp.id,
+          tipo: "cargo",
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }),
+    ]);
+
+    /*
+     * Si existe cualquier desembolso directo asociado al
+     * comprobante, no permitimos modificarlo.
+     */
+    if (
+      movimientosCaja.length > 0 ||
+      movimientosBanco.length > 0 ||
+      echeqs.length > 0 ||
+      tarjetas.length > 0
+    ) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          "No se puede modificar el comprobante porque posee una forma de pago distinta de Cuenta Corriente.",
+      });
+    }
+
+    /*
+     * Una factura 100% Cta.Cte. emitida por este flujo debe tener
+     * exactamente un cargo asociado.
+     */
+    if (cargosCtaCte.length !== 1) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          cargosCtaCte.length === 0
+            ? "No se puede modificar el comprobante porque no posee un cargo de Cuenta Corriente asociado."
+            : "No se puede modificar el comprobante porque posee más de un cargo de Cuenta Corriente asociado.",
+      });
+    }
+
+    const cargo = cargosCtaCte[0];
+
+    /*
+     * Comprobamos además que ese cargo sea realmente el generado
+     * por el comprobante y no otro movimiento posteriormente
+     * relacionado.
+     */
+    if (
+      String(cargo.origen_tipo || "").trim().toLowerCase() !==
+      "comprobanteegreso" ||
+      Number(cargo.origen_id) !== Number(comp.id)
+    ) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          "El cargo de Cuenta Corriente asociado no corresponde al cargo original del comprobante.",
+      });
+    }
+
+    /*
+     * ============================================================
+     * 3) VERIFICAR QUE EL CARGO ORIGINAL REPRESENTE EL 100%
+     *    DEL COMPROBANTE
+     * ============================================================
+     */
+
+    const totalActual = Number(
+      Number(comp.montoreal || 0) > 0
+        ? comp.montoreal
+        : comp.total
+    );
+
+    const importeCargoActual = Number(cargo.importe || 0);
+
+    if (Math.abs(importeCargoActual - totalActual) > EPS) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          "No se puede modificar el comprobante porque no fue registrado íntegramente en Cuenta Corriente.",
+      });
+    }
+
+    /*
+     * ============================================================
+     * 4) VALIDACIONES FISCALES DEL NUEVO COMPROBANTE
+     * ============================================================
+     */
+
+    const body = req.body || {};
+
+    /*
+ * ============================================================
+ * PROVEEDOR NO MODIFICABLE
+ * ============================================================
+ *
+ * Una vez emitido el comprobante, el proveedor no puede cambiarse.
+ * Esto protege el cargo de Cta.Cte., sus aplicaciones y la OP.
+ * ============================================================
+ */
+
+    if (
+      Object.prototype.hasOwnProperty.call(body, "proveedor_id") &&
+      Number(body.proveedor_id) !== Number(comp.proveedor_id)
+    ) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          "No se puede modificar el proveedor de un comprobante ya emitido.",
+      });
+    }
+
+    validarDatosFiscalesComprobante({
+      iva_especial:
+        Object.prototype.hasOwnProperty.call(body, "iva_especial")
+          ? body.iva_especial
+          : comp.iva_especial,
+
+      iva_especial_porcentaje:
+        Object.prototype.hasOwnProperty.call(
+          body,
+          "iva_especial_porcentaje"
+        )
+          ? body.iva_especial_porcentaje
+          : comp.iva_especial_porcentaje,
+    });
+
+    /*
+     * ============================================================
+     * 5) CALCULAR NUEVO TOTAL FINANCIERO
+     * ============================================================
+     *
+     * Respetamos la misma regla utilizada al emitir:
+     *
+     * montoreal > 0 ? montoreal : total
+     * ============================================================
+     */
+
+    const nuevoTotalComprobante =
+      Object.prototype.hasOwnProperty.call(body, "total")
+        ? Number(body.total || 0)
+        : Number(comp.total || 0);
+
+    const nuevoMontoReal =
+      Object.prototype.hasOwnProperty.call(body, "montoreal")
+        ? Number(body.montoreal || 0)
+        : Number(comp.montoreal || 0);
+
+    const nuevoTotalBase =
+      nuevoMontoReal > 0
+        ? nuevoMontoReal
+        : nuevoTotalComprobante;
+
+    if (nuevoTotalBase <= 0) {
+      throw new Error(
+        "El nuevo total del comprobante debe ser mayor a cero"
+      );
+    }
+
+    /*
+     * ============================================================
+     * 6) CALCULAR CUÁNTO DEL CARGO YA FUE PAGADO/APLICADO
+     * ============================================================
+     */
+
+    const aplicaciones =
+      await MovCtaCteProvAplic.findAll({
+        where: {
+          cargo_id: cargo.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+    const totalAplicado = aplicaciones.reduce(
+      (acc, aplicacion) =>
+        acc + Number(aplicacion.importe || 0),
+      0
+    );
+
+    /*
+     * Podemos aumentar el importe libremente.
+     *
+     * Podemos disminuirlo solamente hasta el monto que ya está
+     * aplicado.
+     */
+    if (nuevoTotalBase + EPS < totalAplicado) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          `No se puede reducir el comprobante a $${nuevoTotalBase.toFixed(2)} porque ya tiene $${totalAplicado.toFixed(2)} aplicados en Cuenta Corriente.`,
+      });
+    }
+
+    /*
+     * ============================================================
+     * 7) HACIENDA
+     * ============================================================
+     */
+
+    const hasHaciendaInBody =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "hacienda_id"
+      );
+
+    const nuevoHaciendaId =
+      hasHaciendaInBody
+        ? body.hacienda_id
+          ? Number(body.hacienda_id)
+          : null
+        : comp.hacienda_id ?? null;
+
+    const viejoHaciendaId =
+      comp.hacienda_id
+        ? Number(comp.hacienda_id)
+        : null;
+
+    /*
+     * ============================================================
+     * 8) ACTUALIZAR COMPROBANTE
+     * ============================================================
+     */
+
+    const {
+      hacienda_id,
+      ...rest
+    } = body;
+
+    if (Object.keys(rest).length) {
+      await comp.update(rest, {
+        transaction: t,
+      });
+    }
+
+    /*
+     * ============================================================
+     * 9) ACTUALIZAR CARGO DE CUENTA CORRIENTE
+     * ============================================================
+     */
+
+    await cargo.update(
+      {
+        importe: nuevoTotalBase,
+
+        descripcion:
+          `Comp. ${comp.nrocomprobante} a cuenta corriente`,
+      },
+      {
+        transaction: t,
+      }
+    );
+
+    /*
+     * ============================================================
+     * 10) ACTUALIZAR ORDEN DE PAGO
+     * ============================================================
+     */
+
+    let orden = null;
+
+    if (comp.ordenpago_id) {
+      orden = await OrdenPago.findByPk(
+        comp.ordenpago_id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+    }
+
+    if (!orden) {
+      orden = await OrdenPago.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+    }
+
+    if (orden) {
+      await orden.update(
+        {
+          total: nuevoTotalBase,
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
+
+    /*
+     * ============================================================
+     * 11) RECALCULAR SALDO Y ESTADO SEGÚN APLICACIONES
+     * ============================================================
+     */
+
+    const nuevoSaldo =
+      Math.max(
+        0,
+        nuevoTotalBase - totalAplicado
+      );
+
+    let nuevoEstado = "impaga";
+
+    if (
+      totalAplicado > EPS &&
+      nuevoSaldo > EPS
+    ) {
+      nuevoEstado = "parcial";
+    }
+
+    if (nuevoSaldo <= EPS) {
+      nuevoEstado = "pagada";
+    }
+
+    await comp.update(
+      {
+        saldo: nuevoSaldo,
+        estadopago: nuevoEstado,
+      },
+      {
+        transaction: t,
+      }
+    );
+
+    /*
+     * También sincronizamos el estado de la OP.
+     */
+    if (orden) {
+      let estadoOrden = "emitida";
+
+      if (nuevoEstado === "parcial") {
+        estadoOrden = "parcial";
+      }
+
+      if (nuevoEstado === "pagada") {
+        estadoOrden = "aplicada";
+      }
+
+      await orden.update(
+        {
+          estado: estadoOrden,
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
+
+    /*
+     * ============================================================
+     * 12) SINCRONIZAR HACIENDA
+     * ============================================================
+     */
+
+    if (hasHaciendaInBody) {
+      const cambioHacienda =
+        (viejoHaciendaId || null) !==
+        (nuevoHaciendaId || null);
+
+      if (cambioHacienda) {
+
+        if (viejoHaciendaId) {
+          const hacVieja =
+            await Hacienda.findByPk(
+              viejoHaciendaId,
+              {
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+              }
+            );
+
+          if (
+            hacVieja &&
+            Number(hacVieja.comprobante_id) ===
+            Number(comp.id)
+          ) {
+            await hacVieja.update(
+              {
+                comprobante_id: null,
+              },
+              {
+                transaction: t,
+              }
+            );
+          }
+        }
+
+        if (nuevoHaciendaId) {
+          const hacNueva =
+            await Hacienda.findByPk(
+              nuevoHaciendaId,
+              {
+                transaction: t,
+                lock: t.LOCK.UPDATE,
+              }
+            );
+
+          if (!hacNueva) {
+            throw new Error(
+              "Hacienda nueva no encontrada"
+            );
+          }
+
+          if (
+            hacNueva.comprobante_id &&
+            Number(hacNueva.comprobante_id) !==
+            Number(comp.id)
+          ) {
+            throw new Error(
+              "La Hacienda ya está vinculada a otro comprobante"
+            );
+          }
+
+          await hacNueva.update(
+            {
+              comprobante_id: comp.id,
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+      }
+
+      await comp.update(
+        {
+          hacienda_id: nuevoHaciendaId,
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
+
+    /*
+     * ============================================================
+     * 13) COMMIT
+     * ============================================================
+     */
+
+    await t.commit();
+
+    return res.status(200).json({
+      ok: true,
+      comprobante: comp,
+      movimiento_ctacte: cargo,
+      ordenpago: orden,
+      cuenta_corriente: {
+        importe: nuevoTotalBase,
+        aplicado: totalAplicado,
+        saldo: nuevoSaldo,
+      },
+    });
+
   } catch (error) {
-    res.status(500).json({ error: 'Error al actualizar el comprobante de egreso' });
+
+    if (!t.finished) {
+      await t.rollback();
+    }
+
+    console.error(
+      "❌ actualizarComprobanteEgreso:",
+      error
+    );
+
+    return res.status(400).json({
+      error:
+        error.message ||
+        "Error al actualizar el comprobante de egreso",
+    });
   }
 };
 

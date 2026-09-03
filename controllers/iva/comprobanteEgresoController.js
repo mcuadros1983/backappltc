@@ -14,13 +14,62 @@ import GastoEstimadoPago from "../../models/tesoreria/gastoestimadopago.js";
 import { Op, } from "sequelize";
 import Hacienda from "../../models/gmedia/hacienda.js";
 
+function validarDatosFiscalesComprobante(data = {}) {
+
+  const ivaEspecial =
+    Number(
+      data.iva_especial || 0
+    );
+
+  const ivaEspecialPorcentaje =
+    Number(
+      data.iva_especial_porcentaje || 0
+    );
+
+  if (
+    ivaEspecial > 0 &&
+    ivaEspecialPorcentaje <= 0
+  ) {
+    throw new Error(
+      "Debe indicar el porcentaje correspondiente al IVA especial"
+    );
+  }
+
+  if (
+    ivaEspecialPorcentaje > 0 &&
+    ivaEspecial <= 0
+  ) {
+    throw new Error(
+      "Debe indicar el importe correspondiente al IVA especial"
+    );
+  }
+}
+
 // Crear nuevo comprobante de egreso
 export const crearComprobanteEgreso = async (req, res) => {
   try {
-    const nuevo = await ComprobanteEgreso.create(req.body);
-    res.status(201).json(nuevo);
+
+    validarDatosFiscalesComprobante(
+      req.body
+    );
+
+    const nuevo =
+      await ComprobanteEgreso.create(
+        req.body
+      );
+
+    res.status(201).json(
+      nuevo
+    );
+
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear comprobante de egreso', detalle: error.message });
+
+    res.status(500).json({
+      error:
+        "Error al crear comprobante de egreso",
+      detalle:
+        error.message,
+    });
   }
 };
 
@@ -62,6 +111,25 @@ export const actualizarComprobanteEgreso = async (req, res) => {
 
     // Separar hacienda_id del resto
     const body = req.body || {};
+
+    validarDatosFiscalesComprobante({
+      iva_especial:
+        Object.prototype.hasOwnProperty.call(
+          body,
+          "iva_especial"
+        )
+          ? body.iva_especial
+          : comp.iva_especial,
+
+      iva_especial_porcentaje:
+        Object.prototype.hasOwnProperty.call(
+          body,
+          "iva_especial_porcentaje"
+        )
+          ? body.iva_especial_porcentaje
+          : comp.iva_especial_porcentaje,
+    });
+
     const hasHaciendaInBody = Object.prototype.hasOwnProperty.call(body, "hacienda_id");
     const nuevoHaciendaId = hasHaciendaInBody
       ? (body.hacienda_id ? Number(body.hacienda_id) : null)
@@ -358,7 +426,46 @@ export const emitirComprobanteEgreso = async (req, res) => {
     const { empresa_id, idempotencyKey, comprobante, pagos } = req.body;
 
     if (!empresa_id) throw new Error("empresa_id requerido");
-    if (!comprobante || typeof comprobante !== "object") throw new Error("Datos de comprobante inválidos");
+    if (
+      !comprobante ||
+      typeof comprobante !== "object"
+    ) {
+      throw new Error(
+        "Datos de comprobante inválidos"
+      );
+    }
+
+    validarDatosFiscalesComprobante(
+      comprobante
+    );
+
+    const ivaEspecial =
+      Number(comprobante.iva_especial || 0);
+
+    const ivaEspecialPorcentaje =
+      Number(
+        comprobante.iva_especial_porcentaje || 0
+      );
+
+    if (
+      ivaEspecial > 0 &&
+      ivaEspecialPorcentaje <= 0
+    ) {
+      throw new Error(
+        "Debe indicar el porcentaje correspondiente al IVA especial"
+      );
+    }
+
+    if (
+      ivaEspecialPorcentaje > 0 &&
+      ivaEspecial <= 0
+    ) {
+      throw new Error(
+        "Debe indicar el importe correspondiente al IVA especial"
+      );
+    }
+
+
     if (!Array.isArray(pagos) || pagos.length === 0) throw new Error("Debe enviar al menos una forma de pago");
 
     // const totalComp = Number(comprobante.total || 0);
@@ -977,6 +1084,72 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
 
 
     /*
+ * ============================================================
+ * DETERMINAR SI EL COMPROBANTE PUEDE EDITARSE
+ * ============================================================
+ *
+ * Regla:
+ * - sólo puede editarse cuando su situación financiera actual
+ *   corresponde íntegramente a Cuenta Corriente;
+ * - si existe Caja, Banco/Transferencia, eCheq o Tarjeta
+ *   aplicado al comprobante, no puede editarse.
+ * ============================================================
+ */
+
+    const [
+      movimientosCaja,
+      movimientosBanco,
+      echeqsAplicados,
+      tarjetasAplicadas,
+      cargoCtaCte,
+    ] = await Promise.all([
+
+      MovimientoCajaTesoreria.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+          anulado: { [Op.not]: true },
+        },
+      }),
+
+      MovimientoBancoTesoreria.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+          anulado: { [Op.not]: true },
+        },
+      }),
+
+      EcheqEmitido.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+      }),
+
+      PagoTarjetaCredito.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+        },
+      }),
+
+      MovimientoCtaCteProveedor.findOne({
+        where: {
+          comprobanteegreso_id: comp.id,
+          tipo: "cargo",
+          anulado: { [Op.not]: true },
+        },
+      }),
+    ]);
+
+    const tieneOtroMedioPago =
+      !!movimientosCaja ||
+      !!movimientosBanco ||
+      !!echeqsAplicados ||
+      !!tarjetasAplicadas;
+
+    const puedeEditar =
+      !!cargoCtaCte &&
+      !tieneOtroMedioPago;
+
+    /*
      * ============================================================
      * NUEVO:
      * compromisos programados vinculados al comprobante.
@@ -1015,6 +1188,16 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
 
       pagos_programados:
         pagosProgramados,
+
+      puede_editar:
+        puedeEditar,
+
+      motivo_no_editar:
+        puedeEditar
+          ? null
+          : tieneOtroMedioPago
+            ? "El comprobante tiene una forma de pago distinta de Cuenta Corriente."
+            : "El comprobante no posee un cargo activo de Cuenta Corriente.",
     });
   } catch (e) {
     console.error("getComprobanteEgresoDetalle:", e);

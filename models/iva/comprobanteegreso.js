@@ -31,10 +31,51 @@ const ComprobanteEgreso = sequelize.define("ComprobanteEgreso", {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
+
   iva21: {
     type: DataTypes.DECIMAL(12, 2),
     allowNull: true,
   },
+
+  // IVA correspondiente a una alícuota distinta
+  // de las estándar 10,5% y 21%.
+  iva_especial: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
+  // Alícuota correspondiente a iva_especial.
+  // Ej.: 27.00, 5.00, 2.50, etc.
+  iva_especial_porcentaje: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+  },
+
+  percepcion_iva: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
+  percepcion_ganancias: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
+  percepcion_iibb: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
+  impuestos_internos: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
+  exento_no_gravado: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+  },
+
   letra: {
     type: DataTypes.STRING,
     allowNull: true,

@@ -12,6 +12,8 @@ import ComprobanteEgreso from "../../models/iva/comprobanteegreso.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import FormaPago from "../../models/comun/formapagotesoreria.js";
 
+import FormaPagoTesoreria from "../../models/comun/formapagotesoreria.js";
+
 const N = (n) => Number(n) || 0;
 const toNum = (n) => (n == null || n === "" ? null : Number(n));
 const EPS = 0.009;
@@ -421,14 +423,56 @@ export async function eliminarEcheqEmitido(req, res) {
     const comp = await ComprobanteEgreso.findByPk(compId, { transaction: trx });
     if (!comp) return;
 
-    const totalComp = Number(comp.total || 0);
+    const totalComp =
+      Number(comp.montoreal || 0) > 0
+        ? Number(comp.montoreal)
+        : Number(comp.total || 0);
 
     // Pagos directos remanentes (caja, banco, tarjeta, eCheq)
     const [cajaComp, bancoComp, tarjetaComp, echeqComp] = await Promise.all([
-      MovimientoCajaTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
-      MovimientoBancoTesoreria.findAll({ where: { comprobanteegreso_id: compId }, transaction: trx }),
-      PagoTarjetaCredito?.findAll?.({ where: { comprobanteegreso_id: compId, anulado: { [Op.not]: true } }, transaction: trx }) || [],
-      EcheqEmitido?.findAll?.({ where: { comprobanteegreso_id: compId, anulado: { [Op.not]: true } }, transaction: trx }) || [],
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        transaction: trx,
+      }),
+
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        transaction: trx,
+      }),
+
+      PagoTarjetaCredito?.findAll?.({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        transaction: trx,
+      }) || [],
+
+      EcheqEmitido?.findAll?.({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        transaction: trx,
+      }) || [],
     ]);
 
     const pagosDirectos =
@@ -439,7 +483,14 @@ export async function eliminarEcheqEmitido(req, res) {
 
     // Abonos aplicados remanentes
     const cargosComp = await MovimientoCtaCteProveedor.findAll({
-      where: { comprobanteegreso_id: compId, tipo: "cargo", anulado: { [Op.not]: true } },
+      where: {
+        comprobanteegreso_id: compId,
+        tipo: "cargo",
+        [Op.or]: [
+          { anulado: false },
+          { anulado: null },
+        ],
+      },
       attributes: ["id"],
       transaction: trx,
     });
@@ -468,6 +519,227 @@ export async function eliminarEcheqEmitido(req, res) {
 
     await comp.update(patch, { transaction: trx });
     console.log("[recalcComprobanteEgreso/echeq]", { compId, totalComp, pagosDirectos, aplicadoAbonos, saldo, estadoComp });
+  }
+
+  async function actualizarFormaPagoActualComprobante(compId, trx) {
+
+    const comp = await ComprobanteEgreso.findByPk(
+      compId,
+      {
+        transaction: trx,
+        lock: trx.LOCK.UPDATE,
+      }
+    );
+
+    if (!comp) return;
+
+    const [
+      movimientosCaja,
+      movimientosBanco,
+      echeqs,
+      tarjetas,
+      cargosCtaCte,
+    ] = await Promise.all([
+
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        attributes: ["id", "formapago_id"],
+        transaction: trx,
+      }),
+
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        attributes: ["id", "formapago_id"],
+        transaction: trx,
+      }),
+
+      EcheqEmitido.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          anulado: false,
+          estado: {
+            [Op.notIn]: [
+              "anulado",
+              "rechazado",
+            ],
+          },
+        },
+        attributes: ["id"],
+        transaction: trx,
+      }),
+
+      PagoTarjetaCredito.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          anulado: false,
+          estado: {
+            [Op.notIn]: [
+              "rechazado",
+            ],
+          },
+        },
+        attributes: ["id"],
+        transaction: trx,
+      }),
+
+      MovimientoCtaCteProveedor.findAll({
+        where: {
+          comprobanteegreso_id: compId,
+          tipo: "cargo",
+          [Op.or]: [
+            { anulado: false },
+            { anulado: null },
+          ],
+        },
+        attributes: ["id"],
+        transaction: trx,
+      }),
+    ]);
+
+    const formasCatalogo =
+      await FormaPagoTesoreria.findAll({
+        transaction: trx,
+      });
+
+    const buscarFormaPorDescripcion = (descripcion) => {
+
+      const buscada =
+        String(descripcion || "")
+          .trim()
+          .toUpperCase();
+
+      return formasCatalogo.find(
+        fp =>
+          String(fp.descripcion || "")
+            .trim()
+            .toUpperCase() === buscada
+      ) || null;
+    };
+
+    const formaEcheq =
+      buscarFormaPorDescripcion("ECHEQ");
+
+    const formaTarjetaCredito =
+      buscarFormaPorDescripcion(
+        "TARJETA CREDITO"
+      );
+
+    const formaCtaCte =
+      buscarFormaPorDescripcion(
+        "CTA CTE"
+      );
+
+    const formasPagoActuales =
+      new Set();
+
+    const agregarFormaRegistrada = (registros) => {
+
+      for (const registro of registros || []) {
+
+        const formaPagoId =
+          Number(
+            registro.formapago_id || 0
+          );
+
+        if (formaPagoId) {
+          formasPagoActuales.add(
+            formaPagoId
+          );
+        }
+      }
+    };
+
+    agregarFormaRegistrada(
+      movimientosCaja
+    );
+
+    agregarFormaRegistrada(
+      movimientosBanco
+    );
+
+    if (echeqs.length > 0) {
+
+      if (!formaEcheq) {
+        throw new Error(
+          'No se encontró la forma de pago "ECHEQ".'
+        );
+      }
+
+      formasPagoActuales.add(
+        Number(formaEcheq.id)
+      );
+    }
+
+    if (tarjetas.length > 0) {
+
+      if (!formaTarjetaCredito) {
+        throw new Error(
+          'No se encontró la forma de pago "TARJETA CREDITO".'
+        );
+      }
+
+      formasPagoActuales.add(
+        Number(formaTarjetaCredito.id)
+      );
+    }
+
+    if (cargosCtaCte.length > 0) {
+
+      if (!formaCtaCte) {
+        throw new Error(
+          'No se encontró la forma de pago "CTA CTE".'
+        );
+      }
+
+      formasPagoActuales.add(
+        Number(formaCtaCte.id)
+      );
+    }
+
+    const idsFormas =
+      [...formasPagoActuales];
+
+    const nuevaFormaPagoId =
+      idsFormas.length === 1
+        ? idsFormas[0]
+        : null;
+
+    console.log(
+      "💳 Actualizando forma de pago actual del comprobante:",
+      {
+        comprobante_id: compId,
+        movimientos_caja: movimientosCaja.length,
+        movimientos_banco: movimientosBanco.length,
+        echeqs: echeqs.length,
+        tarjetas: tarjetas.length,
+        cargos_ctacte: cargosCtaCte.length,
+        formas_detectadas: idsFormas,
+        formapago_anterior: comp.formapago_id,
+        formapago_nuevo: nuevaFormaPagoId,
+      }
+    );
+
+    await comp.update(
+      {
+        formapago_id:
+          nuevaFormaPagoId,
+      },
+      {
+        transaction: trx,
+      }
+    );
   }
 
   try {
@@ -618,6 +890,14 @@ export async function eliminarEcheqEmitido(req, res) {
           break;
         }
       }
+      //
+      // Si encontramos abonos vinculados por la OP,
+      // la reversión ya fue absorbida por esos abonos.
+      //
+      // No debemos crear además un nuevo CARGO por
+      // el importe completo del eCheq.
+      //
+      debeCrearCargo = false;
       // Observación: si quedara 'restante' > 0, lo absorberá el CARGO condicional si corresponde.
     }
 
@@ -695,90 +975,77 @@ export async function eliminarEcheqEmitido(req, res) {
           comp.fechacomprobante ||
           new Date().toISOString().slice(0, 10);
 
-        /*
-         * Primero verificamos si el comprobante ya posee
-         * un CARGO activo en cuenta corriente.
-         *
-         * No debemos generar dos deudas para la misma factura.
-         */
-        const cargoExistente =
-          await MovimientoCtaCteProveedor.findOne({
-            where: {
-              comprobanteegreso_id: comp.id,
-              tipo: "cargo",
-              anulado: { [Op.not]: true },
-            },
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
+        const importeCargo =
+          Number(ech.importe || 0);
 
-        if (!cargoExistente) {
+        if (importeCargo > EPS) {
 
-          const importeCargo =
-            Number(ech.importe || 0);
-
-          if (importeCargo > EPS) {
-
-            const nuevoCargo =
-              await MovimientoCtaCteProveedor.create(
-                {
-                  proveedor_id:
-                    comp.proveedor_id ||
-                    ech.proveedor_id ||
-                    null,
-
-                  empresa_id:
-                    comp.empresa_id ||
-                    ech.empresa_id ||
-                    null,
-
-                  fecha: fechaCtaCte,
-                  fecha_pago: null,
-
-                  descripcion: descCtaCte,
-
-                  tipo: "cargo",
-
-                  importe: importeCargo,
-
-                  origen_tipo: "ComprobanteEgreso",
-                  origen_id: comp.id,
-
-                  comprobanteegreso_id: comp.id,
-
-                  // IMPORTANTE:
-                  // debe quedar como deuda ACTIVA
-                  anulado: false,
-
-                  ordenpago_id: null,
-
-                  formapago_id:
-                    comp.formapago_id ||
-                    null,
-                },
-                {
-                  transaction: t,
-                }
-              );
-
-            console.log(
-              "[echeq:delete] CARGO activo creado en CtaCte",
+          const nuevoCargo =
+            await MovimientoCtaCteProveedor.create(
               {
-                cargo_id: nuevoCargo.id,
-                compId: comp.id,
-                importe: importeCargo,
+                proveedor_id:
+                  comp.proveedor_id ||
+                  ech.proveedor_id ||
+                  null,
+
+                empresa_id:
+                  comp.empresa_id ||
+                  ech.empresa_id ||
+                  null,
+
+                fecha:
+                  fechaCtaCte,
+
+                fecha_pago:
+                  null,
+
+                descripcion:
+                  descCtaCte,
+
+                tipo:
+                  "cargo",
+
+                /*
+                 * Restauramos exactamente la deuda correspondiente
+                 * al eCheq que estamos eliminando.
+                 */
+                importe:
+                  importeCargo,
+
+                origen_tipo:
+                  "ComprobanteEgreso",
+
+                origen_id:
+                  comp.id,
+
+                comprobanteegreso_id:
+                  comp.id,
+
+                anulado:
+                  false,
+
+                ordenpago_id:
+                  null,
+
+                formapago_id:
+                  null,
+              },
+              {
+                transaction: t,
               }
             );
-          }
-
-        } else {
 
           console.log(
-            "[echeq:delete] CARGO activo ya existente; no se duplica",
+            "[echeq:delete] CARGO activo creado en CtaCte por reversión de eCheq",
             {
-              cargo_id: cargoExistente.id,
-              compId: comp.id,
-              importe: cargoExistente.importe,
+              cargo_id:
+                nuevoCargo.id,
+
+              compId:
+                comp.id,
+
+              importe:
+                importeCargo,
             }
           );
         }
@@ -787,10 +1054,28 @@ export async function eliminarEcheqEmitido(req, res) {
       }
     }
 
-    // ===== 5) Recalcular comprobantes afectados (ya sin el eCheq y, si correspondía, con el cargo creado)
-    console.log("[echeq:delete] compIdsAfectados:", Array.from(compIdsAfectados));
-    for (const compId of compIdsAfectados) {
-      await recalcComprobanteEgreso(compId, t);
+    // ===== 5) Recalcular comprobantes afectados
+    // Ya no existe el eCheq y ya fueron reconstruidos
+    // los efectos de Cuenta Corriente.
+    console.log(
+      "[echeq:delete] compIdsAfectados:",
+      Array.from(compIdsAfectados)
+    );
+
+    for (
+      const compId
+      of compIdsAfectados
+    ) {
+
+      await recalcComprobanteEgreso(
+        compId,
+        t
+      );
+
+      await actualizarFormaPagoActualComprobante(
+        compId,
+        t
+      );
     }
 
     await safeCommit();
