@@ -206,7 +206,8 @@ import motorConceptoEntidadAsignacionRoutes
 import inteligenciaRoutes
   from "./inteligencia/inteligenciaRoutes.js";
 
-
+import ajusteComprobanteEgresoRouter
+  from "./tesoreria/ajusteComprobanteEgresoRoute.js";
 
 const router = Router();
 
@@ -291,6 +292,8 @@ router.use(
   "/inteligencia",
   inteligenciaRoutes
 );
+
+router.use(ajusteComprobanteEgresoRouter);
 
 
 // router.use(

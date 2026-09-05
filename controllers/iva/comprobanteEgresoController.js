@@ -13,6 +13,8 @@ import GastoEstimadoInstancia from "../../models/tesoreria/gastoestimadoinstanci
 import GastoEstimadoPago from "../../models/tesoreria/gastoestimadopago.js";
 import { Op, } from "sequelize";
 import Hacienda from "../../models/gmedia/hacienda.js";
+import AjusteComprobanteEgreso
+  from "../../models/tesoreria/ajusteComprobanteEgreso.js";
 
 function validarDatosFiscalesComprobante(data = {}) {
 
@@ -224,6 +226,16 @@ export const eliminarComprobanteEgreso = async (req, res) => {
       { comprobante_id: null },
       { where: { comprobante_id: compId }, transaction: t }
     );
+
+    // 2.2) Eliminar ajustes asociados al comprobante
+    await AjusteComprobanteEgreso.destroy({
+      where: {
+        comprobanteegreso_id:
+          compId,
+      },
+
+      transaction: t,
+    });
 
     // 3) Eliminar cargos de CtaCte del comprobante
     const cargos = await MovimientoCtaCteProveedor.findAll({
@@ -476,47 +488,333 @@ export const emitirComprobanteEgreso = async (req, res) => {
     const totalBase = totalLCD > 0 ? totalLCD : totalComp;
     if (totalBase <= 0) throw new Error("Total del comprobante inválido");
 
-    const EPS = 0.009;
-    const normaliza = (n) => Number(n) || 0;
-    const medioDe = (p) => String(p.medio || "").toLowerCase();
+    // const EPS = 0.009;
+    // const normaliza = (n) => Number(n) || 0;
+    // const medioDe = (p) => String(p.medio || "").toLowerCase();
 
-    // Consideramos "efectivos" todos los desembolsos actuales (no ctacte).
+    // // Consideramos "efectivos" todos los desembolsos actuales (no ctacte).
+    // const esEfectivoAhora = (m) => {
+    //   const v = String(m || "").toLowerCase();
+    //   return ["caja", "transferencia", "echeq", "tarjeta", "echeq"].includes(v);
+    // };
+
+    // const sumaTotalImportes = pagos.reduce((acc, p) => acc + normaliza(p.monto), 0);
+    // const sumaPagosEfectivosDeclarados = pagos
+    //   .filter((p) => esEfectivoAhora(medioDe(p)))
+    //   .reduce((acc, p) => acc + normaliza(p.monto), 0);
+
+    // // if (sumaTotalImportes - totalComp > EPS) {
+    // if (sumaTotalImportes - totalBase > EPS) {
+    //   throw new Error("La suma de importes (incluyendo cuenta corriente) supera el total del comprobante");
+    // }
+    // // if (sumaPagosEfectivosDeclarados - totalComp > EPS) {
+    // if (sumaPagosEfectivosDeclarados - totalBase > EPS) {
+    //   throw new Error("La suma de pagos efectivos supera el total del comprobante");
+    // }
+
+    const EPS = 0.009;
+
+    const normaliza = (n) =>
+      Number(n) || 0;
+
+    const medioDe = (p) =>
+      String(p.medio || "")
+        .trim()
+        .toLowerCase();
+
+
+    /*
+     * ============================================================
+     * AJUSTES DEL COMPROBANTE
+     * ============================================================
+     *
+     * Visualmente llegan dentro de pagos con:
+     *
+     * medio: "ajuste"
+     *
+     * pero NO son desembolsos.
+     *
+     * aumenta:
+     *   incrementa la obligación.
+     *
+     * disminuye:
+     *   reduce la obligación.
+     * ============================================================
+     */
+
+    const pagosAjuste =
+      pagos.filter(
+        p => medioDe(p) === "ajuste"
+      );
+
+    const pagosFinancieros =
+      pagos.filter(
+        p => medioDe(p) !== "ajuste"
+      );
+
+
+    let totalAjustesAumentan = 0;
+    let totalAjustesDisminuyen = 0;
+
+
+    for (const p of pagosAjuste) {
+
+      const tipoAjuste =
+        String(
+          p.tipo_ajuste ||
+          p.tipo ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (
+        ![
+          "aumenta",
+          "disminuye",
+        ].includes(tipoAjuste)
+      ) {
+
+        throw new Error(
+          'El ajuste debe indicar tipo "aumenta" o "disminuye".'
+        );
+      }
+
+
+      const importeAjuste =
+        normaliza(
+          p.monto ??
+          p.importe
+        );
+
+
+      if (!(importeAjuste > 0)) {
+
+        throw new Error(
+          "El importe del ajuste debe ser mayor a cero."
+        );
+      }
+
+
+      if (
+        !String(
+          p.concepto || ""
+        ).trim()
+      ) {
+
+        throw new Error(
+          "El ajuste debe indicar un concepto."
+        );
+      }
+
+
+      if (
+        tipoAjuste === "aumenta"
+      ) {
+
+        totalAjustesAumentan +=
+          importeAjuste;
+
+      } else {
+
+        totalAjustesDisminuyen +=
+          importeAjuste;
+      }
+    }
+
+
+    const totalFinanciero =
+      Number(
+        (
+          totalBase +
+          totalAjustesAumentan -
+          totalAjustesDisminuyen
+        ).toFixed(2)
+      );
+
+
+    if (
+      totalFinanciero < -EPS
+    ) {
+
+      throw new Error(
+        "Los ajustes disminuyen el comprobante por encima de su total."
+      );
+    }
+
+
+    /*
+     * Un resultado dentro de la tolerancia
+     * se considera cero.
+     */
+
+    const totalFinancieroFinal =
+      Math.abs(totalFinanciero) <= EPS
+        ? 0
+        : totalFinanciero;
+
+
+    /*
+     * Solamente estos medios representan
+     * desembolsos reales inmediatos.
+     */
+
     const esEfectivoAhora = (m) => {
-      const v = String(m || "").toLowerCase();
-      return ["caja", "transferencia", "echeq", "tarjeta", "echeq"].includes(v);
+
+      const v =
+        String(m || "")
+          .trim()
+          .toLowerCase();
+
+      return [
+        "caja",
+        "transferencia",
+        "banco",
+        "echeq",
+        "tarjeta",
+      ].includes(v);
     };
 
-    const sumaTotalImportes = pagos.reduce((acc, p) => acc + normaliza(p.monto), 0);
-    const sumaPagosEfectivosDeclarados = pagos
-      .filter((p) => esEfectivoAhora(medioDe(p)))
-      .reduce((acc, p) => acc + normaliza(p.monto), 0);
 
-    // if (sumaTotalImportes - totalComp > EPS) {
-    if (sumaTotalImportes - totalBase > EPS) {
-      throw new Error("La suma de importes (incluyendo cuenta corriente) supera el total del comprobante");
+    const sumaTotalPagos =
+      pagosFinancieros.reduce(
+        (acc, p) =>
+          acc +
+          normaliza(p.monto),
+        0
+      );
+
+
+    const sumaPagosEfectivosDeclarados =
+      pagosFinancieros
+        .filter(
+          p =>
+            esEfectivoAhora(
+              medioDe(p)
+            )
+        )
+        .reduce(
+          (acc, p) =>
+            acc +
+            normaliza(p.monto),
+          0
+        );
+
+
+    /*
+     * Las formas de pago reales deben cubrir
+     * exactamente el total financiero resultante.
+     */
+
+    if (
+      sumaTotalPagos -
+      totalFinancieroFinal >
+      EPS
+    ) {
+
+      throw new Error(
+        "La suma de las formas de pago supera el total financiero del comprobante."
+      );
     }
-    // if (sumaPagosEfectivosDeclarados - totalComp > EPS) {
-    if (sumaPagosEfectivosDeclarados - totalBase > EPS) {
-      throw new Error("La suma de pagos efectivos supera el total del comprobante");
+
+
+    if (
+      totalFinancieroFinal -
+      sumaTotalPagos >
+      EPS
+    ) {
+
+      throw new Error(
+        "La suma de las formas de pago no alcanza el total financiero del comprobante."
+      );
+    }
+
+
+    if (
+      sumaPagosEfectivosDeclarados -
+      totalFinancieroFinal >
+      EPS
+    ) {
+
+      throw new Error(
+        "La suma de pagos efectivos supera el total financiero del comprobante."
+      );
     }
 
     // Header: seteo de formapago_id e imputación
-    const formapagoHeader =
-      typeof comprobante.formapago_id === "number"
-        ? comprobante.formapago_id
-        : (pagos.length === 1 ? Number(pagos[0].formapago_id || 0) || null : null);
+    // const formapagoHeader =
+    //   typeof comprobante.formapago_id === "number"
+    //     ? comprobante.formapago_id
+    //     : (pagos.length === 1 ? Number(pagos[0].formapago_id || 0) || null : null);
 
-    let imputacionHeader = comprobante.imputacioncontable_id ?? null;
+    const formapagoHeader =
+      pagosFinancieros.length === 1
+        ? Number(
+          pagosFinancieros[0]
+            .formapago_id || 0
+        ) || null
+        : null;
+
+
+    let imputacionHeader =
+      comprobante.imputacioncontable_id ??
+      null;
+
+
     if (!imputacionHeader) {
-      for (const p of pagos) {
-        if (p.imputacioncontable_id) { imputacionHeader = p.imputacioncontable_id; break; }
-        if (p.categoriaegreso_id) {
-          const cat = await CategoriaEgreso.findByPk(p.categoriaegreso_id, { transaction: t });
-          if (cat?.imputacioncontable_id) { imputacionHeader = cat.imputacioncontable_id; break; }
+
+      for (
+        const p
+        of pagosFinancieros
+      ) {
+
+        if (
+          p.imputacioncontable_id
+        ) {
+
+          imputacionHeader =
+            p.imputacioncontable_id;
+
+          break;
+        }
+
+
+        if (
+          p.categoriaegreso_id
+        ) {
+
+          const cat =
+            await CategoriaEgreso.findByPk(
+              p.categoriaegreso_id,
+              {
+                transaction: t,
+              }
+            );
+
+
+          if (
+            cat?.imputacioncontable_id
+          ) {
+
+            imputacionHeader =
+              cat.imputacioncontable_id;
+
+            break;
+          }
         }
       }
     }
-    if (!imputacionHeader) throw new Error("imputacioncontable_id requerido en el comprobante");
+
+
+    if (!imputacionHeader) {
+
+      throw new Error(
+        "imputacioncontable_id requerido en el comprobante"
+      );
+    }
+
+    // if (!imputacionHeader) throw new Error("imputacioncontable_id requerido en el comprobante");
 
     // 1) Crear Comprobante
     const comp = await ComprobanteEgreso.create(
@@ -525,7 +823,8 @@ export const emitirComprobanteEgreso = async (req, res) => {
         empresa_id,
         estadopago: "impaga",
         // saldo: totalComp,
-        saldo: totalBase,
+        // saldo: totalBase,
+        saldo: totalFinancieroFinal,
         formapago_id: formapagoHeader,
         imputacioncontable_id: imputacionHeader,
       },
@@ -541,7 +840,8 @@ export const emitirComprobanteEgreso = async (req, res) => {
         proveedor_id: comprobante.proveedor_id || null,
         fecha: fechaOrden,
         // total: totalComp,
-        total: totalBase,
+        // total: totalBase,
+        total: totalFinancieroFinal,
         estado: "emitida",
         numero: null,
         observaciones: comprobante.observaciones || null,
@@ -551,6 +851,95 @@ export const emitirComprobanteEgreso = async (req, res) => {
 
     // Setear orden en el comprobante
     await comp.update({ ordenpago_id: orden.id }, { transaction: t });
+
+    /*
+ * ============================================================
+ * CREAR AJUSTES
+ * ============================================================
+ */
+
+    const ajustesCreados = [];
+
+
+    for (const p of pagosAjuste) {
+
+      const tipoAjuste =
+        String(
+          p.tipo_ajuste ||
+          p.tipo
+        )
+          .trim()
+          .toLowerCase();
+
+
+      const importeAjuste =
+        normaliza(
+          p.monto ??
+          p.importe
+        );
+
+
+      const ajuste =
+        await AjusteComprobanteEgreso.create(
+          {
+            comprobanteegreso_id:
+              comp.id,
+
+            empresa_id:
+              empresa_id,
+
+            proveedor_id:
+              comprobante.proveedor_id ||
+              null,
+
+            fecha:
+              p.fecha ||
+              comp.fechacomprobante ||
+              new Date()
+                .toISOString()
+                .slice(0, 10),
+
+            tipo:
+              tipoAjuste,
+
+            concepto:
+              String(
+                p.concepto
+              ).trim(),
+
+            importe:
+              importeAjuste,
+
+            detalle:
+              p.detalle ||
+              null,
+
+            observaciones:
+              p.observaciones ||
+              null,
+
+            referencia_tipo:
+              p.referencia_tipo ||
+              null,
+
+            referencia_id:
+              p.referencia_id ||
+              null,
+
+            anulado:
+              false,
+          },
+
+          {
+            transaction: t,
+          }
+        );
+
+
+      ajustesCreados.push(
+        ajuste
+      );
+    }
 
     // === NUEVO: si vino hacienda_id, vincularla al comprobante creado ===
     if (comprobante.hacienda_id) {
@@ -608,7 +997,8 @@ export const emitirComprobanteEgreso = async (req, res) => {
     // 3) Aplicar pagos
     let sumaEfectivosReal = 0;
 
-    for (const p of pagos) {
+    // for (const p of pagos) {
+    for (const p of pagosFinancieros) {
       const medio = medioDe(p);
       const monto = normaliza(p.monto);
       const fechaPagoEntrada = p.fecha || comp.fechapago || comp.fechacomprobante;
@@ -1031,7 +1421,17 @@ export const emitirComprobanteEgreso = async (req, res) => {
 
     // 4) Estado final del comprobante/orden usando la suma REAL de desembolsos
     // const saldo = Math.max(0, totalComp - sumaEfectivosReal);
-    const saldo = Math.max(0, totalBase - sumaEfectivosReal);
+    // const saldo = Math.max(0, totalBase - sumaEfectivosReal);
+    const saldo =
+      Math.max(
+        0,
+        Number(
+          (
+            totalFinancieroFinal -
+            sumaEfectivosReal
+          ).toFixed(2)
+        )
+      );
     let estadoComp = "impaga";
     if (Math.abs(saldo) <= EPS) estadoComp = "pagada";
     else if (sumaEfectivosReal > EPS) estadoComp = "parcial";
@@ -1045,7 +1445,13 @@ export const emitirComprobanteEgreso = async (req, res) => {
     await orden.update({ estado: estadoOrden }, { transaction: t });
 
     await t.commit();
-    return res.status(201).json({ ok: true, comprobante: comp, ordenpago: orden });
+    // return res.status(201).json({ ok: true, comprobante: comp, ordenpago: orden });
+    return res.status(201).json({
+      ok: true,
+      comprobante: comp,
+      ordenpago: orden,
+      ajustes: ajustesCreados,
+    });
   } catch (error) {
     await t.rollback();
     console.error("❌ emitirComprobanteEgreso:", error);
@@ -1082,6 +1488,31 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
         );
     }
 
+    /*
+     * ============================================================
+     * AJUSTES DEL COMPROBANTE
+     * ============================================================
+     *
+     * Los ajustes no forman parte de "pagos".
+     * Se consultan directamente por comprobanteegreso_id.
+     * ============================================================
+     */
+
+    const ajustes =
+      await AjusteComprobanteEgreso.findAll({
+        where: {
+          comprobanteegreso_id:
+            comp.id,
+
+          anulado:
+            false,
+        },
+
+        order: [
+          ["fecha", "ASC"],
+          ["id", "ASC"],
+        ],
+      });
 
     /*
  * ============================================================
@@ -1185,6 +1616,8 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
         orden,
 
       pagos,
+
+      ajustes,
 
       pagos_programados:
         pagosProgramados,

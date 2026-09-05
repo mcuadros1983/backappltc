@@ -3,7 +3,6 @@ import { Op } from "sequelize";
 import ComprobanteEgreso
   from "../../../models/iva/comprobanteegreso.js";
 
-
 import MovimientoCajaTesoreria
   from "../../../models/tesoreria/movimientocajatesoreria.js";
 
@@ -22,6 +21,9 @@ import PagoTarjetaCredito
 import EcheqEmitido
   from "../../../models/tesoreria/pagoecheq.js";
 
+import AjusteComprobanteEgreso
+  from "../../../models/tesoreria/ajusteComprobanteEgreso.js";
+
 
 const EPS = 0.0001;
 
@@ -31,13 +33,23 @@ const EPS = 0.0001;
  * tomando únicamente pagos REALES.
  *
  * Un PagoProgramadoTesoreria pendiente NO entra aquí.
+ *
+ * El total financiero se calcula como:
+ *
+ * totalBase
+ * + ajustes "aumenta"
+ * - ajustes "disminuye"
+ *
+ * Los ajustes NO son pagos reales.
  */
 export async function recalcularComprobanteEgreso(
   compId,
   transaction
 ) {
 
-  const id = Number(compId || 0);
+  const id =
+    Number(compId || 0);
+
 
   if (!id) {
     return null;
@@ -59,11 +71,14 @@ export async function recalcularComprobanteEgreso(
 
 
   /*
-   * IMPORTANTE:
+   * =========================================================
+   * TOTAL BASE
+   * =========================================================
    *
    * emitirComprobanteEgreso utiliza montoreal como base
    * cuando existe. Mantenemos exactamente ese criterio.
    */
+
   const total =
     Number(comp.total || 0);
 
@@ -76,6 +91,111 @@ export async function recalcularComprobanteEgreso(
       : total;
 
 
+  /*
+   * =========================================================
+   * AJUSTES ACTIVOS
+   * =========================================================
+   */
+
+  const ajustes =
+    await AjusteComprobanteEgreso.findAll({
+      where: {
+        comprobanteegreso_id:
+          id,
+
+        anulado: {
+          [Op.not]: true,
+        },
+      },
+
+      attributes: [
+        "id",
+        "tipo",
+        "importe",
+      ],
+
+      transaction,
+    });
+
+
+  let ajustesAumentan = 0;
+  let ajustesDisminuyen = 0;
+
+
+  for (const ajuste of ajustes) {
+
+    const tipo =
+      String(
+        ajuste.tipo || ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    const importe =
+      Number(
+        ajuste.importe || 0
+      );
+
+
+    if (
+      tipo === "aumenta"
+    ) {
+
+      ajustesAumentan +=
+        importe;
+
+    } else if (
+      tipo === "disminuye"
+    ) {
+
+      ajustesDisminuyen +=
+        importe;
+    }
+  }
+
+
+  /*
+   * =========================================================
+   * TOTAL FINANCIERO
+   * =========================================================
+   */
+
+  let totalFinanciero =
+    Number(
+      (
+        totalBase +
+        ajustesAumentan -
+        ajustesDisminuyen
+      ).toFixed(2)
+    );
+
+
+  /*
+   * Protección ante pequeñas diferencias
+   * decimales.
+   */
+
+  if (
+    Math.abs(totalFinanciero) <= EPS
+  ) {
+
+    totalFinanciero = 0;
+  }
+
+
+  /*
+   * Un ajuste nunca debería dejar una
+   * obligación negativa.
+   */
+
+  totalFinanciero =
+    Math.max(
+      0,
+      totalFinanciero
+    );
+
+
   // =========================================================
   // PAGOS REALES DIRECTOS
   // =========================================================
@@ -85,66 +205,85 @@ export async function recalcularComprobanteEgreso(
     movimientosBanco,
     pagosTarjeta,
     echeqs,
-  ] = await Promise.all([
+  ] =
+    await Promise.all([
 
-    MovimientoCajaTesoreria.findAll({
-      where: {
-        comprobanteegreso_id: id,
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          comprobanteegreso_id:
+            id,
 
-        anulado: {
-          [Op.not]: true,
+          anulado: {
+            [Op.not]: true,
+          },
         },
-      },
 
-      transaction,
-    }),
+        transaction,
+      }),
 
 
-    MovimientoBancoTesoreria.findAll({
-      where: {
-        comprobanteegreso_id: id,
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id:
+            id,
 
-        anulado: {
-          [Op.not]: true,
+          anulado: {
+            [Op.not]: true,
+          },
         },
-      },
 
-      transaction,
-    }),
+        transaction,
+      }),
 
 
-    PagoTarjetaCredito.findAll({
-      where: {
-        comprobanteegreso_id: id,
+      PagoTarjetaCredito.findAll({
+        where: {
+          comprobanteegreso_id:
+            id,
 
-        anulado: {
-          [Op.not]: true,
+          anulado: {
+            [Op.not]: true,
+          },
+
+          estado: {
+            [Op.notIn]: [
+              "rechazado",
+            ],
+          },
         },
-      },
 
-      transaction,
-    }),
+        transaction,
+      }),
 
 
-    EcheqEmitido.findAll({
-      where: {
-        comprobanteegreso_id: id,
+      EcheqEmitido.findAll({
+        where: {
+          comprobanteegreso_id:
+            id,
 
-        anulado: {
-          [Op.not]: true,
+          anulado: {
+            [Op.not]: true,
+          },
+
+          estado: {
+            [Op.notIn]: [
+              "anulado",
+              "rechazado",
+            ],
+          },
         },
-      },
 
-      transaction,
-    }),
-  ]);
+        transaction,
+      }),
+    ]);
 
 
   const pagosDirectos =
 
     movimientosCaja.reduce(
       (acc, r) =>
-        acc + Number(r.monto || 0),
+        acc +
+        Number(r.monto || 0),
       0
     )
 
@@ -152,7 +291,8 @@ export async function recalcularComprobanteEgreso(
 
     movimientosBanco.reduce(
       (acc, r) =>
-        acc + Number(r.monto || 0),
+        acc +
+        Number(r.monto || 0),
       0
     )
 
@@ -160,7 +300,8 @@ export async function recalcularComprobanteEgreso(
 
     pagosTarjeta.reduce(
       (acc, r) =>
-        acc + Number(r.importe || 0),
+        acc +
+        Number(r.importe || 0),
       0
     )
 
@@ -168,7 +309,8 @@ export async function recalcularComprobanteEgreso(
 
     echeqs.reduce(
       (acc, r) =>
-        acc + Number(r.importe || 0),
+        acc +
+        Number(r.importe || 0),
       0
     );
 
@@ -180,7 +322,8 @@ export async function recalcularComprobanteEgreso(
   const cargos =
     await MovimientoCtaCteProveedor.findAll({
       where: {
-        comprobanteegreso_id: id,
+        comprobanteegreso_id:
+          id,
 
         tipo:
           "cargo",
@@ -200,20 +343,23 @@ export async function recalcularComprobanteEgreso(
 
   const cargoIds =
     cargos.map(
-      (c) => c.id
+      c => c.id
     );
 
 
   let aplicadoAbonos = 0;
 
 
-  if (cargoIds.length > 0) {
+  if (
+    cargoIds.length > 0
+  ) {
 
     const aplicaciones =
       await MovCtaCteProvAplic.findAll({
         where: {
           cargo_id: {
-            [Op.in]: cargoIds,
+            [Op.in]:
+              cargoIds,
           },
         },
 
@@ -229,7 +375,9 @@ export async function recalcularComprobanteEgreso(
       aplicaciones.reduce(
         (acc, a) =>
           acc +
-          Number(a.importe || 0),
+          Number(
+            a.importe || 0
+          ),
         0
       );
   }
@@ -240,16 +388,27 @@ export async function recalcularComprobanteEgreso(
   // =========================================================
 
   const pagadoReal =
-    pagosDirectos +
-    aplicadoAbonos;
+    Number(
+      (
+        pagosDirectos +
+        aplicadoAbonos
+      ).toFixed(2)
+    );
 
+
+  /*
+   * IMPORTANTE:
+   *
+   * El saldo ahora se calcula contra
+   * TOTAL FINANCIERO, no contra totalBase.
+   */
 
   const saldo =
     Math.max(
       0,
       Number(
         (
-          totalBase -
+          totalFinanciero -
           pagadoReal
         ).toFixed(2)
       )
@@ -294,9 +453,10 @@ export async function recalcularComprobanteEgreso(
 
 
   /*
-   * Solamente actualizamos "estado" si realmente
-   * forma parte del modelo.
+   * Solamente actualizamos "estado"
+   * si realmente forma parte del modelo.
    */
+
   if (
     Object.prototype.hasOwnProperty.call(
       comp.dataValues,
@@ -318,10 +478,26 @@ export async function recalcularComprobanteEgreso(
 
 
   return {
+
     comprobante:
       comp,
 
+    /*
+     * Total fiscal/base original.
+     */
     totalBase,
+
+    /*
+     * Información de ajustes.
+     */
+    ajustesAumentan,
+
+    ajustesDisminuyen,
+
+    /*
+     * Obligación real luego de ajustes.
+     */
+    totalFinanciero,
 
     pagosDirectos,
 

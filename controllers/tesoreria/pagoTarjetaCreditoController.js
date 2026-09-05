@@ -12,7 +12,7 @@ import ComprobanteEgreso from "../../models/iva/comprobanteegreso.js";
 import MovimientoCajaTesoreria from "../../models/tesoreria/movimientocajatesoreria.js";
 import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancotesoreria.js";
 import FormaPago from "../../models/comun/formapagotesoreria.js"
-
+import FormaPagoTesoreria from "../../models/comun/formapagotesoreria.js";
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 const toNum = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
 
@@ -603,7 +603,7 @@ export async function eliminarPagoTarjeta(req, res) {
       ]);
 
       const formasCatalogo =
-        await FormaPagoTesoreria.findAll({
+        await FormaPagoTesoreria.findAll({ 
           transaction: trx,
         });
 
