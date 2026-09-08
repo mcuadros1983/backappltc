@@ -15,6 +15,9 @@ import motorConceptoVencimientosJob
 
 import inteligenciaSnapshotDiarioJob
     from "./jobs/inteligenciaSnapshotDiarioJob.js";
+
+import libroIVAMensualJob
+    from "./jobs/libroIVAMensualJob.js";
 /*=========================================================
   MAPA DE JOBS
 =========================================================*/
@@ -27,7 +30,9 @@ const handlers = {
 
     inteligenciaClimaDiarioJob,
 
-    inteligenciaSnapshotDiarioJob
+    inteligenciaSnapshotDiarioJob,
+
+    libroIVAMensualJob
 
 };
 

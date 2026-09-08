@@ -20,8 +20,25 @@ const LibroIVA = sequelize.define("LibroIVA", {
     allowNull: true, // Si está en modo unificado, puede ser null
   },
 }, {
+
   timestamps: false,
+
   freezeTableName: true,
+
+  indexes: [
+
+    {
+      unique: true,
+
+      fields: [
+        "empresa_id",
+        "mes",
+        "anio",
+      ],
+    },
+
+  ],
+
 });
 
 export default LibroIVA;

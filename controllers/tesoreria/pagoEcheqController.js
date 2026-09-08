@@ -13,6 +13,13 @@ import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import FormaPago from "../../models/comun/formapagotesoreria.js";
 
 import FormaPagoTesoreria from "../../models/comun/formapagotesoreria.js";
+import PagoProgramadoTesoreria
+  from "../../models/tesoreria/PagoProgramadoTesoreria.js";
+
+import {
+  recalcularComprobanteEgreso,
+} from "./helpers/recalcularComprobanteEgreso.js";
+import AjusteComprobanteEgreso from "../../models/tesoreria/ajusteComprobanteEgreso.js";
 
 const N = (n) => Number(n) || 0;
 const toNum = (n) => (n == null || n === "" ? null : Number(n));
@@ -276,63 +283,280 @@ export async function registrarAnticipoProveedorEcheq(req, res) {
    - Idempotencia por (referencia_tipo,id)
    ========================= */
 export async function acreditarEcheq(req, res) {
-  const t = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const { fecha_acreditacion } = req.body || {};
-    const ech = await EcheqEmitido.findByPk(id, { transaction: t, lock: t.LOCK.UPDATE });
-    if (!ech) throw new Error("eCheq no encontrado");
-    if (ech.anulado) throw new Error("El eCheq está anulado");
 
-    // Idempotencia de acreditación: ¿ya hay mov. banco referenciando este eCheq?
-    const movPrev = await MovimientoBancoTesoreria.findOne({
-      where: { referencia_tipo: "EcheqEmitido", referencia_id: ech.id },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    if (movPrev) {
-      if (ech.estado !== "acreditado") {
-        ech.estado = "acreditado";
-        await ech.save({ transaction: t });
-      }
-      await t.commit();
-      return res.json({ ok: true, mensaje: "eCheq ya estaba acreditado", movimientoBanco: movPrev, echeq: ech });
+  const t =
+    await sequelize.transaction();
+
+  try {
+
+    const { id } =
+      req.params;
+
+    const {
+      fecha_acreditacion,
+    } = req.body || {};
+
+
+    const ech =
+      await EcheqEmitido.findByPk(
+        id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+
+
+    if (!ech) {
+      throw new Error(
+        "eCheq no encontrado"
+      );
     }
 
-    const fechaMov = fecha_acreditacion || ech.fecha_vencimiento || ech.fecha_emision;
 
-    const mov = await MovimientoBancoTesoreria.create(
-      {
-        empresa_id: ech.empresa_id,
-        tipo: "egreso",
-        descripcion: `Acreditación eCheq #${ech.numero_echeq ? ` (${ech.numero_echeq})` : ""}`,
-        monto: N(ech.importe),
-        fecha: fechaMov,
-        banco_id: ech.banco_id,
-        formapago_id: null,
-        referencia_id: ech.id,
-        referencia_tipo: "EcheqEmitido",
-        observaciones: null,
-        anulado: false,
-        ordenpago_id: ech.ordenpago_id || null,
-        categoriaegreso_id: ech.categoriaegreso_id || null,
-        imputacioncontable_id: ech.imputacioncontable_id || null,
-        proveedor_id: ech.proveedor_id || null,
-        idempotency_key: null,
-        comprobanteegreso_id: ech.comprobanteegreso_id || null,
-      },
-      { transaction: t }
-    );
+    if (ech.anulado) {
+      throw new Error(
+        "El eCheq está anulado"
+      );
+    }
 
-    ech.estado = "acreditado";
-    await ech.save({ transaction: t });
+
+    /*
+     * ==================================================
+     * IDEMPOTENCIA
+     * ==================================================
+     *
+     * Verificamos si ya existe el movimiento bancario
+     * que materializó este eCheq.
+     */
+
+    const movPrev =
+      await MovimientoBancoTesoreria.findOne({
+        where: {
+          referencia_tipo:
+            "EcheqEmitido",
+
+          referencia_id:
+            ech.id,
+
+          anulado:
+            false,
+        },
+
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+
+    if (movPrev) {
+
+      if (
+        ech.estado !== "acreditado"
+      ) {
+
+        ech.estado =
+          "acreditado";
+
+        await ech.save({
+          transaction: t,
+        });
+      }
+
+
+      await t.commit();
+
+
+      return res.json({
+        ok:
+          true,
+
+        mensaje:
+          "eCheq ya estaba acreditado",
+
+        movimientoBanco:
+          movPrev,
+
+        echeq:
+          ech,
+      });
+    }
+
+
+    /*
+     * ==================================================
+     * FECHA DEL MOVIMIENTO BANCARIO
+     * ==================================================
+     */
+
+    const fechaMov =
+      fecha_acreditacion ||
+      ech.fecha_vencimiento ||
+      ech.fecha_emision;
+
+
+    /*
+     * ==================================================
+     * CREAR MOVIMIENTO BANCARIO
+     * ==================================================
+     *
+     * IMPORTANTE:
+     *
+     * El eCheq ya representa el pago del comprobante.
+     *
+     * Este movimiento representa solamente el impacto
+     * posterior en Banco.
+     *
+     * Por eso:
+     *
+     * comprobanteegreso_id = NULL
+     *
+     * De lo contrario tendríamos:
+     *
+     * EcheqEmitido             $X
+     * MovimientoBanco          $X
+     *
+     * computados como dos pagos diferentes.
+     */
+
+    const mov =
+      await MovimientoBancoTesoreria.create(
+        {
+          empresa_id:
+            ech.empresa_id,
+
+          tipo:
+            "egreso",
+
+          descripcion:
+            `Acreditación eCheq #${ech.id}${ech.numero_echeq
+              ? ` (${ech.numero_echeq})`
+              : ""
+            }`,
+
+          monto:
+            N(ech.importe),
+
+          fecha:
+            fechaMov,
+
+          banco_id:
+            ech.banco_id,
+
+          /*
+           * El medio financiero original está
+           * representado por EcheqEmitido.
+           */
+          formapago_id:
+            null,
+
+          /*
+           * Esta es la relación técnica entre
+           * MovimientoBanco y EcheqEmitido.
+           */
+          referencia_id:
+            ech.id,
+
+          referencia_tipo:
+            "EcheqEmitido",
+
+          observaciones:
+            null,
+
+          anulado:
+            false,
+
+          ordenpago_id:
+            ech.ordenpago_id ||
+            null,
+
+          categoriaegreso_id:
+            ech.categoriaegreso_id ||
+            null,
+
+          imputacioncontable_id:
+            ech.imputacioncontable_id ||
+            null,
+
+          proveedor_id:
+            ech.proveedor_id ||
+            null,
+
+          idempotency_key:
+            null,
+
+          /*
+           * FUNDAMENTAL:
+           *
+           * NO volver a asociar directamente este
+           * movimiento al comprobante.
+           *
+           * La asociación financiera ya existe:
+           *
+           * ComprobanteEgreso
+           *       ↓
+           * EcheqEmitido
+           *       ↓
+           * MovimientoBancoTesoreria
+           */
+          comprobanteegreso_id:
+            null,
+        },
+
+        {
+          transaction: t,
+        }
+      );
+
+
+    /*
+     * ==================================================
+     * MARCAR ECHEQ COMO ACREDITADO
+     * ==================================================
+     */
+
+    ech.estado =
+      "acreditado";
+
+
+    await ech.save({
+      transaction: t,
+    });
+
 
     await t.commit();
-    return res.json({ ok: true, mensaje: "eCheq acreditado", movimientoBanco: mov, echeq: ech });
+
+
+    return res.json({
+      ok:
+        true,
+
+      mensaje:
+        "eCheq acreditado",
+
+      movimientoBanco:
+        mov,
+
+      echeq:
+        ech,
+    });
+
+
   } catch (e) {
+
     await t.rollback();
-    console.error("acreditarEcheq", e);
-    return res.status(400).json({ error: e.message || "No se pudo acreditar el eCheq" });
+
+
+    console.error(
+      "acreditarEcheq",
+      e
+    );
+
+
+    return res.status(400).json({
+      error:
+        e.message ||
+        "No se pudo acreditar el eCheq",
+    });
   }
 }
 
@@ -389,20 +613,480 @@ export async function rechazarEcheq(req, res) {
    - Marca anulado=true y estado='anulado' (si no está acreditado)
    ========================= */
 export async function anularEcheq(req, res) {
+
+  const t =
+    await sequelize.transaction();
+
   try {
-    const { id } = req.params;
-    const ech = await EcheqEmitido.findByPk(id);
-    if (!ech) return res.status(404).json({ error: "eCheq no encontrado" });
-    if (ech.estado === "acreditado") {
-      return res.status(400).json({ error: "No se puede anular un eCheq ya acreditado" });
+
+    const id =
+      Number(req.params.id);
+
+
+    const ech =
+      await EcheqEmitido.findByPk(
+        id,
+        {
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        }
+      );
+
+
+    if (!ech) {
+      throw new Error(
+        "eCheq no encontrado"
+      );
     }
-    ech.anulado = true;
-    ech.estado = "anulado";
-    await ech.save();
-    return res.json({ ok: true, mensaje: "eCheq anulado", echeq: ech });
+
+
+    if (ech.anulado) {
+      throw new Error(
+        "El eCheq ya se encuentra anulado"
+      );
+    }
+
+
+    /*
+     * Un eCheq que ya fue acreditado bancariamente
+     * tiene además un MovimientoBancoTesoreria.
+     *
+     * Ese caso debe revertirse desde Banco.
+     */
+    if (
+      String(ech.estado || "")
+        .trim()
+        .toLowerCase() === "acreditado"
+    ) {
+      throw new Error(
+        "No se puede anular un eCheq ya acreditado. Debe revertirse primero su movimiento bancario."
+      );
+    }
+
+
+    /*
+     * ============================================================
+     * ¿EL ECHEQ PROVIENE DE UN PAGO PROGRAMADO?
+     * ============================================================
+     */
+
+    let pagoProgramado =
+      null;
+
+
+    const referenciaTipo =
+      String(
+        ech.referencia_tipo ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      referenciaTipo ===
+      "pagoprogramadotesoreria"
+    ) {
+
+      const pagoProgramadoId =
+        Number(
+          ech.referencia_id ||
+          0
+        );
+
+
+      if (!pagoProgramadoId) {
+        throw new Error(
+          "El eCheq indica que proviene de un PagoProgramadoTesoreria pero no tiene referencia_id"
+        );
+      }
+
+
+      pagoProgramado =
+        await PagoProgramadoTesoreria.findByPk(
+          pagoProgramadoId,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!pagoProgramado) {
+        throw new Error(
+          `No se encontró PagoProgramadoTesoreria #${pagoProgramadoId}`
+        );
+      }
+
+
+      /*
+       * Defensa de integridad:
+       *
+       * si el programado dice que fue materializado
+       * por otro movimiento, no debemos tocarlo.
+       */
+      if (
+        pagoProgramado.movimiento_tipo &&
+        String(
+          pagoProgramado.movimiento_tipo
+        ) !== "EcheqEmitido"
+      ) {
+        throw new Error(
+          `El pago programado #${pagoProgramado.id} está asociado a otro tipo de movimiento financiero`
+        );
+      }
+
+
+      if (
+        pagoProgramado.movimiento_id &&
+        Number(
+          pagoProgramado.movimiento_id
+        ) !== Number(ech.id)
+      ) {
+        throw new Error(
+          `El pago programado #${pagoProgramado.id} está asociado a otro movimiento`
+        );
+      }
+    }
+
+
+    /*
+     * ============================================================
+     * SI EL ECHEQ GENERÓ UN ABONO DE CTA. CTE. NO ANTICIPO
+     * ============================================================
+     *
+     * Puede ocurrir cuando al acreditar el programado
+     * se utilizó generar_abono_ctacte=true.
+     *
+     * En ese caso el abono fue creado específicamente
+     * por este eCheq.
+     *
+     * Si ya fue aplicado a facturas, NO permitimos
+     * anular automáticamente.
+     * ============================================================
+     */
+
+    const abonosDelEcheq =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          referencia_tipo:
+            "EcheqEmitido",
+
+          referencia_id:
+            ech.id,
+
+          tipo:
+            "abono",
+
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+
+    for (
+      const abono
+      of abonosDelEcheq
+    ) {
+
+      /*
+       * Si este es precisamente el abono histórico
+       * perteneciente al anticipo programado,
+       * NO debemos eliminarlo.
+       *
+       * Después lo volveremos a apuntar al programado.
+       */
+      const esAbonoAnticipoProgramado =
+        !!pagoProgramado &&
+        pagoProgramado.tipo === "anticipo" &&
+        pagoProgramado.movimiento_ctacte_id &&
+        Number(
+          pagoProgramado.movimiento_ctacte_id
+        ) === Number(abono.id);
+
+
+      if (
+        esAbonoAnticipoProgramado
+      ) {
+        continue;
+      }
+
+
+      const aplicaciones =
+        await MovimientoCtaCteProveedorAplic.count({
+          where: {
+            abono_id:
+              abono.id,
+          },
+
+          transaction: t,
+        });
+
+
+      if (
+        aplicaciones > 0
+      ) {
+        throw new Error(
+          `No se puede anular el eCheq porque el abono de cuenta corriente #${abono.id} ya fue aplicado a facturas. Primero deben desaplicarse esas aplicaciones.`
+        );
+      }
+
+
+      /*
+       * El abono fue creado por la acreditación de
+       * este pago y no tiene aplicaciones.
+       *
+       * Lo anulamos.
+       */
+      await abono.update(
+        {
+          anulado:
+            true,
+        },
+
+        {
+          transaction: t,
+        }
+      );
+    }
+
+
+    /*
+     * ============================================================
+     * ANTICIPO PROGRAMADO
+     * ============================================================
+     *
+     * El abono ya existía ANTES del eCheq.
+     *
+     * Al acreditar hicimos:
+     *
+     * PagoProgramadoTesoreria
+     *          ↓
+     * EcheqEmitido
+     *
+     * y el abono pasó a referenciar EcheqEmitido.
+     *
+     * Ahora debemos restaurar:
+     *
+     * MovimientoCtaCteProveedor
+     *          ↓
+     * PagoProgramadoTesoreria
+     *
+     * SIN eliminar aplicaciones existentes.
+     * ============================================================
+     */
+
+    if (
+      pagoProgramado &&
+      pagoProgramado.tipo === "anticipo" &&
+      pagoProgramado.movimiento_ctacte_id
+    ) {
+
+      const movCtaCte =
+        await MovimientoCtaCteProveedor.findByPk(
+          pagoProgramado.movimiento_ctacte_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!movCtaCte) {
+        throw new Error(
+          "No se encontró el abono de cuenta corriente asociado al anticipo programado"
+        );
+      }
+
+
+      if (movCtaCte.anulado) {
+        throw new Error(
+          "El abono asociado al anticipo programado se encuentra anulado"
+        );
+      }
+
+
+      await movCtaCte.update(
+        {
+          referencia_tipo:
+            "PagoProgramadoTesoreria",
+
+          referencia_id:
+            pagoProgramado.id,
+
+          /*
+           * Sigue siendo el mismo compromiso.
+           */
+          comprobanteegreso_id:
+            pagoProgramado.comprobanteegreso_id ||
+            null,
+
+          fecha:
+            pagoProgramado.fecha_programada,
+
+          fecha_pago:
+            pagoProgramado.fecha_programada,
+
+          importe:
+            Number(
+              pagoProgramado.monto ||
+              0
+            ),
+
+          formapago_id:
+            pagoProgramado.formapago_id ||
+            null,
+
+          descripcion:
+            `Anticipo programado #${pagoProgramado.id} - ${pagoProgramado.descripcion || ""}`,
+        },
+
+        {
+          transaction: t,
+        }
+      );
+    }
+
+
+    /*
+     * ============================================================
+     * ANULAR ECHEQ
+     * ============================================================
+     */
+
+    await ech.update(
+      {
+        anulado:
+          true,
+
+        estado:
+          "anulado",
+      },
+
+      {
+        transaction: t,
+      }
+    );
+
+
+    /*
+     * ============================================================
+     * RESTAURAR PAGO PROGRAMADO A PENDIENTE
+     * ============================================================
+     */
+
+    if (pagoProgramado) {
+
+      await pagoProgramado.update(
+        {
+          estado:
+            "pendiente",
+
+          fecha_acreditacion:
+            null,
+
+          movimiento_tipo:
+            null,
+
+          movimiento_id:
+            null,
+
+          /*
+           * Conservamos:
+           *
+           * comprobanteegreso_id
+           * ordenpago_id
+           * fecha_programada
+           * monto
+           * banco_id
+           * echeq_fecha_vencimiento
+           *
+           * porque el compromiso sigue existiendo.
+           */
+        },
+
+        {
+          transaction: t,
+        }
+      );
+    }
+
+
+    /*
+     * ============================================================
+     * RECALCULAR COMPROBANTE
+     * ============================================================
+     *
+     * Como EcheqEmitido ahora tiene anulado=true,
+     * recalcularComprobanteEgreso ya no debe
+     * considerarlo como pago activo.
+     * ============================================================
+     */
+
+    let comprobanteRecalculado =
+      null;
+
+
+    const comprobanteId =
+      Number(
+        pagoProgramado?.comprobanteegreso_id ||
+        ech.comprobanteegreso_id ||
+        0
+      );
+
+
+    if (comprobanteId) {
+
+      comprobanteRecalculado =
+        await recalcularComprobanteEgreso(
+          comprobanteId,
+          t
+        );
+    }
+
+
+    await t.commit();
+
+
+    return res.json({
+      ok:
+        true,
+
+      mensaje:
+        pagoProgramado
+          ? "eCheq anulado. El pago programado volvió a estado pendiente."
+          : "eCheq anulado correctamente.",
+
+      echeq:
+        ech,
+
+      pagoProgramado,
+
+      comprobante:
+        comprobanteRecalculado,
+    });
+
+
   } catch (e) {
-    console.error("anularEcheq", e);
-    return res.status(400).json({ error: e.message || "No se pudo anular el eCheq" });
+
+    await t.rollback();
+
+
+    console.error(
+      "anularEcheq",
+      e
+    );
+
+
+    return res.status(400).json({
+      error:
+        e.message ||
+        "No se pudo anular el eCheq",
+    });
   }
 }
 
@@ -417,109 +1101,727 @@ export async function eliminarEcheqEmitido(req, res) {
   const safeRollback = async () => { try { if (!t.finished) await t.rollback(); } catch { } };
   const safeCommit = async () => { if (!t.finished) await t.commit(); };
 
-  // === Helper: recalcular saldo/estado de un ComprobanteEgreso de forma robusta ===
+  // === Helper: recalcular saldo/estado de un ComprobanteEgreso ===
+  // Contempla:
+  // - total / montoreal
+  // - AjusteComprobanteEgreso aumenta
+  // - AjusteComprobanteEgreso disminuye
+  // - pagos directos
+  // - aplicaciones de abonos de Cta.Cte.
   async function recalcComprobanteEgreso(compId, trx) {
-    const EPS_REC = 0.0001;
-    const comp = await ComprobanteEgreso.findByPk(compId, { transaction: trx });
-    if (!comp) return;
 
-    const totalComp =
-      Number(comp.montoreal || 0) > 0
-        ? Number(comp.montoreal)
-        : Number(comp.total || 0);
+    const EPS_REC =
+      0.0001;
 
-    // Pagos directos remanentes (caja, banco, tarjeta, eCheq)
-    const [cajaComp, bancoComp, tarjetaComp, echeqComp] = await Promise.all([
-      MovimientoCajaTesoreria.findAll({
-        where: {
-          comprobanteegreso_id: compId,
-          [Op.or]: [
-            { anulado: false },
-            { anulado: null },
-          ],
-        },
-        transaction: trx,
-      }),
 
-      MovimientoBancoTesoreria.findAll({
-        where: {
-          comprobanteegreso_id: compId,
-          [Op.or]: [
-            { anulado: false },
-            { anulado: null },
-          ],
-        },
-        transaction: trx,
-      }),
+    // ============================================================
+    // 1. COMPROBANTE
+    // ============================================================
 
-      PagoTarjetaCredito?.findAll?.({
-        where: {
-          comprobanteegreso_id: compId,
-          [Op.or]: [
-            { anulado: false },
-            { anulado: null },
-          ],
-        },
-        transaction: trx,
-      }) || [],
+    const comp =
+      await ComprobanteEgreso.findByPk(
+        compId,
+        {
+          transaction:
+            trx,
 
-      EcheqEmitido?.findAll?.({
-        where: {
-          comprobanteegreso_id: compId,
-          [Op.or]: [
-            { anulado: false },
-            { anulado: null },
-          ],
-        },
-        transaction: trx,
-      }) || [],
-    ]);
+          lock:
+            trx.LOCK.UPDATE,
+        }
+      );
 
-    const pagosDirectos =
-      (cajaComp || []).reduce((a, r) => a + Number(r.monto || 0), 0) +
-      (bancoComp || []).reduce((a, r) => a + Number(r.monto || 0), 0) +
-      (tarjetaComp || []).reduce((a, r) => a + Number(r.importe || 0), 0) +
-      (echeqComp || []).reduce((a, r) => a + Number(r.importe || 0), 0);
 
-    // Abonos aplicados remanentes
-    const cargosComp = await MovimientoCtaCteProveedor.findAll({
-      where: {
-        comprobanteegreso_id: compId,
-        tipo: "cargo",
-        [Op.or]: [
-          { anulado: false },
-          { anulado: null },
-        ],
-      },
-      attributes: ["id"],
-      transaction: trx,
-    });
-    const cargoIds = cargosComp.map(c => c.id);
-
-    let aplicadoAbonos = 0;
-    if (cargoIds.length) {
-      const applsRest = await MovimientoCtaCteProveedorAplic.findAll({
-        where: { cargo_id: { [Op.in]: cargoIds } },
-        attributes: ["importe"],
-        transaction: trx,
-      });
-      aplicadoAbonos = (applsRest || []).reduce((acc, a) => acc + Number(a.importe || 0), 0);
+    if (!comp) {
+      return;
     }
 
-    const pagadoReal = pagosDirectos + aplicadoAbonos;
-    const saldo = Math.max(0, Number((totalComp - pagadoReal).toFixed(2)));
 
-    let estadoComp = "impaga";
-    if (Math.abs(saldo) <= EPS_REC) estadoComp = "pagada";
-    else if (pagadoReal > EPS_REC && saldo > EPS_REC) estadoComp = "parcial";
+    /*
+     * Importe original/base del comprobante.
+     *
+     * Mantenemos la misma regla que ya utilizaba este helper:
+     *
+     * si montoreal > 0 → montoreal
+     * si no            → total
+     */
 
-    const patch = { saldo };
-    if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estadopago")) patch.estadopago = estadoComp;
-    if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estado")) patch.estado = estadoComp;
+    const totalBase =
+      Number(
+        comp.montoreal ||
+        0
+      ) > 0
 
-    await comp.update(patch, { transaction: trx });
-    console.log("[recalcComprobanteEgreso/echeq]", { compId, totalComp, pagosDirectos, aplicadoAbonos, saldo, estadoComp });
+        ? Number(
+          comp.montoreal
+        )
+
+        : Number(
+          comp.total ||
+          0
+        );
+
+
+    // ============================================================
+    // 2. AJUSTES ACTIVOS DEL COMPROBANTE
+    // ============================================================
+
+    const ajustes =
+      await AjusteComprobanteEgreso.findAll({
+        where: {
+          comprobanteegreso_id:
+            compId,
+
+          [Op.or]: [
+            {
+              anulado:
+                false,
+            },
+            {
+              anulado:
+                null,
+            },
+          ],
+        },
+
+        attributes: [
+          "id",
+          "tipo",
+          "importe",
+        ],
+
+        transaction:
+          trx,
+      });
+
+
+    let totalAumentos =
+      0;
+
+    let totalDisminuciones =
+      0;
+
+
+    for (
+      const ajuste
+      of ajustes || []
+    ) {
+
+      const importe =
+        Number(
+          ajuste.importe ||
+          0
+        );
+
+
+      if (
+        !Number.isFinite(importe) ||
+        importe <= 0
+      ) {
+        continue;
+      }
+
+
+      const tipo =
+        String(
+          ajuste.tipo ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (
+        tipo ===
+        "aumenta"
+      ) {
+
+        totalAumentos +=
+          importe;
+
+      } else if (
+        tipo ===
+        "disminuye"
+      ) {
+
+        totalDisminuciones +=
+          importe;
+      }
+    }
+
+
+    /*
+     * Obligación efectiva:
+     *
+     * base
+     * + aumentos
+     * - disminuciones
+     */
+
+    const totalAjustado =
+      Math.max(
+        0,
+
+        Number(
+          (
+            totalBase +
+            totalAumentos -
+            totalDisminuciones
+          ).toFixed(2)
+        )
+      );
+
+
+    // ============================================================
+    // 3. PAGOS DIRECTOS REMANENTES
+    // ============================================================
+
+    const [
+      cajaComp,
+      bancoComp,
+      tarjetaComp,
+      echeqComp,
+    ] =
+      await Promise.all([
+
+        MovimientoCajaTesoreria.findAll({
+          where: {
+            comprobanteegreso_id:
+              compId,
+
+            [Op.or]: [
+              {
+                anulado:
+                  false,
+              },
+              {
+                anulado:
+                  null,
+              },
+            ],
+          },
+
+          transaction:
+            trx,
+        }),
+
+
+        MovimientoBancoTesoreria.findAll({
+          where: {
+            comprobanteegreso_id:
+              compId,
+
+            [Op.or]: [
+              {
+                anulado:
+                  false,
+              },
+              {
+                anulado:
+                  null,
+              },
+            ],
+          },
+
+          transaction:
+            trx,
+        }),
+
+
+        PagoTarjetaCredito?.findAll?.({
+          where: {
+            comprobanteegreso_id:
+              compId,
+
+            [Op.or]: [
+              {
+                anulado:
+                  false,
+              },
+              {
+                anulado:
+                  null,
+              },
+            ],
+          },
+
+          transaction:
+            trx,
+        }) || [],
+
+
+        EcheqEmitido?.findAll?.({
+          where: {
+            comprobanteegreso_id:
+              compId,
+
+            [Op.or]: [
+              {
+                anulado:
+                  false,
+              },
+              {
+                anulado:
+                  null,
+              },
+            ],
+          },
+
+          transaction:
+            trx,
+        }) || [],
+      ]);
+
+
+    const totalCaja =
+      (cajaComp || [])
+        .reduce(
+          (
+            acumulado,
+            registro
+          ) =>
+            acumulado +
+            Number(
+              registro.monto ||
+              0
+            ),
+
+          0
+        );
+
+
+    const totalBanco =
+      (bancoComp || [])
+        .reduce(
+          (
+            acumulado,
+            registro
+          ) =>
+            acumulado +
+            Number(
+              registro.monto ||
+              0
+            ),
+
+          0
+        );
+
+
+    const totalTarjeta =
+      (tarjetaComp || [])
+        .reduce(
+          (
+            acumulado,
+            registro
+          ) =>
+            acumulado +
+            Number(
+              registro.importe ||
+              0
+            ),
+
+          0
+        );
+
+
+    const totalEcheq =
+      (echeqComp || [])
+        .reduce(
+          (
+            acumulado,
+            registro
+          ) =>
+            acumulado +
+            Number(
+              registro.importe ||
+              0
+            ),
+
+          0
+        );
+
+
+    const pagosDirectos =
+      Number(
+        (
+          totalCaja +
+          totalBanco +
+          totalTarjeta +
+          totalEcheq
+        ).toFixed(2)
+      );
+
+
+    // ============================================================
+    // 4. ABONOS APLICADOS A CARGOS DE ESTE COMPROBANTE
+    // ============================================================
+
+    const cargosComp =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          comprobanteegreso_id:
+            compId,
+
+          tipo:
+            "cargo",
+
+          [Op.or]: [
+            {
+              anulado:
+                false,
+            },
+            {
+              anulado:
+                null,
+            },
+          ],
+        },
+
+        attributes: [
+          "id",
+        ],
+
+        transaction:
+          trx,
+      });
+
+
+    const cargoIds =
+      cargosComp.map(
+        cargo =>
+          cargo.id
+      );
+
+
+    let aplicadoAbonos =
+      0;
+
+
+    if (
+      cargoIds.length
+    ) {
+
+      const aplicaciones =
+        await MovimientoCtaCteProveedorAplic.findAll({
+          where: {
+            cargo_id: {
+              [Op.in]:
+                cargoIds,
+            },
+          },
+
+          attributes: [
+            "importe",
+          ],
+
+          transaction:
+            trx,
+        });
+
+
+      aplicadoAbonos =
+        (aplicaciones || [])
+          .reduce(
+            (
+              acumulado,
+              aplicacion
+            ) =>
+              acumulado +
+              Number(
+                aplicacion.importe ||
+                0
+              ),
+
+            0
+          );
+    }
+
+
+    aplicadoAbonos =
+      Number(
+        aplicadoAbonos.toFixed(
+          2
+        )
+      );
+
+
+    // ============================================================
+    // 5. TOTAL PAGADO REAL
+    // ============================================================
+
+    const pagadoReal =
+      Number(
+        (
+          pagosDirectos +
+          aplicadoAbonos
+        ).toFixed(2)
+      );
+
+
+    // ============================================================
+    // 6. SALDO
+    // ============================================================
+
+    const saldo =
+      Math.max(
+        0,
+
+        Number(
+          (
+            totalAjustado -
+            pagadoReal
+          ).toFixed(2)
+        )
+      );
+
+
+    // ============================================================
+    // 7. ESTADO DEL COMPROBANTE
+    // ============================================================
+
+    let estadoComp =
+      "impaga";
+
+
+    if (
+      Math.abs(
+        saldo
+      ) <= EPS_REC
+    ) {
+
+      estadoComp =
+        "pagada";
+
+    } else if (
+      pagadoReal > EPS_REC &&
+      saldo > EPS_REC
+    ) {
+
+      estadoComp =
+        "parcial";
+    }
+
+
+    // ============================================================
+    // 8. ACTUALIZAR COMPROBANTE
+    // ============================================================
+
+    const patch = {
+      saldo:
+        saldo,
+    };
+
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        comp.dataValues,
+        "estadopago"
+      )
+    ) {
+
+      patch.estadopago =
+        estadoComp;
+    }
+
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        comp.dataValues,
+        "estado"
+      )
+    ) {
+
+      patch.estado =
+        estadoComp;
+    }
+
+
+    await comp.update(
+      patch,
+      {
+        transaction:
+          trx,
+      }
+    );
+
+
+    // ============================================================
+    // 9. LOG DE CONTROL
+    // ============================================================
+
+    console.log(
+      "[recalcComprobanteEgreso/echeq]",
+      {
+        compId,
+
+        totalBase,
+
+        ajustes: {
+          cantidad:
+            ajustes.length,
+
+          aumenta:
+            Number(
+              totalAumentos.toFixed(
+                2
+              )
+            ),
+
+          disminuye:
+            Number(
+              totalDisminuciones.toFixed(
+                2
+              )
+            ),
+        },
+
+        totalAjustado,
+
+        pagos: {
+          caja:
+            Number(
+              totalCaja.toFixed(
+                2
+              )
+            ),
+
+          banco:
+            Number(
+              totalBanco.toFixed(
+                2
+              )
+            ),
+
+          tarjeta:
+            Number(
+              totalTarjeta.toFixed(
+                2
+              )
+            ),
+
+          echeq:
+            Number(
+              totalEcheq.toFixed(
+                2
+              )
+            ),
+
+          aplicadoAbonos,
+        },
+
+        pagadoReal,
+
+        saldo,
+
+        estadoComp,
+      }
+    );
   }
+
+  // // === Helper: recalcular saldo/estado de un ComprobanteEgreso de forma robusta ===
+  // async function recalcComprobanteEgreso(compId, trx) {
+  //   const EPS_REC = 0.0001;
+  //   const comp = await ComprobanteEgreso.findByPk(compId, { transaction: trx });
+  //   if (!comp) return;
+
+  //   const totalComp =
+  //     Number(comp.montoreal || 0) > 0
+  //       ? Number(comp.montoreal)
+  //       : Number(comp.total || 0);
+
+  //   // Pagos directos remanentes (caja, banco, tarjeta, eCheq)
+  //   const [cajaComp, bancoComp, tarjetaComp, echeqComp] = await Promise.all([
+  //     MovimientoCajaTesoreria.findAll({
+  //       where: {
+  //         comprobanteegreso_id: compId,
+  //         [Op.or]: [
+  //           { anulado: false },
+  //           { anulado: null },
+  //         ],
+  //       },
+  //       transaction: trx,
+  //     }),
+
+  //     MovimientoBancoTesoreria.findAll({
+  //       where: {
+  //         comprobanteegreso_id: compId,
+  //         [Op.or]: [
+  //           { anulado: false },
+  //           { anulado: null },
+  //         ],
+  //       },
+  //       transaction: trx,
+  //     }),
+
+  //     PagoTarjetaCredito?.findAll?.({
+  //       where: {
+  //         comprobanteegreso_id: compId,
+  //         [Op.or]: [
+  //           { anulado: false },
+  //           { anulado: null },
+  //         ],
+  //       },
+  //       transaction: trx,
+  //     }) || [],
+
+  //     EcheqEmitido?.findAll?.({
+  //       where: {
+  //         comprobanteegreso_id: compId,
+  //         [Op.or]: [
+  //           { anulado: false },
+  //           { anulado: null },
+  //         ],
+  //       },
+  //       transaction: trx,
+  //     }) || [],
+  //   ]);
+
+  //   const pagosDirectos =
+  //     (cajaComp || []).reduce((a, r) => a + Number(r.monto || 0), 0) +
+  //     (bancoComp || []).reduce((a, r) => a + Number(r.monto || 0), 0) +
+  //     (tarjetaComp || []).reduce((a, r) => a + Number(r.importe || 0), 0) +
+  //     (echeqComp || []).reduce((a, r) => a + Number(r.importe || 0), 0);
+
+  //   // Abonos aplicados remanentes
+  //   const cargosComp = await MovimientoCtaCteProveedor.findAll({
+  //     where: {
+  //       comprobanteegreso_id: compId,
+  //       tipo: "cargo",
+  //       [Op.or]: [
+  //         { anulado: false },
+  //         { anulado: null },
+  //       ],
+  //     },
+  //     attributes: ["id"],
+  //     transaction: trx,
+  //   });
+  //   const cargoIds = cargosComp.map(c => c.id);
+
+  //   let aplicadoAbonos = 0;
+  //   if (cargoIds.length) {
+  //     const applsRest = await MovimientoCtaCteProveedorAplic.findAll({
+  //       where: { cargo_id: { [Op.in]: cargoIds } },
+  //       attributes: ["importe"],
+  //       transaction: trx,
+  //     });
+  //     aplicadoAbonos = (applsRest || []).reduce((acc, a) => acc + Number(a.importe || 0), 0);
+  //   }
+
+  //   const pagadoReal = pagosDirectos + aplicadoAbonos;
+  //   const saldo = Math.max(0, Number((totalComp - pagadoReal).toFixed(2)));
+
+  //   let estadoComp = "impaga";
+  //   if (Math.abs(saldo) <= EPS_REC) estadoComp = "pagada";
+  //   else if (pagadoReal > EPS_REC && saldo > EPS_REC) estadoComp = "parcial";
+
+  //   const patch = { saldo };
+  //   if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estadopago")) patch.estadopago = estadoComp;
+  //   if (Object.prototype.hasOwnProperty.call(comp.dataValues, "estado")) patch.estado = estadoComp;
+
+  //   await comp.update(patch, { transaction: trx });
+  //   console.log("[recalcComprobanteEgreso/echeq]", { compId, totalComp, pagosDirectos, aplicadoAbonos, saldo, estadoComp });
+  // }
+
+
 
   async function actualizarFormaPagoActualComprobante(compId, trx) {
 
@@ -758,6 +2060,578 @@ export async function eliminarEcheqEmitido(req, res) {
       throw new Error("No se puede eliminar un eCheq acreditado (use reversa de banco)");
     }
 
+    // ============================================================
+    // ECHEQ ORIGINADO POR PAGO PROGRAMADO
+    // ============================================================
+    //
+    // Este caso NO debe continuar por la eliminación genérica
+    // de eCheq.
+    //
+    // El PagoProgramadoTesoreria ya existía antes de que se
+    // materializara el eCheq.
+    //
+    // Por lo tanto:
+    //
+    //   PagoProgramado
+    //          ↓ acreditar
+    //   EcheqEmitido
+    //
+    // al eliminar el eCheq debemos volver a:
+    //
+    //   PagoProgramado PENDIENTE
+    //
+    // y NO destruir el compromiso, su OP ni el anticipo
+    // histórico de cuenta corriente.
+    // ============================================================
+
+    const referenciaTipoEcheq =
+      String(
+        ech.referencia_tipo ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      referenciaTipoEcheq ===
+      "pagoprogramadotesoreria" &&
+      ech.referencia_id
+    ) {
+
+      const pagoProgramado =
+        await PagoProgramadoTesoreria.findByPk(
+          ech.referencia_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!pagoProgramado) {
+        throw new Error(
+          `No se encontró PagoProgramadoTesoreria #${ech.referencia_id} asociado al eCheq.`
+        );
+      }
+
+
+      /*
+       * ========================================================
+       * VALIDAR RELACIÓN INVERSA
+       * ========================================================
+       */
+
+      if (
+        pagoProgramado.movimiento_tipo &&
+        String(
+          pagoProgramado.movimiento_tipo
+        )
+          .trim()
+          .toLowerCase() !==
+        "echeqemitido"
+      ) {
+        throw new Error(
+          `El PagoProgramadoTesoreria #${pagoProgramado.id} está asociado a otro tipo de movimiento.`
+        );
+      }
+
+
+      if (
+        pagoProgramado.movimiento_id &&
+        Number(
+          pagoProgramado.movimiento_id
+        ) !== Number(ech.id)
+      ) {
+        throw new Error(
+          `El PagoProgramadoTesoreria #${pagoProgramado.id} está asociado a otro movimiento financiero.`
+        );
+      }
+
+
+      /*
+       * ========================================================
+       * COMPROBANTES QUE PUEDEN NECESITAR RECÁLCULO
+       * ========================================================
+       */
+
+      const comprobantesARecalcular =
+        new Set();
+
+
+      const comprobantePrincipalId =
+        Number(
+          pagoProgramado.comprobanteegreso_id ||
+          ech.comprobanteegreso_id ||
+          0
+        );
+
+
+      const esAnticipo =
+        String(
+          pagoProgramado.tipo ||
+          ""
+        )
+          .trim()
+          .toLowerCase() ===
+        "anticipo";
+
+
+      if (comprobantePrincipalId) {
+        comprobantesARecalcular.add(
+          comprobantePrincipalId
+        );
+      }
+
+
+      /*
+       * ========================================================
+       * ANTICIPO PROGRAMADO
+       * ========================================================
+       *
+       * Este abono existía ANTES de crear el eCheq.
+       *
+       * NO:
+       * - eliminarlo
+       * - reducirlo
+       * - eliminar sus aplicaciones
+       *
+       * Solamente hacemos que vuelva a referenciar al
+       * PagoProgramadoTesoreria.
+       * ========================================================
+       */
+
+      if (
+        esAnticipo &&
+        pagoProgramado.movimiento_ctacte_id
+      ) {
+
+        const abono =
+          await MovimientoCtaCteProveedor.findByPk(
+            pagoProgramado.movimiento_ctacte_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (!abono) {
+          throw new Error(
+            "No se encontró el abono de cuenta corriente asociado al anticipo programado."
+          );
+        }
+
+
+        if (abono.anulado) {
+          throw new Error(
+            "El abono asociado al anticipo programado se encuentra anulado."
+          );
+        }
+
+
+        /*
+         * Recolectamos también los comprobantes donde
+         * este anticipo esté aplicado.
+         *
+         * NO eliminamos las aplicaciones.
+         */
+
+        const aplicaciones =
+          await MovimientoCtaCteProveedorAplic.findAll({
+            where: {
+              abono_id:
+                abono.id,
+            },
+
+            transaction: t,
+          });
+
+
+        if (aplicaciones.length) {
+
+          const cargoIds = [
+            ...new Set(
+              aplicaciones
+                .map(
+                  a =>
+                    Number(
+                      a.cargo_id ||
+                      0
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+          if (cargoIds.length) {
+
+            const cargos =
+              await MovimientoCtaCteProveedor.findAll({
+                where: {
+                  id: {
+                    [Op.in]:
+                      cargoIds,
+                  },
+                },
+
+                attributes: [
+                  "id",
+                  "comprobanteegreso_id",
+                ],
+
+                transaction: t,
+              });
+
+
+            for (const cargo of cargos) {
+
+              const compId =
+                Number(
+                  cargo.comprobanteegreso_id ||
+                  0
+                );
+
+
+              if (compId) {
+                comprobantesARecalcular.add(
+                  compId
+                );
+              }
+            }
+          }
+        }
+
+
+        /*
+         * Restauramos el origen histórico del abono.
+         */
+
+        await abono.update(
+          {
+            referencia_tipo:
+              "PagoProgramadoTesoreria",
+
+            referencia_id:
+              pagoProgramado.id,
+
+            comprobanteegreso_id:
+              pagoProgramado.comprobanteegreso_id ||
+              null,
+
+            fecha:
+              pagoProgramado.fecha_programada,
+
+            fecha_pago:
+              pagoProgramado.fecha_programada,
+
+            importe:
+              Number(
+                pagoProgramado.monto ||
+                0
+              ),
+
+            formapago_id:
+              pagoProgramado.formapago_id ||
+              null,
+
+            descripcion:
+              `Anticipo programado #${pagoProgramado.id} - ${pagoProgramado.descripcion || ""}`,
+          },
+
+          {
+            transaction: t,
+          }
+        );
+      }
+
+
+      /*
+       * ========================================================
+       * ABONO CREADO AL ACREDITAR UN EGRESO PROGRAMADO NORMAL
+       * ========================================================
+       *
+       * Este es distinto del anticipo.
+       *
+       * Si se utilizó generar_abono_ctacte=true, ese abono
+       * nació con la materialización del eCheq.
+       *
+       * Si tiene aplicaciones, no podemos eliminar el eCheq
+       * silenciosamente.
+       * ========================================================
+       */
+
+      if (!esAnticipo) {
+
+        const abonosGenerados =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              referencia_tipo:
+                "EcheqEmitido",
+
+              referencia_id:
+                ech.id,
+
+              tipo:
+                "abono",
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        for (
+          const abono
+          of abonosGenerados
+        ) {
+
+          const aplicaciones =
+            await MovimientoCtaCteProveedorAplic.count({
+              where: {
+                abono_id:
+                  abono.id,
+              },
+
+              transaction: t,
+            });
+
+
+          if (aplicaciones > 0) {
+            throw new Error(
+              `No se puede eliminar el eCheq porque el abono de cuenta corriente #${abono.id} ya fue aplicado a facturas. Primero deben desaplicarse esas aplicaciones.`
+            );
+          }
+
+
+          await abono.update(
+            {
+              anulado:
+                true,
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+      }
+
+
+      /*
+       * ========================================================
+       * ELIMINAR ECHEQ
+       * ========================================================
+       *
+       * Ya sabemos que NO está acreditado bancariamente porque
+       * esa validación se hizo antes de entrar aquí.
+       * ========================================================
+       */
+
+      await ech.destroy({
+        transaction: t,
+      });
+
+      /*
+ * ========================================================
+ * RESTAURAR DEUDA DEL COMPROBANTE EN CTA. CTE.
+ * ========================================================
+ *
+ * Si era un PagoProgramado normal y el eCheq estaba
+ * asociado a un comprobante, al eliminar el eCheq esa
+ * porción vuelve a quedar pendiente.
+ *
+ * Los anticipos NO crean cargo aquí porque conservan
+ * su ABONO histórico.
+ * ========================================================
+ */
+
+      if (
+        !esAnticipo &&
+        comprobantePrincipalId
+      ) {
+
+        const comp =
+          await ComprobanteEgreso.findByPk(
+            comprobantePrincipalId,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (!comp) {
+          throw new Error(
+            `No se encontró el comprobante #${comprobantePrincipalId} asociado al eCheq.`
+          );
+        }
+
+
+        const importeCargo =
+          Number(
+            ech.importe ||
+            0
+          );
+
+
+        if (importeCargo > EPS) {
+
+          /*
+           * Evitar duplicar exactamente la deuda si ya existe
+           * un cargo activo para este comprobante.
+           */
+          const cargoExistente =
+            await MovimientoCtaCteProveedor.findOne({
+              where: {
+                comprobanteegreso_id:
+                  comp.id,
+
+                tipo:
+                  "cargo",
+
+                anulado: {
+                  [Op.not]:
+                    true,
+                },
+              },
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          if (!cargoExistente) {
+
+            const nuevoCargo =
+              await MovimientoCtaCteProveedor.create(
+                {
+                  proveedor_id:
+                    comp.proveedor_id ||
+                    ech.proveedor_id ||
+                    null,
+
+                  empresa_id:
+                    comp.empresa_id ||
+                    ech.empresa_id ||
+                    null,
+
+                  fecha:
+                    ech.fecha_emision ||
+                    comp.fechacomprobante ||
+                    new Date()
+                      .toISOString()
+                      .slice(0, 10),
+
+                  fecha_pago:
+                    null,
+
+                  descripcion:
+                    `Reversión pago programado con eCheq - Comp. ${comp.nrocomprobante ?? comp.id}`,
+
+                  tipo:
+                    "cargo",
+
+                  importe:
+                    importeCargo,
+
+                  origen_tipo:
+                    "ComprobanteEgreso",
+
+                  origen_id:
+                    comp.id,
+
+                  comprobanteegreso_id:
+                    comp.id,
+
+                  anulado:
+                    false,
+
+                  ordenpago_id:
+                    null,
+
+                  formapago_id:
+                    null,
+                },
+                {
+                  transaction: t,
+                }
+              );
+
+
+            console.log(
+              "[echeq:delete/programado] CARGO creado en CtaCte",
+              {
+                cargo_id:
+                  nuevoCargo.id,
+
+                comprobante_id:
+                  comp.id,
+
+                importe:
+                  importeCargo,
+              }
+            );
+          }
+        }
+
+
+        comprobantesARecalcular.add(
+          Number(comp.id)
+        );
+      }
+
+      /*
+       * ========================================================
+       * RECALCULAR COMPROBANTES
+       * ========================================================
+       */
+
+      for (
+        const compId
+        of comprobantesARecalcular
+      ) {
+
+        await recalcComprobanteEgreso(
+          compId,
+          t
+        );
+
+        await actualizarFormaPagoActualComprobante(
+          compId,
+          t
+        );
+      }
+
+
+      await safeCommit();
+
+
+      return res.json({
+        ok:
+          true,
+
+        mensaje:
+          "eCheq eliminado. El PagoProgramadoTesoreria volvió a estado pendiente.",
+
+        pagoProgramado_id:
+          pagoProgramado.id,
+
+        comprobantes_recalculados:
+          Array.from(
+            comprobantesARecalcular
+          ),
+      });
+    }
+
+
+    // ===== 1) Buscar ABONOS asociados =====
+
     // ===== 1) Buscar ABONOS asociados =====
     // (a) ABONO que referencia directamente a ESTE eCheq
     const abonoRef = await MovimientoCtaCteProveedor.findOne({
@@ -772,13 +2646,37 @@ export async function eliminarEcheqEmitido(req, res) {
     });
 
     // (b) Abonos por la misma OP (fallback)
-    const abonosViaOP = ech.ordenpago_id
-      ? await MovimientoCtaCteProveedor.findAll({
-        where: { ordenpago_id: ech.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      })
-      : [];
+    /*
+     * El fallback por OP sólo tiene sentido para un eCheq
+     * que NO está vinculado directamente a un comprobante.
+     *
+     * Si existe comprobanteegreso_id, no debemos utilizar
+     * cualquier abono de la misma OP para absorber la
+     * reversión del eCheq.
+     */
+    const abonosViaOP =
+      !ech.comprobanteegreso_id &&
+        ech.ordenpago_id
+
+        ? await MovimientoCtaCteProveedor.findAll({
+          where: {
+            ordenpago_id:
+              ech.ordenpago_id,
+
+            tipo:
+              "abono",
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        })
+
+        : [];
 
     console.log("[echeq:delete] abonoRef?", !!abonoRef, abonoRef ? { abono_id: abonoRef.id, importe: abonoRef.importe } : {});
     console.log("[echeq:delete] abonosViaOP:", abonosViaOP.length);
@@ -798,7 +2696,7 @@ export async function eliminarEcheqEmitido(req, res) {
       const appls = await MovimientoCtaCteProveedorAplic.findAll({
         where: { abono_id: abonoRef.id },
         transaction: t,
-        lock: t.LOCK.LOCK, // (no todos los dialectos soportan lock acá; si no, quítalo)
+        lock: t.LOCK.UPDATE, // (no todos los dialectos soportan lock acá; si no, quítalo)
       }).catch(() => MovimientoCtaCteProveedorAplic.findAll({
         where: { abono_id: abonoRef.id },
         transaction: t,
@@ -901,19 +2799,112 @@ export async function eliminarEcheqEmitido(req, res) {
       // Observación: si quedara 'restante' > 0, lo absorberá el CARGO condicional si corresponde.
     }
 
-    // ===== 3) Ajustar/eliminar OP si corresponde
+    // ===== 3) Ajustar OP si corresponde
     if (ech.ordenpago_id) {
-      const orden = await OrdenPago.findByPk(ech.ordenpago_id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (orden) {
-        const newTotal = Math.max(0, Number((Number(orden.total || 0) - Number(ech.importe || 0)).toFixed(2)));
-        console.log("[echeq:delete] OP before/after", { id: orden.id, total_old: orden.total, total_new: newTotal });
 
-        if (newTotal <= EPS) {
-          await orden.destroy({ transaction: t });
-          console.log("[echeq:delete] OP destroyed", { id: orden.id });
+      const orden =
+        await OrdenPago.findByPk(
+          ech.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (orden) {
+
+        /*
+         * Si el eCheq estaba pagando directamente un comprobante,
+         * la obligación NO disminuye.
+         *
+         * La OP sigue representando la deuda del comprobante.
+         * Sólo vuelve a quedar pendiente de aplicación.
+         */
+        if (ech.comprobanteegreso_id) {
+
+          await orden.update(
+            {
+              estado:
+                "pendiente_aplicacion",
+            },
+            {
+              transaction: t,
+            }
+          );
+
+
+          console.log(
+            "[echeq:delete] OP del comprobante conservada",
+            {
+              id:
+                orden.id,
+
+              total:
+                orden.total,
+            }
+          );
+
         } else {
-          await orden.update({ total: newTotal, estado: "pendiente_aplicacion" }, { transaction: t });
-          console.log("[echeq:delete] OP updated", { id: orden.id, total: newTotal });
+
+          /*
+           * Para eCheq independiente sí podemos reducir
+           * la OP correspondiente.
+           */
+          const newTotal =
+            Math.max(
+              0,
+              Number(
+                (
+                  Number(
+                    orden.total ||
+                    0
+                  ) -
+                  Number(
+                    ech.importe ||
+                    0
+                  )
+                ).toFixed(2)
+              )
+            );
+
+
+          console.log(
+            "[echeq:delete] OP independiente before/after",
+            {
+              id:
+                orden.id,
+
+              total_old:
+                orden.total,
+
+              total_new:
+                newTotal,
+            }
+          );
+
+
+          if (newTotal <= EPS) {
+
+            await orden.destroy({
+              transaction: t,
+            });
+
+          } else {
+
+            await orden.update(
+              {
+                total:
+                  newTotal,
+
+                estado:
+                  "pendiente_aplicacion",
+              },
+              {
+                transaction: t,
+              }
+            );
+          }
         }
       }
     }

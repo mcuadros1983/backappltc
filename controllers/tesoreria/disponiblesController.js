@@ -344,29 +344,237 @@ export async function listarDisponibles(req, res) {
         break;
       }
 
-      case "echeq": { // EcheqEmitido
-        const where = { ...baseCommon };
-        // por defecto filtramos por fecha_emision; si querés, duplicar lógica para fecha_vencimiento
-        if (desde || hasta) where.fecha_emision = parseDateRange({ desde, hasta });
-        if (like) where.numero_echeq = like; // o descripcion si existiera
+      case "echeq": {
 
-        rows = await EcheqEmitido.findAll({
-          where,
-          order: [["fecha_emision", "DESC"], ["id", "DESC"]],
-        });
+        /*
+         * ============================================================
+         * ECHEQS REALES YA EMITIDOS
+         * ============================================================
+         */
 
-        rows = rows.map(r => ({
-          tipo: "echeq",
-          id: r.id,
-          fecha_emision: r.fecha_emision,
-          fecha_vencimiento: r.fecha_vencimiento,
-          monto: Number(r.importe || 0),
-          banco_id: r.banco_id || null,
-          numero_echeq: r.numero_echeq || null,
-          estado: r.estado || null,
-          proveedor_id: r.proveedor_id || null,
-          empresa_id: r.empresa_id || null,
-        }));
+        const where = {
+          ...baseCommon,
+        };
+
+
+        if (desde || hasta) {
+          where.fecha_emision =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+
+        if (like) {
+          where.numero_echeq =
+            like;
+        }
+
+
+        const echeqs =
+          await EcheqEmitido.findAll({
+            where,
+
+            order: [
+              ["fecha_emision", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const echeqsNormalizados =
+          echeqs.map((r) => ({
+            tipo:
+              "echeq",
+
+            id:
+              r.id,
+
+            medio:
+              "echeq",
+
+            fecha:
+              r.fecha_emision,
+
+            fecha_emision:
+              r.fecha_emision,
+
+            fecha_vencimiento:
+              r.fecha_vencimiento,
+
+            monto:
+              Number(r.importe || 0),
+
+            banco_id:
+              r.banco_id || null,
+
+            numero_echeq:
+              r.numero_echeq || null,
+
+            estado:
+              r.estado || null,
+
+            proveedor_id:
+              r.proveedor_id || null,
+
+            empresa_id:
+              r.empresa_id || null,
+          }));
+
+
+        /*
+         * ============================================================
+         * ECHEQS PROGRAMADOS
+         * ============================================================
+         *
+         * IMPORTANTE:
+         *
+         * Estos registros todavía NO son EcheqEmitido.
+         *
+         * Son solamente compromisos pendientes almacenados en
+         * PagoProgramadoTesoreria.
+         *
+         * Por eso devolvemos:
+         *
+         * tipo = "pago_programado"
+         *
+         * y NO:
+         *
+         * tipo = "echeq"
+         * ============================================================
+         */
+
+        const whereProgramado = {
+          estado:
+            "pendiente",
+
+          medio:
+            "echeq",
+
+          comprobanteegreso_id:
+            null,
+        };
+
+
+        if (proveedor_id) {
+          whereProgramado.proveedor_id =
+            Number(proveedor_id);
+        }
+
+
+        if (desde || hasta) {
+          whereProgramado.fecha_programada =
+            parseDateRange({
+              desde,
+              hasta,
+            });
+        }
+
+
+        const programados =
+          await PagoProgramadoTesoreria.findAll({
+            where:
+              whereProgramado,
+
+            order: [
+              ["fecha_programada", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const programadosNormalizados =
+          programados.map((r) => ({
+            /*
+             * Esto es fundamental.
+             *
+             * FormasPagoEditor utilizará este valor para construir:
+             *
+             * existing_ref: {
+             *   tipo: "pago_programado",
+             *   id: ...
+             * }
+             */
+            tipo:
+              "pago_programado",
+
+            id:
+              r.id,
+
+            medio:
+              "echeq",
+
+            /*
+             * fecha = fecha del compromiso.
+             *
+             * También la exponemos como fecha_emision solamente
+             * para mantener compatibilidad visual con el editor.
+             *
+             * NO significa que el eCheq haya sido emitido.
+             */
+            fecha:
+              r.fecha_programada,
+
+            fecha_emision:
+              r.fecha_programada,
+
+            fecha_vencimiento:
+              r.echeq_fecha_vencimiento ||
+              null,
+
+            echeq_fecha_vencimiento:
+              r.echeq_fecha_vencimiento ||
+              null,
+
+            monto:
+              Number(r.monto || 0),
+
+            banco_id:
+              r.banco_id || null,
+
+            /*
+             * El número todavía no existe.
+             *
+             * Se ingresará cuando se acredite/materialice
+             * efectivamente el eCheq.
+             */
+            numero_echeq:
+              null,
+
+            descripcion:
+              `[PROGRAMADO] ${r.descripcion}`,
+
+            proveedor_id:
+              r.proveedor_id,
+
+            empresa_id:
+              r.empresa_id,
+
+            formapago_id:
+              r.formapago_id || null,
+
+            tipo_programado:
+              r.tipo,
+
+            estado:
+              r.estado,
+          }));
+
+
+        /*
+         * Mezclamos:
+         *
+         * - EcheqEmitido reales disponibles
+         * - PagoProgramadoTesoreria pendientes
+         */
+
+        rows = [
+          ...echeqsNormalizados,
+          ...programadosNormalizados,
+        ];
+
+
         break;
       }
 

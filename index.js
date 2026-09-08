@@ -22,7 +22,8 @@ import registerSubscribers from "./services/events/registerSubscribers.js";
 import schedulerLoader from "./services/scheduler/schedulerLoader.js";
 import schedulerService
   from "./services/scheduler/schedulerService.js";
-
+import libroIVAMensualJob
+  from "./services/scheduler/jobs/libroIVAMensualJob.js";
 import { WebSocketServer } from "ws"; // Importar WebSocket
 import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos de WebSocket
 import { runFidelizacionJobs } from "./jobs/fidelizacion/fidelizacionJobs.js";
@@ -152,7 +153,21 @@ async function main() {
       "[STARTUP] ✅ schedulerSeeder finalizado"
     );
 
+    /*
+    |--------------------------------------------------------------------------
+    | 5.1 VERIFICAR LIBROS IVA
+    |--------------------------------------------------------------------------
+    */
 
+    console.log(
+      "[STARTUP] Verificando Libros IVA..."
+    );
+
+    await libroIVAMensualJob();
+
+    console.log(
+      "[STARTUP] ✅ Libros IVA verificados"
+    );
     /*
     |--------------------------------------------------------------------------
     | 6. SUBSCRIBERS

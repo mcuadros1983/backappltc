@@ -54,7 +54,11 @@ const start = async () => {
 
                 {
 
-                    scheduled: true
+                    scheduled:
+                        true,
+
+                    timezone:
+                        "America/Argentina/Buenos_Aires"
 
                 }
 

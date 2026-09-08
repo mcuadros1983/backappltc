@@ -550,9 +550,9 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
         .trim()
         .toLowerCase();
 
-
     // ============================================================
-    // PAGO PROGRAMADO YA ACREDITADO
+    // PAGO PROGRAMADO ACREDITADO
+    // → REVERTIR ACREDITACIÓN
     // ============================================================
 
     if (
@@ -561,7 +561,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
     ) {
 
       console.log(
-        "📅 Eliminando PAGO PROGRAMADO ACREDITADO desde BANCO:",
+        "📅 Revirtiendo acreditación de PAGO PROGRAMADO desde BANCO:",
         mov.referencia_id
       );
 
@@ -588,48 +588,84 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
 
       if (
-        String(pagoProgramado.estado || "").toLowerCase()
-        !== "acreditado"
+        String(
+          pagoProgramado.estado ||
+          ""
+        )
+          .trim()
+          .toLowerCase() !==
+        "acreditado"
       ) {
         throw new Error(
           `El pago programado asociado se encuentra en estado ${pagoProgramado.estado}.`
         );
       }
 
+
       if (
-        String(pagoProgramado.medio || "")
+        String(
+          pagoProgramado.medio ||
+          ""
+        )
           .trim()
-          .toLowerCase() !== "banco"
+          .toLowerCase() !==
+        "banco"
       ) {
         throw new Error(
           "El PagoProgramadoTesoreria asociado no corresponde a un pago por banco."
         );
       }
 
-      // ============================================================
-      // 2. GUARDAR DATOS ANTES DE ELIMINAR
-      // ============================================================
+
+      /*
+       * Defensa:
+       *
+       * El PagoProgramado debe señalar exactamente
+       * este movimiento bancario.
+       */
+      if (
+        pagoProgramado.movimiento_id &&
+        Number(pagoProgramado.movimiento_id) !==
+        Number(mov.id)
+      ) {
+        throw new Error(
+          "El movimiento bancario no coincide con el movimiento registrado en el PagoProgramadoTesoreria."
+        );
+      }
+
 
       const comprobanteId =
-        mov.comprobanteegreso_id ||
-        pagoProgramado.comprobanteegreso_id ||
-        null;
+        Number(
+          mov.comprobanteegreso_id ||
+          pagoProgramado.comprobanteegreso_id ||
+          0
+        ) || null;
 
 
       const esAnticipo =
-        String(pagoProgramado.tipo || "")
+        String(
+          pagoProgramado.tipo ||
+          ""
+        )
           .trim()
-          .toLowerCase()
-        === "anticipo";
+          .toLowerCase() ===
+        "anticipo";
 
 
       // ============================================================
-      // 3. SI ERA ANTICIPO:
-      //
-      // eliminar aplicaciones del ABONO y luego el ABONO.
-      //
-      // Esto elimina el efecto del anticipo sobre la Cta.Cte.
+      // 2. CASO ANTICIPO
       // ============================================================
+      /*
+       * El ABONO existía ANTES de acreditar el programado.
+       *
+       * Por eso NO debemos:
+       *
+       * - destruir aplicaciones;
+       * - destruir el abono.
+       *
+       * Solamente restauramos el ABONO para que vuelva
+       * a apuntar al PagoProgramadoTesoreria pendiente.
+       */
 
       if (
         esAnticipo &&
@@ -646,143 +682,78 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
           );
 
 
-        if (abono) {
-
-          // ========================================================
-          // Buscar aplicaciones realizadas con este anticipo
-          // ========================================================
-
-          const aplicaciones =
-            await MovimientoCtaCteProveedorAplic.findAll({
-              where: {
-                abono_id: abono.id,
-              },
-
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-            });
-
-
-          // ========================================================
-          // Guardar comprobantes afectados
-          // ========================================================
-
-          const comprobantesARecalcular =
-            new Set();
-
-
-          if (aplicaciones.length) {
-
-            const cargoIds = [
-              ...new Set(
-                aplicaciones
-                  .map(a => Number(a.cargo_id))
-                  .filter(Boolean)
-              ),
-            ];
-
-
-            if (cargoIds.length) {
-
-              const cargos =
-                await MovimientoCtaCteProveedor.findAll({
-                  where: {
-                    id: {
-                      [Op.in]: cargoIds,
-                    },
-                  },
-
-                  attributes: [
-                    "id",
-                    "comprobanteegreso_id",
-                  ],
-
-                  transaction: t,
-                });
-
-
-              for (const cargo of cargos) {
-
-                const compId =
-                  Number(
-                    cargo.comprobanteegreso_id || 0
-                  );
-
-
-                if (compId) {
-
-                  comprobantesARecalcular.add(
-                    compId
-                  );
-                }
-              }
-            }
-
-
-            // ======================================================
-            // Eliminar aplicaciones del anticipo
-            // ======================================================
-
-            await MovimientoCtaCteProveedorAplic.destroy({
-              where: {
-                abono_id: abono.id,
-              },
-
-              transaction: t,
-            });
-          }
-
-
-          // ========================================================
-          // Si el ABONO estaba vinculado directamente a un
-          // comprobante también debemos recalcularlo
-          // ========================================================
-
-          if (abono.comprobanteegreso_id) {
-
-            comprobantesARecalcular.add(
-              Number(
-                abono.comprobanteegreso_id
-              )
-            );
-          }
-
-
-          // ========================================================
-          // Eliminar ABONO de la cuenta corriente
-          // ========================================================
-
-          await abono.destroy({
-            transaction: t,
-          });
-
-
-          // ========================================================
-          // Recalcular comprobantes afectados
-          // ========================================================
-
-          for (
-            const compId
-            of comprobantesARecalcular
-          ) {
-
-            await recalcComprobanteEgreso(
-              compId,
-              t
-            );
-
-            await actualizarFormaPagoActualComprobante(
-              compId,
-              t
-            );
-          }
+        if (!abono) {
+          throw new Error(
+            `No se encontró el abono de cuenta corriente #${pagoProgramado.movimiento_ctacte_id} del anticipo programado.`
+          );
         }
+
+
+        if (abono.anulado) {
+          throw new Error(
+            "El abono de cuenta corriente del anticipo se encuentra anulado."
+          );
+        }
+
+
+        /*
+         * Conservamos todas las aplicaciones existentes.
+         *
+         * Sólo devolvemos la referencia financiera
+         * al compromiso pendiente.
+         */
+        await abono.update(
+          {
+            referencia_tipo:
+              "PagoProgramadoTesoreria",
+
+            referencia_id:
+              pagoProgramado.id,
+
+            comprobanteegreso_id:
+              pagoProgramado.comprobanteegreso_id ||
+              null,
+
+            fecha:
+              pagoProgramado.fecha_programada ||
+              abono.fecha,
+
+            fecha_pago:
+              null,
+
+            importe:
+              Number(
+                pagoProgramado.monto ||
+                mov.monto ||
+                0
+              ),
+
+            formapago_id:
+              pagoProgramado.formapago_id ||
+              abono.formapago_id ||
+              null,
+
+            descripcion:
+              `Anticipo programado pendiente #${pagoProgramado.id}`,
+          },
+          {
+            transaction: t,
+          }
+        );
       }
 
 
       // ============================================================
-      // 4. ELIMINAR MOVIMIENTO BANCARIO REAL
+      // 3. ELIMINAR MOVIMIENTO BANCARIO REAL
       // ============================================================
+
+      const montoRevertido =
+        Number(
+          mov.monto ||
+          pagoProgramado.monto ||
+          0
+        );
+
 
       await mov.destroy({
         transaction: t,
@@ -790,18 +761,161 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
 
       // ============================================================
-      // 5. ANULAR PAGO PROGRAMADO
-      //
-      // MUY IMPORTANTE:
-      //
-      // NO vuelve a "pendiente".
-      // El compromiso deja de existir.
+      // 4. SI NO ERA ANTICIPO:
+      //    RESTAURAR DEUDA DEL COMPROBANTE EN CTA. CTE.
       // ============================================================
+      /*
+       * Al eliminar el pago bancario real, esa parte del
+       * comprobante vuelve a quedar impaga.
+       *
+       * Representamos nuevamente esa deuda mediante CARGO.
+       */
+
+      let cargoCreado = null;
+
+
+      if (
+        !esAnticipo &&
+        comprobanteId &&
+        montoRevertido > 0
+      ) {
+
+        const comp =
+          await ComprobanteEgreso.findByPk(
+            comprobanteId,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (!comp) {
+          throw new Error(
+            `No se encontró el comprobante #${comprobanteId} vinculado al pago programado.`
+          );
+        }
+
+
+        /*
+         * Defensa contra duplicación.
+         *
+         * Si por alguna razón ya existe un cargo activo
+         * correspondiente a esta reversión, no creamos otro.
+         */
+        const cargoExistente =
+          await MovimientoCtaCteProveedor.findOne({
+            where: {
+              comprobanteegreso_id:
+                comp.id,
+
+              tipo:
+                "cargo",
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+
+        if (!cargoExistente) {
+
+          cargoCreado =
+            await MovimientoCtaCteProveedor.create(
+              {
+                proveedor_id:
+                  comp.proveedor_id ||
+                  pagoProgramado.proveedor_id ||
+                  null,
+
+                empresa_id:
+                  comp.empresa_id ||
+                  pagoProgramado.empresa_id ||
+                  null,
+
+                fecha:
+                  mov.fecha ||
+                  comp.fechacomprobante ||
+                  new Date()
+                    .toISOString()
+                    .slice(0, 10),
+
+                fecha_pago:
+                  null,
+
+                descripcion:
+                  `Reversión de pago programado bancario - Comp. ${comp.nrocomprobante ?? comp.id}`,
+
+                tipo:
+                  "cargo",
+
+                importe:
+                  montoRevertido,
+
+                origen_tipo:
+                  "ComprobanteEgreso",
+
+                origen_id:
+                  comp.id,
+
+                comprobanteegreso_id:
+                  comp.id,
+
+                anulado:
+                  false,
+
+                /*
+                 * La deuda pendiente ya no es un pago realizado.
+                 */
+                ordenpago_id:
+                  null,
+
+                formapago_id:
+                  null,
+              },
+              {
+                transaction: t,
+              }
+            );
+        }
+      }
+
+
+      // ============================================================
+      // 5. PAGO PROGRAMADO
+      //    ACREDITADO → PENDIENTE
+      // ============================================================
+      /*
+       * MUY IMPORTANTE:
+       *
+       * Estamos REVIRTIENDO la acreditación.
+       *
+       * NO anulamos el compromiso.
+       *
+       * El compromiso vuelve a quedar pendiente y conserva:
+       *
+       * - comprobanteegreso_id;
+       * - monto;
+       * - medio;
+       * - fecha_programada;
+       * - banco_id;
+       * - proyecto;
+       * - movimiento_ctacte_id;
+       * - datos futuros.
+       */
 
       await pagoProgramado.update(
         {
           estado:
-            "anulado",
+            "pendiente",
 
           fecha_acreditacion:
             null,
@@ -811,15 +925,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
           movimiento_id:
             null,
-
-          /*
-           * NO ponemos ordenpago_id = null.
-           *
-           * La OP puede haber existido desde antes de acreditar
-           * el programado.
-           */
         },
-
         {
           transaction: t,
         }
@@ -837,18 +943,20 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
       if (comprobanteId) {
 
         await recalcComprobanteEgreso(
-          Number(comprobanteId),
+          comprobanteId,
           t
         );
 
+
         await actualizarFormaPagoActualComprobante(
-          Number(comprobanteId),
+          comprobanteId,
           t
         );
+
 
         resultadoComprobante =
           await ComprobanteEgreso.findByPk(
-            Number(comprobanteId),
+            comprobanteId,
             {
               transaction: t,
             }
@@ -868,11 +976,17 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
         mensaje:
           esAnticipo
-            ? "Pago programado acreditado eliminado. Se eliminó el movimiento bancario y su efecto en la cuenta corriente."
-            : "Pago programado acreditado eliminado. Se eliminó el movimiento bancario.",
+            ? "Acreditación del anticipo programado revertida. El movimiento bancario fue eliminado y el anticipo volvió a estado pendiente."
+            : "Acreditación del pago programado revertida. El movimiento bancario fue eliminado, el pago volvió a pendiente y se restauró la deuda del comprobante.",
 
         pagoProgramado_id:
           pagoProgramado.id,
+
+        pagoProgramado_estado:
+          "pendiente",
+
+        cargo_ctacte:
+          cargoCreado,
 
         comprobante:
           resultadoComprobante,
@@ -1043,16 +1157,134 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
         return res.json({ ok: true, mensaje: "Adelanto y movimiento bancario eliminados correctamente." });
       }
 
-      // ECHEQ acreditado → revertir
-      if (refTipo === "echeqemitido" && mov.referencia_id) {
-        console.log("   • ECHEQ acreditado → revertir:", mov.referencia_id);
-        const ech = await EcheqEmitido.findByPk(mov.referencia_id, { transaction: t, lock: t.LOCK.UPDATE });
-        if (ech && !ech.anulado && String(ech.estado).toLowerCase() === "acreditado") {
-          await ech.update({ estado: "emitido" }, { transaction: t });
+      // ============================================================
+      // ECHEQ ACREDITADO → REVERTIR ACREDITACIÓN BANCARIA
+      // ============================================================
+
+      if (
+        refTipo === "echeqemitido" &&
+        mov.referencia_id
+      ) {
+
+        console.log(
+          "   • ECHEQ acreditado → revertir:",
+          mov.referencia_id
+        );
+
+
+        const ech =
+          await EcheqEmitido.findByPk(
+            mov.referencia_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        /*
+         * El movimiento bancario declara expresamente que
+         * proviene de un EcheqEmitido.
+         *
+         * Si el eCheq no existe, tenemos una inconsistencia
+         * de integridad y no debemos continuar.
+         */
+        if (!ech) {
+          throw new Error(
+            `No se encontró el EcheqEmitido #${mov.referencia_id} asociado al movimiento bancario.`
+          );
         }
-        await mov.destroy({ transaction: t });
-        if (t && !t.finished) await t.commit();
-        return res.json({ ok: true, mensaje: "Acreditación de eCheq revertida y movimiento bancario eliminado." });
+
+
+        /*
+         * Tampoco debemos eliminar silenciosamente el
+         * movimiento bancario de un eCheq ya anulado.
+         */
+        if (ech.anulado) {
+          throw new Error(
+            "El eCheq asociado se encuentra anulado. No se puede revertir automáticamente su acreditación bancaria."
+          );
+        }
+
+
+        /*
+         * El estado esperado es "acreditado".
+         *
+         * Si tiene otro estado, detenernos evita modificar
+         * una cadena financiera inconsistente.
+         */
+        if (
+          String(ech.estado || "")
+            .trim()
+            .toLowerCase() !== "acreditado"
+        ) {
+          throw new Error(
+            `El eCheq asociado se encuentra en estado "${ech.estado}". Se esperaba estado "acreditado".`
+          );
+        }
+
+
+        /*
+         * ========================================================
+         * 1. EL ECHEQ VUELVE A ESTADO EMITIDO
+         * ========================================================
+         *
+         * IMPORTANTE:
+         *
+         * NO anulamos el eCheq.
+         * NO tocamos el PagoProgramadoTesoreria.
+         * NO tocamos el ComprobanteEgreso.
+         * NO tocamos la OrdenPago.
+         *
+         * Solamente estamos revirtiendo su impacto bancario.
+         */
+
+        await ech.update(
+          {
+            estado:
+              "emitido",
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+        /*
+         * ========================================================
+         * 2. ELIMINAR MOVIMIENTO BANCARIO
+         * ========================================================
+         */
+
+        await mov.destroy({
+          transaction: t,
+        });
+
+
+        /*
+         * ========================================================
+         * 3. COMMIT
+         * ========================================================
+         */
+
+        if (
+          t &&
+          !t.finished
+        ) {
+          await t.commit();
+        }
+
+
+        return res.json({
+          ok:
+            true,
+
+          mensaje:
+            "Acreditación bancaria del eCheq revertida. El eCheq volvió a estado emitido.",
+
+          echeq:
+            ech,
+        });
       }
 
       // 🔁 PRIORIDAD: Orden de Pago

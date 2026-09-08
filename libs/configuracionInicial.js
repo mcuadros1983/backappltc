@@ -7,8 +7,8 @@ import { ADMIN_USERNAME, ADMIN_PASSWORD } from "../config/config.js";
 export const crearRoles = async () => {
   try {
     // Sincronizar los modelos con la base de datos
-    //await sequelize.sync({ alter: true });
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
+    // await sequelize.sync();
 
     // Verificar si existen los roles
     const rolesExistentes = await Rol.findAll({ where: { nombre: ['admin', 'gestion', 'ventas', 'sucursales','mantenimiento'] } });

@@ -114,6 +114,54 @@ const schedulerSeeder = async () => {
 
     });
 
+    /*
+|--------------------------------------------------------------------------
+| TESORERÍA - LIBRO IVA
+|--------------------------------------------------------------------------
+*/
+
+    await SchedulerJob.findOrCreate({
+
+        where: {
+            codigo:
+                "tesoreria.libroiva.mensual",
+        },
+
+        defaults: {
+
+            nombre:
+                "Crear Libros IVA mensuales",
+
+            descripcion:
+                "Verifica y crea automáticamente el Libro IVA del período actual para cada empresa.",
+
+            modulo:
+                "Tesorería",
+
+            handler:
+                "libroIVAMensualJob",
+
+            /*
+             * Ejecutar todos los días
+             * a las 05:15.
+             *
+             * El job es idempotente:
+             * si el Libro IVA ya existe,
+             * no vuelve a crearlo.
+             */
+            cron:
+                "15 5 * * *",
+
+            activo:
+                true,
+
+            orden:
+                3,
+
+        },
+
+    });
+
 };
 
 

@@ -33,6 +33,8 @@ import {
   recalcularComprobanteEgreso,
 } from "./helpers/recalcularComprobanteEgreso.js";
 
+import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
+
 const N = (value) => Number(value) || 0;
 
 export const registrarPagoProgramado = async (req, res) => {
@@ -46,7 +48,7 @@ export const registrarPagoProgramado = async (req, res) => {
       // egreso_varios | anticipo
       tipo,
 
-      // caja | banco
+      // caja | banco | echeq
       medio,
 
       fecha_programada,
@@ -58,6 +60,10 @@ export const registrarPagoProgramado = async (req, res) => {
 
       banco_id,
       caja_id,
+
+      // Sólo para la PROMESA de pago mediante eCheq.
+      // Todavía NO se crea EcheqEmitido.
+      echeq_fecha_vencimiento,
 
       categoriaegreso_id,
       imputacioncontable_id,
@@ -89,9 +95,9 @@ export const registrarPagoProgramado = async (req, res) => {
       );
     }
 
-    if (!["caja", "banco"].includes(medio)) {
+    if (!["caja", "banco", "echeq"].includes(medio)) {
       throw new Error(
-        "medio debe ser caja o banco"
+        "medio debe ser caja, banco o echeq"
       );
     }
 
@@ -120,11 +126,31 @@ export const registrarPagoProgramado = async (req, res) => {
     }
 
     if (
-      medio === "banco" &&
+      ["banco", "echeq"].includes(medio) &&
       !banco_id
     ) {
       throw new Error(
-        "banco_id requerido para pagos bancarios"
+        medio === "echeq"
+          ? "banco_id requerido para pagos con eCheq"
+          : "banco_id requerido para pagos bancarios"
+      );
+    }
+
+    if (
+      medio === "echeq" &&
+      !echeq_fecha_vencimiento
+    ) {
+      throw new Error(
+        "echeq_fecha_vencimiento requerida para pagos con eCheq"
+      );
+    }
+
+    if (
+      medio === "echeq" &&
+      echeq_fecha_vencimiento < fecha_programada
+    ) {
+      throw new Error(
+        "La fecha de vencimiento del eCheq no puede ser anterior a la fecha programada"
       );
     }
 
@@ -232,6 +258,11 @@ export const registrarPagoProgramado = async (req, res) => {
               ? Number(caja_id)
               : null,
 
+          echeq_fecha_vencimiento:
+            medio === "echeq"
+              ? echeq_fecha_vencimiento
+              : null,
+
           categoriaegreso_id:
             Number(categoriaegreso_id),
 
@@ -288,7 +319,9 @@ export const registrarPagoProgramado = async (req, res) => {
       const medioDescripcion =
         medio === "caja"
           ? "Caja"
-          : "Transferencia/Banco";
+          : medio === "echeq"
+            ? "eCheq"
+            : "Transferencia/Banco";
 
       movCtaCte =
         await MovimientoCtaCteProveedor.create(
@@ -474,7 +507,7 @@ export const listarPagosProgramados = async (req, res) => {
   }
 };
 
-export const acreditarPagoProgramado = async (req, res) => { 
+export const acreditarPagoProgramado = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
@@ -503,9 +536,16 @@ export const acreditarPagoProgramado = async (req, res) => {
       observaciones,
       proyecto_id,
 
+      // Datos definitivos del eCheq.
+      // Sólo se utilizan si medio === "echeq".
+      echeq_fecha_vencimiento,
+      numero_echeq,
+
       generar_abono_ctacte = false,
 
     } = req.body || {};
+
+
     const pago =
       await PagoProgramadoTesoreria.findByPk(
         id,
@@ -538,7 +578,7 @@ export const acreditarPagoProgramado = async (req, res) => {
 
 
     if (
-      !["caja", "banco"].includes(
+      !["caja", "banco", "echeq"].includes(
         medioFinal
       )
     ) {
@@ -619,6 +659,59 @@ export const acreditarPagoProgramado = async (req, res) => {
         .slice(0, 10);
 
     // ==================================================
+    // DATOS DEFINITIVOS DEL ECHEQ
+    // ==================================================
+
+    let bancoEcheqFinal = null;
+    let fechaVencimientoEcheqFinal = null;
+    let numeroEcheqFinal = null;
+
+
+    if (medioFinal === "echeq") {
+
+      bancoEcheqFinal =
+        banco_id ||
+        pago.banco_id;
+
+
+      if (!bancoEcheqFinal) {
+        throw new Error(
+          "Debe indicar el banco del eCheq"
+        );
+      }
+
+
+      fechaVencimientoEcheqFinal =
+        echeq_fecha_vencimiento ||
+        pago.echeq_fecha_vencimiento;
+
+
+      if (!fechaVencimientoEcheqFinal) {
+        throw new Error(
+          "Debe indicar la fecha de vencimiento del eCheq"
+        );
+      }
+
+
+      if (
+        fechaVencimientoEcheqFinal <
+        fecha
+      ) {
+        throw new Error(
+          "La fecha de vencimiento del eCheq no puede ser anterior a la fecha de emisión"
+        );
+      }
+
+
+      numeroEcheqFinal =
+        numero_echeq !== undefined &&
+          numero_echeq !== null &&
+          String(numero_echeq).trim()
+          ? String(numero_echeq).trim()
+          : null;
+    }
+    // ===============
+    // ===================================
     // VALIDAR ANTICIPO YA APLICADO A FACTURAS
     // ==================================================
 
@@ -661,16 +754,217 @@ export const acreditarPagoProgramado = async (req, res) => {
         );
       }
     }
-
     // ==================================================
     // ORDEN DE PAGO
     // ==================================================
 
-    let ordenpago_id =
-      pago.ordenpago_id || null;
+    /*
+     * Guardamos la OP original del compromiso.
+     *
+     * Si el PagoProgramado está vinculado a un comprobante,
+     * más abajo utilizaremos la OP del comprobante.
+     *
+     * Al final podremos determinar si esta OP original
+     * quedó realmente sin referencias y puede eliminarse.
+     */
+    const ordenpagoOriginalId =
+      pago.ordenpago_id
+        ? Number(pago.ordenpago_id)
+        : null;
 
+
+    let ordenpago_id = null;
+
+    /*
+     * ==================================================
+     * 1) SI ESTÁ VINCULADO A UN COMPROBANTE
+     * ==================================================
+     *
+     * La OrdenPago principal debe ser la del comprobante.
+     *
+     * El PagoProgramado pudo haber sido creado antes y tener
+     * su propia OP, pero una vez materializado como pago de
+     * un comprobante, el movimiento financiero real debe
+     * quedar asociado a la OP de ese comprobante.
+     * ==================================================
+     */
+
+    if (pago.comprobanteegreso_id) {
+
+      const comprobanteVinculado =
+        await ComprobanteEgreso.findByPk(
+          pago.comprobanteegreso_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!comprobanteVinculado) {
+        throw new Error(
+          `No se encontró el comprobante vinculado #${pago.comprobanteegreso_id}`
+        );
+      }
+
+
+      /*
+       * Defensa de empresa.
+       */
+      if (
+        comprobanteVinculado.empresa_id &&
+        Number(comprobanteVinculado.empresa_id) !==
+        Number(pago.empresa_id)
+      ) {
+        throw new Error(
+          "El comprobante vinculado pertenece a otra empresa"
+        );
+      }
+
+
+      /*
+       * Defensa de proveedor.
+       */
+      if (
+        comprobanteVinculado.proveedor_id &&
+        pago.proveedor_id &&
+        Number(comprobanteVinculado.proveedor_id) !==
+        Number(pago.proveedor_id)
+      ) {
+        throw new Error(
+          "El comprobante vinculado pertenece a otro proveedor"
+        );
+      }
+
+
+      /*
+       * Un comprobante emitido debería tener OP.
+       *
+       * Si no la tiene, no reutilizamos silenciosamente la OP
+       * vieja del programado porque dejaríamos inconsistente
+       * el circuito del comprobante.
+       */
+      if (!comprobanteVinculado.ordenpago_id) {
+        throw new Error(
+          `El comprobante vinculado #${comprobanteVinculado.id} no tiene Orden de Pago`
+        );
+      }
+
+
+      const ordenComprobante =
+        await OrdenPago.findByPk(
+          comprobanteVinculado.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!ordenComprobante) {
+        throw new Error(
+          `No se encontró la Orden de Pago #${comprobanteVinculado.ordenpago_id} del comprobante`
+        );
+      }
+
+
+      if (
+        Number(ordenComprobante.empresa_id) !==
+        Number(pago.empresa_id)
+      ) {
+        throw new Error(
+          "La Orden de Pago del comprobante pertenece a otra empresa"
+        );
+      }
+
+
+      if (
+        ordenComprobante.proveedor_id &&
+        pago.proveedor_id &&
+        Number(ordenComprobante.proveedor_id) !==
+        Number(pago.proveedor_id)
+      ) {
+        throw new Error(
+          "La Orden de Pago del comprobante pertenece a otro proveedor"
+        );
+      }
+
+
+      ordenpago_id =
+        ordenComprobante.id;
+    }
+
+
+    /*
+     * ==================================================
+     * 2) SI NO ESTÁ VINCULADO A COMPROBANTE
+     * ==================================================
+     *
+     * Conservamos la OP propia que ya tenía el compromiso.
+     * ==================================================
+     */
+
+    if (
+      !pago.comprobanteegreso_id &&
+      pago.ordenpago_id
+    ) {
+
+      const ordenProgramado =
+        await OrdenPago.findByPk(
+          pago.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (!ordenProgramado) {
+        throw new Error(
+          `No se encontró la Orden de Pago #${pago.ordenpago_id} del pago programado`
+        );
+      }
+
+
+      if (
+        Number(ordenProgramado.empresa_id) !==
+        Number(pago.empresa_id)
+      ) {
+        throw new Error(
+          "La Orden de Pago del pago programado pertenece a otra empresa"
+        );
+      }
+
+
+      if (
+        ordenProgramado.proveedor_id &&
+        pago.proveedor_id &&
+        Number(ordenProgramado.proveedor_id) !==
+        Number(pago.proveedor_id)
+      ) {
+        throw new Error(
+          "La Orden de Pago del pago programado pertenece a otro proveedor"
+        );
+      }
+
+
+      ordenpago_id =
+        ordenProgramado.id;
+    }
+
+
+    /*
+     * ==================================================
+     * 3) SI TODAVÍA NO EXISTE OP
+     * ==================================================
+     *
+     * Esto corresponde principalmente a un programado
+     * independiente que por algún motivo todavía no tiene OP.
+     * ==================================================
+     */
 
     if (!ordenpago_id) {
+
       const orden =
         await OrdenPago.create(
           {
@@ -681,7 +975,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               pago.proveedor_id,
 
             comprobanteegreso_id:
-              pago.comprobanteegreso_id || null,
+              null,
 
             fecha,
 
@@ -689,9 +983,7 @@ export const acreditarPagoProgramado = async (req, res) => {
               montoFinal,
 
             estado:
-              pago.comprobanteegreso_id
-                ? "emitida"
-                : "pendiente_aplicacion",
+              "pendiente_aplicacion",
 
             numero:
               null,
@@ -710,11 +1002,10 @@ export const acreditarPagoProgramado = async (req, res) => {
           }
         );
 
+
       ordenpago_id =
         orden.id;
     }
-
-
     // ==================================================
     // CREAR MOVIMIENTO REAL
     // ==================================================
@@ -874,12 +1165,75 @@ export const acreditarPagoProgramado = async (req, res) => {
         );
     }
 
+    // -------------------------------
+    // ECHEQ
+    // -------------------------------
+
+    if (medioFinal === "echeq") {
+
+      movimiento =
+        await EcheqEmitido.create(
+          {
+            comprobanteegreso_id:
+              pago.comprobanteegreso_id || null,
+
+            proveedor_id:
+              pago.proveedor_id,
+
+            empresa_id:
+              pago.empresa_id,
+
+            numero_echeq:
+              numeroEcheqFinal,
+
+            banco_id:
+              Number(bancoEcheqFinal),
+
+            fecha_emision:
+              fecha,
+
+            fecha_vencimiento:
+              fechaVencimientoEcheqFinal,
+
+            importe:
+              montoFinal,
+
+            estado:
+              "emitido",
+
+            anulado:
+              false,
+
+            ordenpago_id,
+
+            categoriaegreso_id:
+              pago.categoriaegreso_id || null,
+
+            imputacioncontable_id:
+              pago.imputacioncontable_id || null,
+
+            proyecto_id:
+              proyectoFinal,
+
+            referencia_id:
+              pago.id,
+
+            referencia_tipo:
+              "PagoProgramadoTesoreria",
+          },
+
+          {
+            transaction: t,
+          }
+        );
+    }
 
     if (!movimiento) {
       throw new Error(
         "No se pudo generar el movimiento financiero"
       );
     }
+
 
 
     // ==================================================
@@ -935,11 +1289,12 @@ export const acreditarPagoProgramado = async (req, res) => {
               false,
 
             ordenpago_id,
-
             referencia_tipo:
               medioFinal === "caja"
                 ? "MovimientoCajaTesoreria"
-                : "MovimientoBancoTesoreria",
+                : medioFinal === "echeq"
+                  ? "EcheqEmitido"
+                  : "MovimientoBancoTesoreria",
 
             referencia_id:
               movimiento.id,
@@ -963,7 +1318,9 @@ export const acreditarPagoProgramado = async (req, res) => {
           referencia_tipo:
             medioFinal === "caja"
               ? "MovimientoCajaTesoreria"
-              : "MovimientoBancoTesoreria",
+              : medioFinal === "echeq"
+                ? "EcheqEmitido"
+                : "MovimientoBancoTesoreria",
 
           referencia_id:
             movimiento.id,
@@ -1039,7 +1396,10 @@ export const acreditarPagoProgramado = async (req, res) => {
           proyectoFinal,
 
         banco_id:
-          medioFinal === "banco"
+          (
+            medioFinal === "banco" ||
+            medioFinal === "echeq"
+          )
             ? Number(
               banco_id ||
               pago.banco_id
@@ -1054,12 +1414,19 @@ export const acreditarPagoProgramado = async (req, res) => {
             )
             : null,
 
+        echeq_fecha_vencimiento:
+          medioFinal === "echeq"
+            ? fechaVencimientoEcheqFinal
+            : null,
+
         ordenpago_id,
 
         movimiento_tipo:
           medioFinal === "caja"
             ? "MovimientoCajaTesoreria"
-            : "MovimientoBancoTesoreria",
+            : medioFinal === "echeq"
+              ? "EcheqEmitido"
+              : "MovimientoBancoTesoreria",
 
         movimiento_id:
           movimiento.id,
@@ -1069,6 +1436,201 @@ export const acreditarPagoProgramado = async (req, res) => {
         transaction: t,
       }
     );
+
+    // ==================================================
+    // LIMPIAR OP ORIGINAL DEL PAGO PROGRAMADO
+    // ==================================================
+    /*
+     * Si al acreditar un PagoProgramado vinculado a un
+     * comprobante pasamos de su OP original a la OP propia
+     * del comprobante, la OP anterior puede haber quedado
+     * huérfana.
+     *
+     * Sólo la eliminamos si:
+     *
+     * 1) realmente cambió la OP;
+     * 2) no pertenece a otro comprobante;
+     * 3) no tiene movimientos financieros;
+     * 4) no tiene movimientos de cuenta corriente;
+     * 5) no tiene eCheqs;
+     *
+     * Nunca hacemos destroy() de una OP con referencias.
+     */
+
+    if (
+      ordenpagoOriginalId &&
+      Number(ordenpagoOriginalId) !==
+      Number(ordenpago_id)
+    ) {
+
+      const ordenOriginal =
+        await OrdenPago.findByPk(
+          ordenpagoOriginalId,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (ordenOriginal) {
+
+        /*
+         * Una OP perteneciente a otro comprobante
+         * nunca debe eliminarse automáticamente.
+         */
+        const tieneComprobante =
+          Boolean(
+            ordenOriginal.comprobanteegreso_id
+          );
+
+
+        const movCaja =
+          await MovimientoCajaTesoreria.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+
+        const movBanco =
+          await MovimientoBancoTesoreria.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+
+        const movCtaCte =
+          await MovimientoCtaCteProveedor.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+
+        const echeq =
+          await EcheqEmitido.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+        const pagoTarjeta =
+          await PagoTarjetaCredito.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+        const otroPagoProgramado =
+          await PagoProgramadoTesoreria.findOne({
+            where: {
+              ordenpago_id:
+                ordenpagoOriginalId,
+
+              id: {
+                [Op.ne]:
+                  pago.id,
+              },
+
+              estado: {
+                [Op.notIn]: [
+                  "anulado",
+                ],
+              },
+            },
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+        /*
+         * Si no quedó absolutamente ninguna referencia
+         * activa, la OP original ya no representa ninguna
+         * operación y puede eliminarse.
+         */
+        if (
+          !tieneComprobante &&
+          !movCaja &&
+          !movBanco &&
+          !movCtaCte &&
+          !echeq &&
+          !pagoTarjeta &&
+          !otroPagoProgramado
+
+        ) {
+
+          await ordenOriginal.destroy({
+            transaction: t,
+          });
+        }
+      }
+    }
+
 
     // ==================================================
     // RECALCULAR COMPROBANTE
@@ -1164,7 +1726,7 @@ export const eliminarPagoProgramado = async (req, res) => {
      */
     if (pago.estado === "acreditado") {
       throw new Error(
-        "El pago ya fue acreditado. Debe eliminarse/anularse desde el movimiento de Caja o Banco."
+        "El pago ya fue acreditado. Debe anularse desde el movimiento financiero que lo originó (Caja, Banco o eCheq)."
       );
     }
 
@@ -1224,11 +1786,55 @@ export const eliminarPagoProgramado = async (req, res) => {
           where: {
             id:
               pago.movimiento_ctacte_id,
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
           },
 
           transaction: t,
         }
       );
+    }
+    // ==================================================
+    // ANULAR ORDEN DE PAGO PROPIA DEL PROGRAMADO
+    // ==================================================
+
+    if (pago.ordenpago_id) {
+
+      const orden =
+        await OrdenPago.findByPk(
+          pago.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (orden) {
+
+        /*
+         * Sólo anulamos automáticamente una OP que no esté
+         * asociada a un comprobante.
+         *
+         * Una OP perteneciente a un comprobante debe resolverse
+         * desde el circuito del propio comprobante.
+         */
+        if (!orden.comprobanteegreso_id) {
+
+          await orden.update(
+            {
+              estado:
+                "anulada",
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+      }
     }
 
 
@@ -1294,6 +1900,7 @@ export const actualizarPagoProgramado = async (req, res) => {
       formapago_id,
       caja_id,
       banco_id,
+      echeq_fecha_vencimiento,
       monto,
       descripcion,
       observaciones,
@@ -1352,7 +1959,7 @@ export const actualizarPagoProgramado = async (req, res) => {
 
 
     if (
-      !["caja", "banco"].includes(
+      !["caja", "banco", "echeq"].includes(
         medioFinal
       )
     ) {
@@ -1499,30 +2106,34 @@ export const actualizarPagoProgramado = async (req, res) => {
     let cajaFinal =
       null;
 
-
-    if (medioFinal === "banco") {
+    if (
+      medioFinal === "banco" ||
+      medioFinal === "echeq"
+    ) {
 
       bancoFinal =
         banco_id
-          ? Number(
-            banco_id
-          )
+          ? Number(banco_id)
           : (
-            pago.medio === "banco" &&
+            (
+              pago.medio === "banco" ||
+              pago.medio === "echeq"
+            ) &&
               pago.banco_id
-              ? Number(
-                pago.banco_id
-              )
+              ? Number(pago.banco_id)
               : null
           );
 
 
       if (!bancoFinal) {
         throw new Error(
-          "Debe indicar el banco"
+          medioFinal === "echeq"
+            ? "Debe indicar el banco del eCheq"
+            : "Debe indicar el banco"
         );
       }
     }
+
 
 
     if (medioFinal === "caja") {
@@ -1547,6 +2158,38 @@ export const actualizarPagoProgramado = async (req, res) => {
           "Debe indicar la caja"
         );
       }
+    }
+
+    const echeqFechaVencimientoFinal =
+      medioFinal === "echeq"
+        ? (
+          echeq_fecha_vencimiento ||
+          (
+            pago.medio === "echeq"
+              ? pago.echeq_fecha_vencimiento
+              : null
+          )
+        )
+        : null;
+
+
+    if (
+      medioFinal === "echeq" &&
+      !echeqFechaVencimientoFinal
+    ) {
+      throw new Error(
+        "Debe indicar la fecha de vencimiento prevista del eCheq"
+      );
+    }
+
+
+    if (
+      medioFinal === "echeq" &&
+      echeqFechaVencimientoFinal < fechaFinal
+    ) {
+      throw new Error(
+        "La fecha de vencimiento del eCheq no puede ser anterior a la fecha programada"
+      );
     }
     // ==================================================
     // ANTICIPO:
@@ -1659,6 +2302,9 @@ export const actualizarPagoProgramado = async (req, res) => {
         caja_id:
           cajaFinal,
 
+        echeq_fecha_vencimiento:
+          echeqFechaVencimientoFinal,
+
         monto:
           montoFinal,
 
@@ -1694,11 +2340,12 @@ export const actualizarPagoProgramado = async (req, res) => {
       pago.tipo === "anticipo" &&
       movCtaCte
     ) {
-
       const medioDescripcion =
         medioFinal === "caja"
           ? "Caja"
-          : "Transferencia/Banco";
+          : medioFinal === "echeq"
+            ? "eCheq"
+            : "Transferencia/Banco";
 
 
       await movCtaCte.update(

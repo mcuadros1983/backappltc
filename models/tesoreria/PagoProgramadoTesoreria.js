@@ -26,7 +26,7 @@ const PagoProgramadoTesoreria = sequelize.define(
       allowNull: false,
     },
 
-    // caja | banco
+    // caja | banco | echeq
     medio: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -57,8 +57,7 @@ const PagoProgramadoTesoreria = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-
-    // Banco previsto si medio=banco
+    // Banco previsto si medio=banco o medio=echeq
     banco_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -70,6 +69,14 @@ const PagoProgramadoTesoreria = sequelize.define(
       allowNull: true,
     },
 
+    // Vencimiento previsto si el pago se realizará mediante eCheq.
+    // IMPORTANTE: esto NO representa todavía un EcheqEmitido.
+    // Es solamente un dato de la promesa de pago.
+    echeq_fecha_vencimiento: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    
     categoriaegreso_id: {
       type: DataTypes.INTEGER,
       allowNull: true,

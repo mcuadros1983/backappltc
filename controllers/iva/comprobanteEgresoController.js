@@ -4,6 +4,8 @@ import MovimientoBancoTesoreria from "../../models/tesoreria/movimientobancoteso
 import EcheqEmitido from "../../models/tesoreria/pagoecheq.js";
 import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
 import MovimientoCtaCteProveedor from "../../models/tesoreria/movimientoctacteproveedor.js";
+import MovimientoCtaCteProveedorAplic
+  from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
 import PagoProgramadoTesoreria
   from "../../models/tesoreria/PagoProgramadoTesoreria.js";
@@ -237,18 +239,228 @@ export const eliminarComprobanteEgreso = async (req, res) => {
       transaction: t,
     });
 
+    // 2.3) Liberar pagos programados pendientes vinculados al comprobante
+    //
+    // Un PagoProgramadoTesoreria pendiente todavía NO representa
+    // un desembolso financiero real.
+    //
+    // Si eliminamos el comprobante, el compromiso debe volver a quedar
+    // disponible para poder asociarse posteriormente a otro comprobante.
+    //
+    // También contemplamos anticipos programados que tengan asociado
+    // un MovimientoCtaCteProveedor mediante movimiento_ctacte_id.
+
+    const todosPagosProgramadosVinculados =
+      await PagoProgramadoTesoreria.findAll({
+        where: {
+          comprobanteegreso_id:
+            compId,
+        },
+
+        transaction:
+          t,
+
+        lock:
+          t.LOCK.UPDATE,
+      });
+
+
+    const pagosProgramadosNoPendientes =
+      todosPagosProgramadosVinculados.filter(
+        pago =>
+          String(
+            pago.estado ||
+            ""
+          )
+            .trim()
+            .toLowerCase() !==
+          "pendiente"
+      );
+
+
+    if (
+      pagosProgramadosNoPendientes.length
+    ) {
+
+      throw new Error(
+        "No se puede eliminar el comprobante porque tiene uno o más pagos programados que ya no se encuentran pendientes. Primero debe revertirse o resolver esos pagos."
+      );
+    }
+
+
+    const pagosProgramadosVinculados =
+      todosPagosProgramadosVinculados;
+
+
+    for (const pagoProgramado of pagosProgramadosVinculados) {
+
+      /*
+       * Si el pago programado tiene un movimiento de cuenta corriente
+       * asociado (caso típico: anticipo programado), NO lo eliminamos.
+       *
+       * Simplemente quitamos la asociación con este comprobante.
+       *
+       * Conservamos:
+       * - referencia_tipo
+       * - referencia_id
+       * - proveedor
+       * - importe
+       * - estado
+       * - ordenpago_id
+       *
+       * porque siguen perteneciendo al compromiso programado.
+       */
+      if (pagoProgramado.movimiento_ctacte_id) {
+
+        const movCtaCte =
+          await MovimientoCtaCteProveedor.findByPk(
+            pagoProgramado.movimiento_ctacte_id,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (
+          movCtaCte &&
+          Number(movCtaCte.comprobanteegreso_id) === Number(compId)
+        ) {
+
+          await movCtaCte.update(
+            {
+              comprobanteegreso_id: null,
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+      }
+
+
+      /*
+       * El compromiso vuelve a quedar disponible.
+       *
+       * NO tocamos:
+       * - estado
+       * - monto
+       * - fecha_programada
+       * - medio
+       * - banco_id
+       * - caja_id
+       * - echeq_fecha_vencimiento
+       * - movimiento_ctacte_id
+       * - ordenpago_id
+       */
+      /*
+      * Si el PagoProgramado estaba utilizando la misma OP
+      * que pertenece al comprobante que vamos a eliminar,
+      * también debemos liberar esa referencia.
+      *
+      * Si conserva una OP distinta, no la tocamos.
+      */
+
+      const usaOrdenDelComprobante =
+        comp.ordenpago_id &&
+        pagoProgramado.ordenpago_id &&
+        Number(pagoProgramado.ordenpago_id) ===
+        Number(comp.ordenpago_id);
+
+
+      await pagoProgramado.update(
+        {
+          comprobanteegreso_id:
+            null,
+
+          ...(usaOrdenDelComprobante
+            ? {
+              ordenpago_id:
+                null,
+            }
+            : {}),
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
+
+
     // 3) Eliminar cargos de CtaCte del comprobante
-    const cargos = await MovimientoCtaCteProveedor.findAll({
-      where: { comprobanteegreso_id: compId, tipo: "cargo" },
-      attributes: ["id"],
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
-    const cargoIds = cargos.map(c => c.id);
+    //
+    // Antes de eliminarlos verificamos que ninguno tenga
+    // aplicaciones de abonos.
+    //
+    // No debemos destruir un cargo que ya esté alcanzado por
+    // MovimientoCtaCteProveedorAplic, porque dejaríamos
+    // aplicaciones huérfanas y perderíamos trazabilidad.
+
+    const cargos =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          comprobanteegreso_id:
+            compId,
+
+          tipo:
+            "cargo",
+        },
+
+        attributes: [
+          "id",
+        ],
+
+        transaction:
+          t,
+
+        lock:
+          t.LOCK.UPDATE,
+      });
+
+
+    const cargoIds =
+      cargos.map(
+        c => Number(c.id)
+      );
+
+
     if (cargoIds.length) {
+
+      const aplicacionExistente =
+        await MovimientoCtaCteProveedorAplic.findOne({
+          where: {
+            cargo_id: {
+              [Op.in]:
+                cargoIds,
+            },
+          },
+
+          transaction:
+            t,
+
+          lock:
+            t.LOCK.UPDATE,
+        });
+
+
+      if (aplicacionExistente) {
+
+        throw new Error(
+          "No se puede eliminar el comprobante porque su deuda de cuenta corriente tiene pagos aplicados. Primero debe desaplicar esos pagos."
+        );
+      }
+
+
       await MovimientoCtaCteProveedor.destroy({
-        where: { id: { [Op.in]: cargoIds } },
-        transaction: t,
+        where: {
+          id: {
+            [Op.in]:
+              cargoIds,
+          },
+        },
+
+        transaction:
+          t,
       });
     }
 
@@ -265,12 +477,24 @@ export const eliminarComprobanteEgreso = async (req, res) => {
 
     await t.commit();
     return res.status(200).json({
-      mensaje: "Comprobante de egreso y vínculos eliminados correctamente",
+      mensaje:
+        "Comprobante de egreso y vínculos eliminados correctamente",
+
       eliminado: {
-        comprobanteegreso_id: compId,
-        ordenpago_id: comp.ordenpago_id || null,
-        cargos_eliminados: cargoIds.length,
-        haciendas_desvinculadas: haciendasDesvinculadas, // útil para monitoreo
+        comprobanteegreso_id:
+          compId,
+
+        ordenpago_id:
+          comp.ordenpago_id || null,
+
+        cargos_eliminados:
+          cargoIds.length,
+
+        haciendas_desvinculadas:
+          haciendasDesvinculadas,
+
+        pagos_programados_liberados:
+          pagosProgramadosVinculados.length,
       },
     });
   } catch (error) {
@@ -690,6 +914,13 @@ export const emitirComprobanteEgreso = async (req, res) => {
       pagosFinancieros
         .filter(
           p =>
+            String(
+              p?.existing_ref?.tipo ||
+              ""
+            )
+              .trim()
+              .toLowerCase() !==
+            "pago_programado" &&
             esEfectivoAhora(
               medioDe(p)
             )
@@ -700,7 +931,6 @@ export const emitirComprobanteEgreso = async (req, res) => {
             normaliza(p.monto),
           0
         );
-
 
     /*
      * Las formas de pago reales deben cubrir
@@ -748,12 +978,45 @@ export const emitirComprobanteEgreso = async (req, res) => {
     //     ? comprobante.formapago_id
     //     : (pagos.length === 1 ? Number(pagos[0].formapago_id || 0) || null : null);
 
+    /*
+    * Para determinar la forma de pago ACTUAL del comprobante
+    * excluimos los PagoProgramadoTesoreria pendientes.
+    *
+    * Un pago programado es todavía un compromiso,
+    * no una forma de pago materializada.
+    */
+    const pagosHeader =
+      pagosFinancieros.filter(
+        p =>
+          String(
+            p?.existing_ref?.tipo ||
+            ""
+          )
+            .trim()
+            .toLowerCase() !==
+          "pago_programado"
+      );
+
+
+    const formasHeader =
+      [
+        ...new Set(
+          pagosHeader
+            .map(
+              p =>
+                Number(
+                  p.formapago_id ||
+                  0
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
     const formapagoHeader =
-      pagosFinancieros.length === 1
-        ? Number(
-          pagosFinancieros[0]
-            .formapago_id || 0
-        ) || null
+      formasHeader.length === 1
+        ? formasHeader[0]
         : null;
 
 
@@ -977,23 +1240,78 @@ export const emitirComprobanteEgreso = async (req, res) => {
         case "tarjeta":
           return { tipo, row: await PagoTarjetaCredito.findByPk(id, { transaction: trx }) };
         case "ctacte":
-          return { tipo, row: await MovimientoCtaCteProveedor.findByPk(id, { transaction: trx }) };
+          return {
+            tipo,
+            row: await MovimientoCtaCteProveedor.findByPk(
+              id,
+              { transaction: trx }
+            ),
+          };
+
+        case "pago_programado":
+          return {
+            tipo,
+            row: await PagoProgramadoTesoreria.findByPk(
+              id,
+              {
+                transaction: trx,
+                lock: trx.LOCK.UPDATE,
+              }
+            ),
+          };
+
         default:
-          throw new Error(`existing_ref.tipo no soportado: ${tipo}`);
+          throw new Error(
+            `existing_ref.tipo no soportado: ${tipo}`
+          );
       }
     }
 
     function getMontoFechaDeExisting(tipo, row) {
       switch (tipo) {
-        case "caja": return { monto: Number(row.monto || 0), fecha: row.fecha };
-        case "banco": return { monto: Number(row.monto || 0), fecha: row.fecha };
-        case "echeq": return { monto: Number(row.importe || 0), fecha: row.fecha_emision };
-        case "tarjeta": return { monto: Number(row.importe || 0), fecha: row.fecha };
-        case "ctacte": return { monto: Number(row.importe || 0), fecha: row.fecha };
-        default: return { monto: 0, fecha: null };
+        case "caja":
+          return {
+            monto: Number(row.monto || 0),
+            fecha: row.fecha,
+          };
+
+        case "banco":
+          return {
+            monto: Number(row.monto || 0),
+            fecha: row.fecha,
+          };
+
+        case "echeq":
+          return {
+            monto: Number(row.importe || 0),
+            fecha: row.fecha_emision,
+          };
+
+        case "tarjeta":
+          return {
+            monto: Number(row.importe || 0),
+            fecha: row.fecha,
+          };
+
+        case "ctacte":
+          return {
+            monto: Number(row.importe || 0),
+            fecha: row.fecha,
+          };
+
+        case "pago_programado":
+          return {
+            monto: Number(row.monto || 0),
+            fecha: row.fecha_programada,
+          };
+
+        default:
+          return {
+            monto: 0,
+            fecha: null,
+          };
       }
     }
-
     // 3) Aplicar pagos
     let sumaEfectivosReal = 0;
 
@@ -1007,9 +1325,15 @@ export const emitirComprobanteEgreso = async (req, res) => {
       const instanciaId = Number(p?.gastoestimado?.instancia_id || 0);
       const obsPago = p.detalle || `Pago comp. ${comp.nrocomprobante}`;
 
-      // No permitir instancia con existing_ref
-      if (p.existing_ref && p.gastoestimado) {
-        throw new Error("No se puede asociar a una instancia cuando el pago usa un registro existente");
+      // No permitir aplicar una instancia de gasto estimado
+      // cuando la fila utiliza un movimiento existente.
+      if (
+        p.existing_ref &&
+        p?.gastoestimado?.aplicar
+      ) {
+        throw new Error(
+          "No se puede asociar a una instancia cuando el pago usa un registro existente"
+        );
       }
 
       // ------- Existing_ref -------
@@ -1035,6 +1359,118 @@ export const emitirComprobanteEgreso = async (req, res) => {
         // Detectar si el registro de Cta.Cte. seleccionado corresponde
         // a un ANTICIPO PROGRAMADO todavía pendiente de acreditación.
         // ============================================================
+
+        /*
+ * ============================================================
+ * PAGO PROGRAMADO DIRECTO
+ * ============================================================
+ *
+ * Un PagoProgramadoTesoreria pendiente es solamente un
+ * compromiso de pago.
+ *
+ * Al asociarlo al comprobante:
+ *
+ * - NO se acredita.
+ * - NO crea MovimientoCajaTesoreria.
+ * - NO crea MovimientoBancoTesoreria.
+ * - NO crea EcheqEmitido.
+ * - NO suma a sumaEfectivosReal.
+ *
+ * Solamente queda vinculado al comprobante.
+ * ============================================================
+ */
+
+        if (found.tipo === "pago_programado") {
+
+          const estadoProgramado =
+            String(r.estado || "")
+              .trim()
+              .toLowerCase();
+
+          if (estadoProgramado !== "pendiente") {
+            throw new Error(
+              `El pago programado #${r.id} no está pendiente`
+            );
+          }
+
+          if (
+            r.comprobanteegreso_id &&
+            Number(r.comprobanteegreso_id) !== Number(comp.id)
+          ) {
+            throw new Error(
+              `El pago programado #${r.id} ya está asociado a otro comprobante`
+            );
+          }
+
+          if (
+            empresa_id &&
+            r.empresa_id &&
+            Number(r.empresa_id) !== Number(empresa_id)
+          ) {
+            throw new Error(
+              `El pago programado #${r.id} pertenece a otra empresa`
+            );
+          }
+
+          if (
+            comprobante.proveedor_id &&
+            r.proveedor_id &&
+            Number(r.proveedor_id) !==
+            Number(comprobante.proveedor_id)
+          ) {
+            throw new Error(
+              `El pago programado #${r.id} pertenece a otro proveedor`
+            );
+          }
+
+          /*
+           * Defensa importante:
+           *
+           * El importe elegido en la forma de pago debe coincidir
+           * con el compromiso seleccionado.
+           */
+          if (
+            Math.abs(
+              Number(usedMonto) -
+              Number(monto)
+            ) > EPS
+          ) {
+            throw new Error(
+              `El importe del pago programado #${r.id} no coincide con el importe seleccionado`
+            );
+          }
+
+          /*
+           * Vinculamos solamente el compromiso.
+           *
+           * Conservamos:
+           * - estado = pendiente
+           * - ordenpago_id original
+           * - medio
+           * - fecha_programada
+           * - banco/caja
+           * - datos futuros del eCheq
+           */
+          await r.update(
+            {
+              comprobanteegreso_id: comp.id,
+            },
+            {
+              transaction: t,
+            }
+          );
+
+          /*
+           * MUY IMPORTANTE:
+           *
+           * NO hacemos:
+           *
+           * sumaEfectivosReal += usedMonto;
+           *
+           * porque todavía no existe desembolso.
+           */
+          continue;
+        }
 
         let pagoProgramado = null;
 
