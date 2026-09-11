@@ -39,6 +39,16 @@ const MovimientoCtaCteProveedor = sequelize.define("MovimientoCtaCteProveedor", 
   formapago_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
+
+  },
+  categoriaegreso_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+
+  sucursal_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
   },
   referencia_id: {          // id del modelo origen (OP, sueldo, etc.)
     type: DataTypes.INTEGER,

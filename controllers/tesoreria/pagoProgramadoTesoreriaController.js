@@ -1,8 +1,14 @@
 import { Op } from "sequelize";
 import { sequelize } from "../../config/database.js";
 
+
+import PagoTarjetaCredito from "../../models/tesoreria/pagotarjetacredito.js";
+
 import PagoProgramadoTesoreria
   from "../../models/tesoreria/PagoProgramadoTesoreria.js";
+
+import MovCtaCteProvAplic
+  from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
 
 import MovimientoCtaCteProveedor
   from "../../models/tesoreria/movimientoctacteproveedor.js";
@@ -15,9 +21,7 @@ import MovimientoBancoTesoreria
 
 import OrdenPago from "../../models/tesoreria/ordendepago.js";
 
-import MovCtaCteProvAplic
-  from "../../models/tesoreria/movimientoctacteproveedoraplicacion.js";
-
+import ComprobanteEgreso from "../../models/iva/comprobanteegreso.js";
 /*
  * IMPORTANTE:
  * Para CategoriaEgreso copiá EXACTAMENTE el import que ya
@@ -25,9 +29,6 @@ import MovCtaCteProvAplic
  */
 import CategoriaEgreso
   from "../../models/tesoreria/categoriaEgreso.js";
-
-import ComprobanteEgreso
-  from "../../models/iva/comprobanteegreso.js";
 
 import {
   recalcularComprobanteEgreso,
@@ -427,7 +428,9 @@ export const registrarPagoProgramado = async (req, res) => {
 };
 
 export const listarPagosProgramados = async (req, res) => {
+
   try {
+
     const {
       empresa_id,
       proveedor_id,
@@ -438,6 +441,7 @@ export const listarPagosProgramados = async (req, res) => {
       hasta,
     } = req.query || {};
 
+
     const where = {};
 
 
@@ -446,59 +450,497 @@ export const listarPagosProgramados = async (req, res) => {
         Number(empresa_id);
     }
 
+
     if (proveedor_id) {
       where.proveedor_id =
         Number(proveedor_id);
     }
+
 
     if (estado) {
       where.estado =
         estado;
     }
 
+
     if (medio) {
       where.medio =
         medio;
     }
+
 
     if (tipo) {
       where.tipo =
         tipo;
     }
 
+
     if (desde || hasta) {
+
       where.fecha_programada = {};
 
+
       if (desde) {
-        where.fecha_programada[Op.gte] =
+
+        where.fecha_programada[
+          Op.gte
+        ] =
           desde;
       }
 
+
       if (hasta) {
-        where.fecha_programada[Op.lte] =
+
+        where.fecha_programada[
+          Op.lte
+        ] =
           hasta;
       }
     }
 
+
+    // ================================================
+    // 1) PAGOS PROGRAMADOS
+    // ================================================
 
     const rows =
       await PagoProgramadoTesoreria.findAll({
         where,
 
         order: [
-          ["fecha_programada", "ASC"],
-          ["id", "ASC"],
+          [
+            "fecha_programada",
+            "ASC",
+          ],
+          [
+            "id",
+            "ASC",
+          ],
         ],
       });
 
 
-    return res.json(rows);
+    if (!rows.length) {
+      return res.json([]);
+    }
+
+
+    // ================================================
+    // 2) IDS DE PAGOS PROGRAMADOS
+    // ================================================
+
+    const pagoIds =
+      rows.map(
+        (p) =>
+          Number(p.id)
+      );
+
+
+    // ================================================
+    // 3) ABONOS QUE REPRESENTAN ESOS
+    //    PAGOS PROGRAMADOS
+    //
+    // IMPORTANTE:
+    // no usamos empresa_id.
+    // ================================================
+
+    const abonos =
+      await MovimientoCtaCteProveedor.findAll({
+
+        where: {
+
+          referencia_tipo:
+            "PagoProgramadoTesoreria",
+
+          referencia_id: {
+            [Op.in]:
+              pagoIds,
+          },
+        },
+
+        attributes: [
+          "id",
+          "referencia_id",
+        ],
+      });
+
+
+    if (!abonos.length) {
+
+      return res.json(
+        rows.map(
+          (p) => ({
+            ...p.toJSON(),
+
+            monto_aplicado:
+              0,
+
+            tiene_aplicaciones:
+              false,
+
+            comprobantes_aplicados:
+              [],
+          })
+        )
+      );
+    }
+
+
+    // ================================================
+    // 4) MAPA:
+    //    ABONO -> PAGO PROGRAMADO
+    // ================================================
+
+    const pagoIdPorAbonoId =
+      new Map();
+
+
+    for (const abono of abonos) {
+
+      pagoIdPorAbonoId.set(
+        Number(abono.id),
+        Number(
+          abono.referencia_id
+        )
+      );
+    }
+
+
+    const abonoIds =
+      abonos.map(
+        (a) =>
+          Number(a.id)
+      );
+
+
+    // ================================================
+    // 5) APLICACIONES DE ESOS ABONOS
+    // ================================================
+    const aplicaciones =
+      await MovCtaCteProvAplic.findAll({
+
+        where: {
+
+          abono_id: {
+            [Op.in]:
+              abonoIds,
+          },
+        },
+
+        attributes: [
+          "abono_id",
+          "cargo_id",
+          "importe",
+        ],
+      });
+
+    // ================================================
+    // 5.1) CARGOS RELACIONADOS
+    // ================================================
+
+    const cargoIds =
+      [
+        ...new Set(
+          aplicaciones
+            .map(
+              (a) =>
+                Number(
+                  a.cargo_id
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    const cargos =
+      cargoIds.length > 0
+        ? await MovimientoCtaCteProveedor.findAll({
+
+          where: {
+            id: {
+              [Op.in]:
+                cargoIds,
+            },
+          },
+
+          attributes: [
+            "id",
+            "comprobanteegreso_id",
+          ],
+        })
+        : [];
+
+
+    // ================================================
+    // 5.2) MAPA CARGO -> COMPROBANTE
+    // ================================================
+
+    const comprobanteIdPorCargoId =
+      new Map();
+
+
+    for (const cargo of cargos) {
+
+      comprobanteIdPorCargoId.set(
+        Number(cargo.id),
+        cargo.comprobanteegreso_id
+          ? Number(
+            cargo.comprobanteegreso_id
+          )
+          : null
+      );
+    }
+
+
+    // ================================================
+    // 5.3) COMPROBANTES RELACIONADOS
+    // ================================================
+
+    const comprobanteIds =
+      [
+        ...new Set(
+          cargos
+            .map(
+              (cargo) =>
+                Number(
+                  cargo.comprobanteegreso_id
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    const comprobantes =
+      comprobanteIds.length > 0
+        ? await ComprobanteEgreso.findAll({
+
+          where: {
+            id: {
+              [Op.in]:
+                comprobanteIds,
+            },
+          },
+
+          attributes: [
+            "id",
+            "nrocomprobante",
+          ],
+        })
+        : [];
+
+
+    // ================================================
+    // 5.4) MAPA COMPROBANTE ID -> NÚMERO
+    // ================================================
+
+    const nroComprobantePorId =
+      new Map();
+
+
+    for (const comprobante of comprobantes) {
+
+      nroComprobantePorId.set(
+        Number(comprobante.id),
+        comprobante.nrocomprobante ||
+        `#${comprobante.id}`
+      );
+    }
+    // ================================================
+    // 6) TOTAL APLICADO Y COMPROBANTES
+    //    POR PAGO PROGRAMADO
+    // ================================================
+
+    const montoAplicadoPorPago =
+      new Map();
+
+
+    const comprobantesPorPago =
+      new Map();
+
+
+    for (
+      const aplicacion
+      of aplicaciones
+    ) {
+
+      const pagoId =
+        pagoIdPorAbonoId.get(
+          Number(
+            aplicacion.abono_id
+          )
+        );
+
+
+      if (!pagoId) {
+        continue;
+      }
+
+
+      // ==============================================
+      // 6.1) MONTO TOTAL APLICADO
+      // ==============================================
+
+      const anterior =
+        Number(
+          montoAplicadoPorPago.get(
+            pagoId
+          ) || 0
+        );
+
+
+      montoAplicadoPorPago.set(
+        pagoId,
+        anterior +
+        Number(
+          aplicacion.importe ||
+          0
+        )
+      );
+
+
+      // ==============================================
+      // 6.2) COMPROBANTE DE ESTA APLICACIÓN
+      // ==============================================
+
+      const comprobanteId =
+        comprobanteIdPorCargoId.get(
+          Number(
+            aplicacion.cargo_id
+          )
+        );
+
+
+      if (!comprobanteId) {
+        continue;
+      }
+
+
+      // ==============================================
+      // 6.3) MAPA DE COMPROBANTES DEL PAGO
+      // ==============================================
+
+      if (
+        !comprobantesPorPago.has(
+          pagoId
+        )
+      ) {
+
+        comprobantesPorPago.set(
+          pagoId,
+          new Map()
+        );
+      }
+
+
+      const comprobantesPago =
+        comprobantesPorPago.get(
+          pagoId
+        );
+
+
+      const anteriorComprobante =
+        comprobantesPago.get(
+          comprobanteId
+        );
+
+
+      /*
+       * Si ya existe el comprobante,
+       * acumulamos el importe.
+       */
+      if (anteriorComprobante) {
+
+        anteriorComprobante.importe_aplicado +=
+          Number(
+            aplicacion.importe ||
+            0
+          );
+
+      } else {
+
+        /*
+         * Primera aplicación encontrada
+         * para este comprobante.
+         */
+        comprobantesPago.set(
+          comprobanteId,
+          {
+            id:
+              comprobanteId,
+
+            nrocomprobante:
+              nroComprobantePorId.get(
+                comprobanteId
+              ) ||
+              `#${comprobanteId}`,
+
+            importe_aplicado:
+              Number(
+                aplicacion.importe ||
+                0
+              ),
+          }
+        );
+      }
+    }
+
+    // ================================================
+    // 7) RESPUESTA
+    // ================================================
+
+    const resultado =
+      rows.map(
+        (p) => {
+
+          const montoAplicado =
+            Number(
+              montoAplicadoPorPago.get(
+                Number(p.id)
+              ) || 0
+            );
+
+          const comprobantesAplicados =
+            [
+              ...(
+                comprobantesPorPago.get(
+                  Number(p.id)
+                )?.values() ||
+                []
+              ),
+            ];
+
+
+          return {
+
+            ...p.toJSON(),
+
+            monto_aplicado:
+              montoAplicado,
+
+            tiene_aplicaciones:
+              montoAplicado > 0,
+
+            comprobantes_aplicados:
+              comprobantesAplicados,
+          };
+        }
+      );
+
+
+    return res.json(
+      resultado
+    );
+
 
   } catch (error) {
+
     console.error(
       "listarPagosProgramados:",
       error
     );
+
 
     return res.status(500).json({
       error:
@@ -507,20 +949,13 @@ export const listarPagosProgramados = async (req, res) => {
   }
 };
 
+
 export const acreditarPagoProgramado = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     const id =
       Number(req.params.id);
-
-    // const {
-    //   fecha_acreditacion,
-
-    //   // pueden enviarse al momento de acreditar
-    //   caja_id,
-    //   banco_id,
-    // } = req.body || {};
 
     const {
       fecha_acreditacion,
@@ -651,6 +1086,13 @@ export const acreditarPagoProgramado = async (req, res) => {
         "Debe indicar la forma de pago"
       );
     }
+
+    const formaPagoDescripcion =
+      medioFinal === "caja"
+        ? "Efectivo"
+        : medioFinal === "echeq"
+          ? "eCheq"
+          : "Transferencia/Banco";
 
     const fecha =
       fecha_acreditacion ||
@@ -1344,7 +1786,7 @@ export const acreditarPagoProgramado = async (req, res) => {
             montoFinal,
 
           descripcion:
-            `Anticipo acreditado OP #${ordenpago_id} - ${descripcionFinal}`,
+            `Anticipo acreditado OP #${ordenpago_id} - ${descripcionFinal} · Pago con: ${formaPagoDescripcion}`,
         },
 
         {
@@ -1363,7 +1805,77 @@ export const acreditarPagoProgramado = async (req, res) => {
       );
     }
 
+    // ==================================================
+    // ABONOS QUE REPRESENTABAN ESTE PAGO PROGRAMADO
+    // ==================================================
+    /*
+     * Un PagoProgramado puede haber sido utilizado como
+     * abono de Cta.Cte. y aplicado a una o varias facturas.
+     *
+     * Mientras está pendiente, esos abonos apuntan a:
+     *
+     *   PagoProgramadoTesoreria -> pago.id
+     *
+     * Al acreditarlo deben dejar de representar solamente
+     * un compromiso y pasar a apuntar al movimiento
+     * financiero REAL que acabamos de crear.
+     */
 
+    const tipoMovimientoReal =
+      medioFinal === "caja"
+        ? "MovimientoCajaTesoreria"
+        : medioFinal === "echeq"
+          ? "EcheqEmitido"
+          : "MovimientoBancoTesoreria";
+
+
+    const abonosProgramado =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          tipo: "abono",
+
+          referencia_tipo:
+            "PagoProgramadoTesoreria",
+
+          referencia_id:
+            pago.id,
+
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+
+    for (const abono of abonosProgramado) {
+
+      await abono.update(
+        {
+          referencia_tipo:
+            tipoMovimientoReal,
+
+          referencia_id:
+            movimiento.id,
+
+          ordenpago_id,
+
+          formapago_id:
+            formaPagoFinal,
+
+          fecha_pago:
+            fecha,
+
+          descripcion:
+            `Pago programado acreditado OP #${ordenpago_id} - ${descripcionFinal} · Pago con: ${formaPagoDescripcion}`,
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
     // ==================================================
     // PROGRAMADO → ACREDITADO
     // ==================================================
@@ -1631,22 +2143,171 @@ export const acreditarPagoProgramado = async (req, res) => {
       }
     }
 
-
     // ==================================================
-    // RECALCULAR COMPROBANTE
+    // RECALCULAR COMPROBANTES AFECTADOS
     // ==================================================
 
     let resultadoComprobante = null;
 
+
+    /*
+     * Un PagoProgramado puede estar:
+     *
+     * 1) vinculado directamente a un comprobante; o
+     *
+     * 2) aplicado mediante un ABONO de Cta.Cte.
+     *    a uno o VARIOS comprobantes.
+     *
+     * Por eso no alcanza con mirar solamente
+     * pago.comprobanteegreso_id.
+     */
+
+    const comprobantesAfectados =
+      new Set();
+
+
+    /*
+     * Asociación directa.
+     */
     if (pago.comprobanteegreso_id) {
 
-      resultadoComprobante =
-        await recalcularComprobanteEgreso(
-          pago.comprobanteegreso_id,
-          t
-        );
+      comprobantesAfectados.add(
+        Number(
+          pago.comprobanteegreso_id
+        )
+      );
     }
 
+
+    /*
+     * Asociaciones realizadas mediante los abonos
+     * que pertenecían a este PagoProgramado.
+     */
+    const idsAbonosProgramado =
+      abonosProgramado
+        .map(
+          (abono) =>
+            Number(abono.id)
+        )
+        .filter(Boolean);
+
+
+    if (idsAbonosProgramado.length > 0) {
+
+      const aplicacionesProgramado =
+        await MovCtaCteProvAplic.findAll({
+          where: {
+            abono_id: {
+              [Op.in]:
+                idsAbonosProgramado,
+            },
+          },
+
+          attributes: [
+            "cargo_id",
+          ],
+
+          transaction: t,
+        });
+
+
+      const cargoIds =
+        [
+          ...new Set(
+            aplicacionesProgramado
+              .map(
+                (aplicacion) =>
+                  Number(
+                    aplicacion.cargo_id
+                  )
+              )
+              .filter(Boolean)
+          ),
+        ];
+
+
+      if (cargoIds.length > 0) {
+
+        const cargos =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              id: {
+                [Op.in]:
+                  cargoIds,
+              },
+
+              tipo:
+                "cargo",
+
+              anulado: {
+                [Op.not]: true,
+              },
+            },
+
+            attributes: [
+              "id",
+              "comprobanteegreso_id",
+            ],
+
+            transaction: t,
+          });
+
+
+        for (const cargo of cargos) {
+
+          if (
+            cargo.comprobanteegreso_id
+          ) {
+
+            comprobantesAfectados.add(
+              Number(
+                cargo.comprobanteegreso_id
+              )
+            );
+          }
+        }
+      }
+    }
+
+
+    /*
+     * Ahora sí recalculamos TODOS los comprobantes
+     * afectados por la acreditación.
+     */
+    const resultadosComprobantes = [];
+
+
+    for (
+      const comprobanteId
+      of comprobantesAfectados
+    ) {
+
+      const resultado =
+        await recalcularComprobanteEgreso(
+          comprobanteId,
+          t
+        );
+
+
+      resultadosComprobantes.push(
+        resultado
+      );
+    }
+
+
+    /*
+     * Conservamos la respuesta anterior para no romper
+     * el frontend que eventualmente utilice
+     * response.comprobante.
+     */
+    if (
+      resultadosComprobantes.length === 1
+    ) {
+
+      resultadoComprobante =
+        resultadosComprobantes[0];
+
+    }
     await t.commit();
 
 
@@ -1688,9 +2349,24 @@ export const eliminarPagoProgramado = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
+
     const id =
       Number(req.params.id);
 
+
+    if (
+      !Number.isInteger(id) ||
+      id <= 0
+    ) {
+      throw new Error(
+        "ID de pago programado inválido"
+      );
+    }
+
+
+    // ============================================================
+    // 1. BUSCAR Y BLOQUEAR PAGO PROGRAMADO
+    // ============================================================
 
     const pago =
       await PagoProgramadoTesoreria.findByPk(
@@ -1709,7 +2385,9 @@ export const eliminarPagoProgramado = async (req, res) => {
     }
 
 
-    if (pago.estado === "anulado") {
+    if (
+      pago.estado === "anulado"
+    ) {
       throw new Error(
         "El pago programado ya está anulado"
       );
@@ -1717,75 +2395,69 @@ export const eliminarPagoProgramado = async (req, res) => {
 
 
     /*
-     * IMPORTANTE:
+     * Los programados acreditados ya poseen
+     * movimiento financiero real.
      *
-     * Esta función solamente elimina compromisos
-     * que TODAVÍA NO fueron acreditados.
-     *
-     * Los acreditados se anulan desde Caja/Banco.
+     * Se revierten desde Caja/Banco/eCheq.
      */
-    if (pago.estado === "acreditado") {
+    if (
+      pago.estado === "acreditado"
+    ) {
       throw new Error(
         "El pago ya fue acreditado. Debe anularse desde el movimiento financiero que lo originó (Caja, Banco o eCheq)."
       );
     }
 
 
-    /*
-     * Si ya está asociado a un comprobante,
-     * no permitimos borrarlo directamente.
-     */
-    if (pago.comprobanteegreso_id) {
-      throw new Error(
-        "El pago programado está asociado a un comprobante de egreso. Primero debe desvincularse del comprobante."
+    // ============================================================
+    // 2. COMPROBANTES QUE DEBEREMOS RECALCULAR
+    // ============================================================
+
+    const comprobantesARecalcular =
+      new Set();
+
+
+    if (
+      pago.comprobanteegreso_id
+    ) {
+      comprobantesARecalcular.add(
+        Number(
+          pago.comprobanteegreso_id
+        )
       );
     }
 
 
-    // ==================================================
-    // SI ES ANTICIPO
-    // ==================================================
+    // ============================================================
+    // 3. EGRESO PROGRAMADO UTILIZADO EN CUENTA CORRIENTE
+    //
+    // Cuando aplicarAbonoCtaCteProveedor utiliza un
+    // PagoProgramado existente, el ABONO queda:
+    //
+    // referencia_tipo = "PagoProgramadoTesoreria"
+    // referencia_id   = pago.id
+    //
+    // NO existe todavía movimiento financiero real.
+    // ============================================================
 
     if (
-      pago.tipo === "anticipo" &&
-      pago.movimiento_ctacte_id
+      pago.tipo !== "anticipo"
     ) {
 
-      /*
-       * Verificar que el abono no haya sido aplicado
-       * contra algún cargo.
-       */
-      const aplicaciones =
-        await MovCtaCteProvAplic.count({
+      const abonosProgramado =
+        await MovimientoCtaCteProveedor.findAll({
           where: {
-            abono_id:
-              pago.movimiento_ctacte_id,
-          },
+            proveedor_id:
+              pago.proveedor_id,
 
-          transaction: t,
-        });
+            tipo:
+              "abono",
 
+            referencia_tipo:
+              "PagoProgramadoTesoreria",
 
-      if (aplicaciones > 0) {
-        throw new Error(
-          "El anticipo ya fue aplicado en la cuenta corriente. Primero debe anularse esa aplicación."
-        );
-      }
-
-
-      /*
-       * Anular ABONO de Cta.Cte.
-       */
-      await MovimientoCtaCteProveedor.update(
-        {
-          anulado:
-            true,
-        },
-
-        {
-          where: {
-            id:
-              pago.movimiento_ctacte_id,
+            referencia_id:
+              pago.id,
 
             anulado: {
               [Op.not]:
@@ -1794,14 +2466,257 @@ export const eliminarPagoProgramado = async (req, res) => {
           },
 
           transaction: t,
-        }
-      );
-    }
-    // ==================================================
-    // ANULAR ORDEN DE PAGO PROPIA DEL PROGRAMADO
-    // ==================================================
+          lock: t.LOCK.UPDATE,
+        });
 
-    if (pago.ordenpago_id) {
+
+      for (
+        const abono
+        of abonosProgramado
+      ) {
+
+        // ========================================================
+        // 3.1 OBTENER APLICACIONES DEL ABONO
+        // ========================================================
+
+        const aplicaciones =
+          await MovCtaCteProvAplic.findAll({
+            where: {
+              abono_id:
+                abono.id,
+            },
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        // ========================================================
+        // 3.2 IDENTIFICAR COMPROBANTES AFECTADOS
+        // ========================================================
+
+        const cargoIds =
+          [
+            ...new Set(
+              aplicaciones
+                .map(
+                  a =>
+                    Number(
+                      a.cargo_id
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+        if (
+          cargoIds.length > 0
+        ) {
+
+          const cargos =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    cargoIds,
+                },
+
+                proveedor_id:
+                  pago.proveedor_id,
+
+                tipo:
+                  "cargo",
+
+                anulado: {
+                  [Op.not]:
+                    true,
+                },
+              },
+
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          for (
+            const cargo
+            of cargos
+          ) {
+
+            if (
+              cargo.comprobanteegreso_id
+            ) {
+
+              comprobantesARecalcular.add(
+                Number(
+                  cargo.comprobanteegreso_id
+                )
+              );
+            }
+          }
+        }
+
+
+        /*
+         * El ABONO también puede tener una referencia
+         * directa al comprobante.
+         */
+        if (
+          abono.comprobanteegreso_id
+        ) {
+
+          comprobantesARecalcular.add(
+            Number(
+              abono.comprobanteegreso_id
+            )
+          );
+        }
+
+
+        // ========================================================
+        // 3.3 ELIMINAR APLICACIONES
+        //
+        // Al eliminar estas filas, el cargo original recupera
+        // automáticamente su saldo pendiente.
+        // ========================================================
+
+        if (
+          aplicaciones.length > 0
+        ) {
+
+          await MovCtaCteProvAplic.destroy({
+            where: {
+              abono_id:
+                abono.id,
+            },
+
+            transaction: t,
+          });
+        }
+
+
+        // ========================================================
+        // 3.4 ANULAR ABONO GENERADO POR EL PROGRAMADO
+        // ========================================================
+
+        await abono.update(
+          {
+            anulado:
+              true,
+          },
+          {
+            transaction: t,
+          }
+        );
+      }
+    }
+
+
+    // ============================================================
+    // 4. ANTICIPO PROGRAMADO
+    //
+    // Este caso mantiene su lógica propia porque el ABONO se
+    // crea al registrar el anticipo.
+    // ============================================================
+
+    if (
+      pago.tipo === "anticipo" &&
+      pago.movimiento_ctacte_id
+    ) {
+
+      const abonoAnticipo =
+        await MovimientoCtaCteProveedor.findByPk(
+          pago.movimiento_ctacte_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      if (abonoAnticipo) {
+
+        const aplicacionesAnticipo =
+          await MovCtaCteProvAplic.findAll({
+            where: {
+              abono_id:
+                abonoAnticipo.id,
+            },
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        /*
+         * Conservamos la regla actual:
+         * un anticipo ya aplicado debe primero desaplicarse
+         * desde su propio circuito.
+         */
+        if (
+          aplicacionesAnticipo.length > 0
+        ) {
+          throw new Error(
+            "El anticipo ya fue aplicado en la cuenta corriente. Primero debe anularse esa aplicación."
+          );
+        }
+
+
+        if (
+          abonoAnticipo.comprobanteegreso_id
+        ) {
+
+          comprobantesARecalcular.add(
+            Number(
+              abonoAnticipo.comprobanteegreso_id
+            )
+          );
+        }
+
+
+        await abonoAnticipo.update(
+          {
+            anulado:
+              true,
+          },
+          {
+            transaction: t,
+          }
+        );
+      }
+    }
+
+
+    // ============================================================
+    // 5. DESVINCULAR DEL COMPROBANTE
+    //
+    // Ya eliminamos primero el efecto de Cta.Cte.
+    // ============================================================
+
+    await pago.update(
+      {
+        comprobanteegreso_id:
+          null,
+      },
+      {
+        transaction: t,
+      }
+    );
+
+
+    // ============================================================
+    // 6. ANULAR ORDEN DE PAGO DEL PROGRAMADO
+    // ============================================================
+
+    if (
+      pago.ordenpago_id
+    ) {
 
       const orden =
         await OrdenPago.findByPk(
@@ -1816,13 +2731,12 @@ export const eliminarPagoProgramado = async (req, res) => {
       if (orden) {
 
         /*
-         * Sólo anulamos automáticamente una OP que no esté
-         * asociada a un comprobante.
-         *
-         * Una OP perteneciente a un comprobante debe resolverse
-         * desde el circuito del propio comprobante.
+         * Sólo anulamos una OP que no pertenezca
+         * directamente a un comprobante.
          */
-        if (!orden.comprobanteegreso_id) {
+        if (
+          !orden.comprobanteegreso_id
+        ) {
 
           await orden.update(
             {
@@ -1838,41 +2752,105 @@ export const eliminarPagoProgramado = async (req, res) => {
     }
 
 
-    // ==================================================
-    // ANULAR PROGRAMADO
-    // ==================================================
+    // ============================================================
+    // 7. ANULAR PAGO PROGRAMADO
+    // ============================================================
 
     await pago.update(
       {
         estado:
           "anulado",
-      },
 
+        fecha_acreditacion:
+          null,
+
+        movimiento_tipo:
+          null,
+
+        movimiento_id:
+          null,
+      },
       {
         transaction: t,
       }
     );
 
 
+    // ============================================================
+    // 8. RECALCULAR COMPROBANTES
+    //
+    // El helper central contempla aplicaciones de Cta.Cte.
+    // Una vez eliminadas, recuperará saldo y estado.
+    // ============================================================
+
+    const comprobantesActualizados =
+      [];
+
+
+    for (
+      const compId
+      of comprobantesARecalcular
+    ) {
+
+      if (!compId) {
+        continue;
+      }
+
+
+      const resultado =
+        await recalcularComprobanteEgreso(
+          compId,
+          t
+        );
+
+
+      if (resultado) {
+
+        comprobantesActualizados.push({
+          comprobante_id:
+            compId,
+
+          saldo:
+            resultado.saldo,
+
+          estado:
+            resultado.estado,
+        });
+      }
+    }
+
+
     await t.commit();
 
 
     return res.json({
-      ok: true,
+      ok:
+        true,
 
       mensaje:
         pago.tipo === "anticipo"
-          ? "Pago programado y anticipo de cuenta corriente anulados correctamente."
-          : "Pago programado anulado correctamente.",
+          ? "Pago programado y anticipo anulados correctamente."
+          : "Pago programado anulado y su aplicación en cuenta corriente revertida correctamente.",
+
+      pagoProgramado_id:
+        pago.id,
+
+      comprobantes:
+        comprobantesActualizados,
     });
 
   } catch (error) {
-    await t.rollback();
+
+    if (!t.finished) {
+      await t.rollback();
+    }
+
 
     console.error(
       "eliminarPagoProgramado:",
       error
     );
+
 
     return res.status(400).json({
       error:

@@ -17,7 +17,9 @@ import { Op, } from "sequelize";
 import Hacienda from "../../models/gmedia/hacienda.js";
 import AjusteComprobanteEgreso
   from "../../models/tesoreria/ajusteComprobanteEgreso.js";
-
+import {
+  recalcularComprobanteEgreso,
+} from "../tesoreria/helpers/recalcularComprobanteEgreso.js";
 function validarDatosFiscalesComprobante(data = {}) {
 
   const ivaEspecial =
@@ -113,8 +115,21 @@ export const actualizarComprobanteEgreso = async (req, res) => {
       return res.status(404).json({ error: 'Comprobante de egreso no encontrado' });
     }
 
-    // Separar hacienda_id del resto
+    // Separar campos especiales del resto
     const body = req.body || {};
+
+    const pagosProgramadosDesasociar =
+      Array.isArray(
+        body.pagos_programados_desasociar
+      )
+        ? [
+          ...new Set(
+            body.pagos_programados_desasociar
+              .map(Number)
+              .filter(Boolean)
+          ),
+        ]
+        : [];
 
     validarDatosFiscalesComprobante({
       iva_especial:
@@ -141,19 +156,33 @@ export const actualizarComprobanteEgreso = async (req, res) => {
     const viejoHaciendaId = comp.hacienda_id ? Number(comp.hacienda_id) : null;
 
     // 1) Actualizar resto de campos del comprobante (sin tocar hacienda_id todavía)
-    const { hacienda_id, ...rest } = body;
+    const {
+      hacienda_id,
+      pagos_programados_desasociar,
+      ...rest
+    } = body;
+
     if (Object.keys(rest).length) {
-      await comp.update(rest, { transaction: t });
+      await comp.update(
+        rest,
+        {
+          transaction: t,
+        }
+      );
     }
 
-    // 2) Si el body NO trae hacienda_id, no hacemos nada con la relación
-    if (!hasHaciendaInBody) {
-      await t.commit();
-      return res.status(200).json(comp);
-    }
+    // 2) Si el body NO trae hacienda_id,
+    // no hacemos nada con la relación Hacienda.
+    // El controller continúa porque puede haber
+    // otras operaciones especiales, como
+    // desasociar Pagos Programados.
 
     // 3) Si cambió la hacienda, sincronizar espejo en "Hacienda"
-    const cambioHacienda = (viejoHaciendaId || null) !== (nuevoHaciendaId || null);
+    const cambioHacienda =
+      hasHaciendaInBody &&
+      (viejoHaciendaId || null) !==
+      (nuevoHaciendaId || null);
+
     if (cambioHacienda) {
       // 3.1) Desvincular anterior (si había y estaba efectivamente atada a este comp)
       if (viejoHaciendaId) {
@@ -180,6 +209,371 @@ export const actualizarComprobanteEgreso = async (req, res) => {
     // 4) Actualizar el campo hacienda_id del comprobante (refleja lo que quedó en Hacienda)
     if (hasHaciendaInBody) {
       await comp.update({ hacienda_id: nuevoHaciendaId }, { transaction: t });
+    }
+
+    // ============================================================
+    // 5) DESASOCIAR PAGOS PROGRAMADOS DEL COMPROBANTE
+    // ============================================================
+
+    if (
+      pagosProgramadosDesasociar.length > 0
+    ) {
+
+      /*
+       * Buscamos TODOS los cargos de Cta.Cte.
+       * pertenecientes a este comprobante.
+       */
+      const cargosComprobante =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            tipo:
+              "cargo",
+
+            comprobanteegreso_id:
+              comp.id,
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          attributes: [
+            "id",
+          ],
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+
+      const cargoIds =
+        cargosComprobante
+          .map(
+            (cargo) =>
+              Number(cargo.id)
+          )
+          .filter(Boolean);
+
+
+      if (cargoIds.length === 0) {
+        throw new Error(
+          "El comprobante no posee cargos de Cuenta Corriente asociados."
+        );
+      }
+
+      /*
+       * Guardamos todos los comprobantes que
+       * deberán recalcularse.
+       */
+      const comprobantesAfectados =
+        new Set();
+
+
+      /*
+       * Procesamos cada Pago Programado solicitado.
+       */
+      for (
+        const pagoProgramadoId
+        of pagosProgramadosDesasociar
+      ) {
+
+        const pagoProgramado =
+          await PagoProgramadoTesoreria.findByPk(
+            pagoProgramadoId,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+
+        if (!pagoProgramado) {
+          throw new Error(
+            `No se encontró el Pago Programado #${pagoProgramadoId}.`
+          );
+        }
+
+
+        /*
+         * Solamente un Pago Programado pendiente
+         * puede desasociarse.
+         */
+        if (
+          String(
+            pagoProgramado.estado || ""
+          )
+            .trim()
+            .toLowerCase() !==
+          "pendiente"
+        ) {
+          throw new Error(
+            `El Pago Programado #${pagoProgramadoId} ya no está pendiente y no puede desasociarse.`
+          );
+        }
+
+
+        /*
+         * Buscamos TODOS los ABONOS activos
+         * correspondientes a este Pago Programado.
+         */
+        const abonosProgramado =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              tipo:
+                "abono",
+
+              referencia_tipo:
+                "PagoProgramadoTesoreria",
+
+              referencia_id:
+                pagoProgramadoId,
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
+            attributes: [
+              "id",
+            ],
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        const abonoIds =
+          abonosProgramado
+            .map(
+              (abono) =>
+                Number(abono.id)
+            )
+            .filter(Boolean);
+
+
+        if (abonoIds.length === 0) {
+          throw new Error(
+            `El Pago Programado #${pagoProgramadoId} no posee abonos pendientes asociados.`
+          );
+        }
+
+
+        /*
+         * Primero verificamos que el Pago Programado
+         * realmente esté relacionado con ESTE
+         * comprobante.
+         *
+         * Esto evita que desde este endpoint se mande
+         * arbitrariamente el ID de otro Pago Programado.
+         */
+        const aplicacionesEsteComprobante =
+          await MovimientoCtaCteProveedorAplic.findAll({
+            where: {
+              abono_id: {
+                [Op.in]:
+                  abonoIds,
+              },
+
+              cargo_id: {
+                [Op.in]:
+                  cargoIds,
+              },
+            },
+
+            attributes: [
+              "id",
+            ],
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        if (
+          aplicacionesEsteComprobante.length === 0
+        ) {
+          throw new Error(
+            `El Pago Programado #${pagoProgramadoId} no está aplicado a este comprobante.`
+          );
+        }
+
+
+        /*
+         * Una vez validado el origen de la operación,
+         * buscamos TODAS las aplicaciones del PP,
+         * independientemente del comprobante.
+         */
+        const aplicacionesTodas =
+          await MovimientoCtaCteProveedorAplic.findAll({
+            where: {
+              abono_id: {
+                [Op.in]:
+                  abonoIds,
+              },
+            },
+
+            attributes: [
+              "id",
+              "abono_id",
+              "cargo_id",
+              "importe",
+            ],
+
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+
+        /*
+         * Identificamos todos los CARGOS afectados.
+         */
+        const todosCargoIds =
+          [
+            ...new Set(
+              aplicacionesTodas
+                .map(
+                  (aplicacion) =>
+                    Number(
+                      aplicacion.cargo_id
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+        /*
+         * A partir de esos cargos obtenemos todos
+         * los comprobantes afectados.
+         */
+        if (
+          todosCargoIds.length > 0
+        ) {
+
+          const cargosAfectados =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    todosCargoIds,
+                },
+
+                tipo:
+                  "cargo",
+              },
+
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          for (
+            const cargo
+            of cargosAfectados
+          ) {
+
+            const comprobanteId =
+              Number(
+                cargo.comprobanteegreso_id ||
+                0
+              );
+
+            if (comprobanteId) {
+              comprobantesAfectados.add(
+                comprobanteId
+              );
+            }
+          }
+        }
+
+
+        /*
+         * DESASOCIACIÓN GLOBAL
+         *
+         * Eliminamos TODAS las aplicaciones
+         * correspondientes al Pago Programado.
+         */
+        for (
+          const aplicacion
+          of aplicacionesTodas
+        ) {
+
+          await aplicacion.destroy({
+            transaction: t,
+          });
+        }
+
+
+        /*
+         * Como acabamos de eliminar TODAS las
+         * aplicaciones del Pago Programado,
+         * sus ABONOS quedan sin aplicación.
+         *
+         * Los anulamos.
+         */
+        for (
+          const abono
+          of abonosProgramado
+        ) {
+
+          await abono.update(
+            {
+              anulado:
+                true,
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+
+
+        /*
+         * Quitamos también la asociación directa
+         * que pudiera tener el Pago Programado.
+         *
+         * NO eliminamos el Pago Programado.
+         * Sigue pendiente y vuelve a quedar disponible.
+         */
+        if (
+          pagoProgramado.comprobanteegreso_id
+        ) {
+
+          await pagoProgramado.update(
+            {
+              comprobanteegreso_id:
+                null,
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+      }
+
+
+      /*
+       * Recalculamos TODOS los comprobantes
+       * que estaban afectados por los PP
+       * desasociados.
+       */
+      for (
+        const comprobanteId
+        of comprobantesAfectados
+      ) {
+
+        await recalcularComprobanteEgreso(
+          comprobanteId,
+          t
+        );
+      }
     }
 
     await t.commit();
@@ -711,30 +1105,6 @@ export const emitirComprobanteEgreso = async (req, res) => {
     // Si montoreal está presente (>0), lo usamos como base (LCD); si no, usamos total
     const totalBase = totalLCD > 0 ? totalLCD : totalComp;
     if (totalBase <= 0) throw new Error("Total del comprobante inválido");
-
-    // const EPS = 0.009;
-    // const normaliza = (n) => Number(n) || 0;
-    // const medioDe = (p) => String(p.medio || "").toLowerCase();
-
-    // // Consideramos "efectivos" todos los desembolsos actuales (no ctacte).
-    // const esEfectivoAhora = (m) => {
-    //   const v = String(m || "").toLowerCase();
-    //   return ["caja", "transferencia", "echeq", "tarjeta", "echeq"].includes(v);
-    // };
-
-    // const sumaTotalImportes = pagos.reduce((acc, p) => acc + normaliza(p.monto), 0);
-    // const sumaPagosEfectivosDeclarados = pagos
-    //   .filter((p) => esEfectivoAhora(medioDe(p)))
-    //   .reduce((acc, p) => acc + normaliza(p.monto), 0);
-
-    // // if (sumaTotalImportes - totalComp > EPS) {
-    // if (sumaTotalImportes - totalBase > EPS) {
-    //   throw new Error("La suma de importes (incluyendo cuenta corriente) supera el total del comprobante");
-    // }
-    // // if (sumaPagosEfectivosDeclarados - totalComp > EPS) {
-    // if (sumaPagosEfectivosDeclarados - totalBase > EPS) {
-    //   throw new Error("La suma de pagos efectivos supera el total del comprobante");
-    // }
 
     const EPS = 0.009;
 
@@ -2005,29 +2375,66 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
         },
       }),
     ]);
-
     const tieneOtroMedioPago =
       !!movimientosCaja ||
       !!movimientosBanco ||
       !!echeqsAplicados ||
       !!tarjetasAplicadas;
 
-    const puedeEditar =
-      !!cargoCtaCte &&
-      !tieneOtroMedioPago;
 
     /*
      * ============================================================
-     * NUEVO:
-     * compromisos programados vinculados al comprobante.
+     * PAGOS PROGRAMADOS VINCULADOS
+     * ============================================================
      *
-     * Los devolvemos SEPARADOS de "pagos".
+     * IMPORTANTE:
      *
-     * No son todavía desembolsos reales.
+     * Un PagoProgramadoTesoreria NO representa todavía
+     * una salida real de dinero.
+     *
+     * Sin embargo, mientras esté pendiente y asociado al
+     * comprobante, el comprobante no debe poder editarse.
+     * Primero deberá desvincularse/anularse el compromiso.
+     * ============================================================
+     */
+    /*
+     * ============================================================
+     * PAGOS PROGRAMADOS VINCULADOS / APLICADOS
+     * ============================================================
+     *
+     * Un PagoProgramadoTesoreria puede llegar al comprobante
+     * por dos caminos:
+     *
+     * 1) Asociación directa:
+     *
+     *    PagoProgramadoTesoreria.comprobanteegreso_id
+     *
+     * 2) Aplicación posterior sobre Cta.Cte.:
+     *
+     *    Comprobante
+     *       ↓
+     *    CARGO Cta.Cte.
+     *       ↓
+     *    MovCtaCteProvAplic
+     *       ↓
+     *    ABONO Cta.Cte.
+     *       ↓
+     *    referencia_tipo = PagoProgramadoTesoreria
+     *    referencia_id   = pagoProgramado.id
+     *
+     * El segundo caso es fundamental cuando un mismo pago
+     * programado fue distribuido entre varios comprobantes.
      * ============================================================
      */
 
-    const pagosProgramados =
+
+    /*
+     * ------------------------------------------------------------
+     * 1) PAGOS PROGRAMADOS DIRECTAMENTE VINCULADOS
+     * ------------------------------------------------------------
+     */
+
+    const pagosProgramadosDirectos =
       await PagoProgramadoTesoreria.findAll({
         where: {
           comprobanteegreso_id:
@@ -2044,6 +2451,588 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
       });
 
 
+    /*
+     * ------------------------------------------------------------
+     * 2) CARGOS DE CTA. CTE. DEL COMPROBANTE
+     * ------------------------------------------------------------
+     */
+
+    const cargosCtaCte =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          comprobanteegreso_id:
+            comp.id,
+
+          tipo:
+            "cargo",
+
+          anulado: {
+            [Op.not]:
+              true,
+          },
+        },
+
+        attributes: [
+          "id",
+          "importe",
+        ],
+      });
+
+
+    const cargoIds =
+      cargosCtaCte.map(
+        cargo =>
+          Number(cargo.id)
+      );
+
+
+    /*
+     * ------------------------------------------------------------
+     * 3) APLICACIONES REALIZADAS SOBRE ESOS CARGOS
+     * ------------------------------------------------------------
+     */
+
+    let aplicacionesCtaCte = [];
+
+
+    if (cargoIds.length > 0) {
+
+      aplicacionesCtaCte =
+        await MovimientoCtaCteProveedorAplic.findAll({
+          where: {
+            cargo_id: {
+              [Op.in]:
+                cargoIds,
+            },
+          },
+
+          attributes: [
+            "id",
+            "cargo_id",
+            "abono_id",
+            "importe",
+          ],
+        });
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * 4) ABONOS UTILIZADOS
+     * ------------------------------------------------------------
+     */
+
+    const abonoIds =
+      [
+        ...new Set(
+          aplicacionesCtaCte
+            .map(
+              aplicacion =>
+                Number(
+                  aplicacion.abono_id ||
+                  0
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    let abonosAplicados = [];
+
+
+    if (abonoIds.length > 0) {
+
+      abonosAplicados =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            id: {
+              [Op.in]:
+                abonoIds,
+            },
+
+            tipo:
+              "abono",
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          attributes: [
+            "id",
+            "fecha",
+            "fecha_pago",
+            "formapago_id",
+            "referencia_tipo",
+            "referencia_id",
+            "descripcion",
+          ],
+        });
+    }
+
+
+    const abonosById =
+      new Map(
+        abonosAplicados.map(
+          abono => [
+            Number(abono.id),
+            abono,
+          ]
+        )
+      );
+
+    /*
+     * ------------------------------------------------------------
+     * PAGOS EFECTIVOS APLICADOS MEDIANTE CTA. CTE.
+     * ------------------------------------------------------------
+     *
+     * Un movimiento financiero puede no tener
+     * comprobanteegreso_id porque fue aplicado posteriormente
+     * mediante:
+     *
+     * Movimiento financiero
+     *   -> ABONO Cta.Cte.
+     *   -> aplicación
+     *   -> CARGO
+     *   -> comprobante
+     *
+     * Por eso también debemos considerar las referencias
+     * de los ABONOS activos utilizados por este comprobante.
+     * ------------------------------------------------------------
+     */
+
+    const tiposPagoEfectivoCtaCte =
+      new Set([
+        "movimientocajatesoreria",
+        "movimientobancotesoreria",
+        "echeqemitido",
+        "pagotarjetacredito",
+      ]);
+
+
+    const tienePagoEfectivoViaCtaCte =
+      abonosAplicados.some(
+        (abono) => {
+
+          const referenciaTipo =
+            String(
+              abono.referencia_tipo ||
+              ""
+            )
+              .trim()
+              .toLowerCase();
+
+          return tiposPagoEfectivoCtaCte.has(
+            referenciaTipo
+          );
+        }
+      );
+    /*
+     * ------------------------------------------------------------
+     * 5) IDENTIFICAR PAGOS PROGRAMADOS DETRÁS DE LOS ABONOS
+     * ------------------------------------------------------------
+     */
+
+    const programadoIdsAplicados =
+      [
+        ...new Set(
+          abonosAplicados
+            .filter(
+              abono =>
+                String(
+                  abono.referencia_tipo ||
+                  ""
+                )
+                  .trim()
+                  .toLowerCase() ===
+                "pagoprogramadotesoreria"
+            )
+            .map(
+              abono =>
+                Number(
+                  abono.referencia_id ||
+                  0
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    let programadosAplicados = [];
+
+
+    if (
+      programadoIdsAplicados.length > 0
+    ) {
+
+      programadosAplicados =
+        await PagoProgramadoTesoreria.findAll({
+          where: {
+            id: {
+              [Op.in]:
+                programadoIdsAplicados,
+            },
+
+            estado:
+              "pendiente",
+          },
+
+          order: [
+            ["fecha_programada", "ASC"],
+            ["id", "ASC"],
+          ],
+        });
+    }
+
+
+    const programadosAplicadosById =
+      new Map(
+        programadosAplicados.map(
+          pago => [
+            Number(pago.id),
+            pago,
+          ]
+        )
+      );
+
+
+    /*
+     * ------------------------------------------------------------
+     * 6) CALCULAR CUÁNTO DE CADA PAGO PROGRAMADO FUE APLICADO
+     *    ESPECÍFICAMENTE A ESTE COMPROBANTE
+     * ------------------------------------------------------------
+     */
+
+    const aplicadoPorProgramado =
+      new Map();
+
+
+    for (
+      const aplicacion
+      of aplicacionesCtaCte
+    ) {
+
+      const abono =
+        abonosById.get(
+          Number(
+            aplicacion.abono_id
+          )
+        );
+
+
+      if (!abono) {
+        continue;
+      }
+
+
+      const referenciaTipo =
+        String(
+          abono.referencia_tipo ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (
+        referenciaTipo !==
+        "pagoprogramadotesoreria"
+      ) {
+        continue;
+      }
+
+
+      const programadoId =
+        Number(
+          abono.referencia_id ||
+          0
+        );
+
+
+      if (
+        !programadosAplicadosById.has(
+          programadoId
+        )
+      ) {
+        continue;
+      }
+
+
+      const importeAplicado =
+        Number(
+          aplicacion.importe ||
+          0
+        );
+
+
+      aplicadoPorProgramado.set(
+        programadoId,
+
+        Number(
+          (
+            (
+              aplicadoPorProgramado.get(
+                programadoId
+              ) ||
+              0
+            ) +
+            importeAplicado
+          ).toFixed(2)
+        )
+      );
+    }
+
+
+    /*
+     * ------------------------------------------------------------
+     * 7) NORMALIZAR PAGOS PROGRAMADOS PARA EL FRONTEND
+     * ------------------------------------------------------------
+     */
+
+    const pagosProgramadosMap =
+      new Map();
+
+
+    /*
+     * Asociación directa.
+     *
+     * En este caso el importe aplicado al comprobante coincide,
+     * en principio, con el monto del compromiso.
+     */
+
+    for (
+      const pago
+      of pagosProgramadosDirectos
+    ) {
+
+      pagosProgramadosMap.set(
+        Number(pago.id),
+        {
+          ...pago.toJSON(),
+
+          origen_vinculacion:
+            "directo",
+
+          monto_aplicado:
+            Number(
+              pago.monto || 0
+            ),
+        }
+      );
+    }
+
+
+    /*
+     * Asociación mediante Cta.Cte.
+     *
+     * Acá monto_aplicado es exclusivamente la porción
+     * correspondiente al comprobante que estamos consultando.
+     */
+
+    for (
+      const pago
+      of programadosAplicados
+    ) {
+
+      const pagoId =
+        Number(pago.id);
+
+
+      const existente =
+        pagosProgramadosMap.get(
+          pagoId
+        );
+
+
+      pagosProgramadosMap.set(
+        pagoId,
+        {
+          ...(existente || pago.toJSON()),
+
+          origen_vinculacion:
+            existente
+              ? "directo_y_ctacte"
+              : "ctacte",
+
+          monto_aplicado:
+            Number(
+              aplicadoPorProgramado.get(
+                pagoId
+              ) ||
+              existente?.monto_aplicado ||
+              0
+            ),
+        }
+      );
+    }
+
+
+    const pagosProgramados =
+      Array.from(
+        pagosProgramadosMap.values()
+      )
+        .sort(
+          (a, b) => {
+
+            const fa =
+              String(
+                a.fecha_programada ||
+                ""
+              );
+
+            const fb =
+              String(
+                b.fecha_programada ||
+                ""
+              );
+
+
+            if (fa === fb) {
+
+              return (
+                Number(a.id) -
+                Number(b.id)
+              );
+            }
+
+
+            return fa.localeCompare(
+              fb
+            );
+          }
+        );
+
+
+    const tienePagoProgramado =
+      pagosProgramados.length > 0;
+
+    /*
+* Pago efectivo aplicado al comprobante por cualquiera
+* de los dos caminos posibles:
+*
+* 1) asociación directa mediante comprobanteegreso_id;
+* 2) aplicación posterior mediante Cta.Cte.
+*/
+
+    /*
+     * ============================================================
+     * DETERMINAR SI EXISTEN PAGOS EFECTIVOS
+     * ============================================================
+     *
+     * Un comprobante queda bloqueado si posee pagos efectivos
+     * detectados por cualquiera de estos caminos:
+     *
+     * 1) movimiento directamente vinculado al comprobante;
+     * 2) movimiento aplicado posteriormente mediante Cta.Cte.;
+     * 3) pagos efectivos recuperados por collectPagosComprobante().
+     *
+     * Los Pagos Programados se controlan aparte porque todavía
+     * no representan una salida financiera efectiva.
+     * ============================================================
+     */
+    const tienePagosRecolectados =
+      Array.isArray(pagos) &&
+      pagos.length > 0;
+
+
+    const tienePagoEfectivo =
+      tieneOtroMedioPago ||
+      tienePagoEfectivoViaCtaCte ||
+      tienePagosRecolectados;
+
+    /*
+* ============================================================
+* SITUACIÓN ACTUAL DE LA CTA. CTE.
+* ============================================================
+*/
+
+    const totalCargosCtaCte =
+      cargosCtaCte.reduce(
+        (acc, cargo) =>
+          acc +
+          Number(
+            cargo.importe || 0
+          ),
+        0
+      );
+
+
+    const totalAplicadoCtaCte =
+      aplicacionesCtaCte.reduce(
+        (acc, aplicacion) =>
+          acc +
+          Number(
+            aplicacion.importe || 0
+          ),
+        0
+      );
+
+
+    const saldoCtaCte =
+      Math.max(
+        0,
+        Number(
+          (
+            totalCargosCtaCte -
+            totalAplicadoCtaCte
+          ).toFixed(2)
+        )
+      );
+
+
+    const ctaCteTotalmenteCubierta =
+      cargoIds.length > 0 &&
+      saldoCtaCte <= 0.0001;
+
+    /*
+     * ============================================================
+     * DETERMINAR SI PUEDE EDITARSE
+     * ============================================================
+     */
+
+    const puedeEditar =
+      !tienePagoEfectivo &&
+      !tienePagoProgramado;
+
+
+    /*
+     * ============================================================
+     * MOTIVO POR EL CUAL NO PUEDE EDITARSE
+     * ============================================================
+     */
+
+    let motivoNoEditar = null;
+
+    if (!puedeEditar) {
+
+      if (tienePagoEfectivo) {
+
+        motivoNoEditar =
+          "El comprobante tiene una forma de pago efectivizada aplicada.";
+
+      } else if (tienePagoProgramado) {
+
+        motivoNoEditar =
+          "El comprobante tiene un pago programado asociado pendiente de efectivización.";
+
+      }
+    }
+
+    console.log("\n========================================");
+    console.log("🔴 BACKEND getComprobanteEgresoDetalle NUEVO");
+    console.log("🔴 comprobante:", comp.id);
+    console.log("🔴 pagos.length:", pagos.length);
+    console.log("🔴 tieneOtroMedioPago:", tieneOtroMedioPago);
+    console.log("🔴 tienePagoEfectivoViaCtaCte:", tienePagoEfectivoViaCtaCte);
+    console.log("🔴 tienePagosRecolectados:", tienePagosRecolectados);
+    console.log("🔴 tienePagoEfectivo:", tienePagoEfectivo);
+    console.log("🔴 tienePagoProgramado:", tienePagoProgramado);
+    console.log("🔴 puedeEditar:", puedeEditar);
+    console.log("========================================\n");
+
     return res.json({
       comprobante:
         comp,
@@ -2058,15 +3047,29 @@ export const getComprobanteEgresoDetalle = async (req, res) => {
       pagos_programados:
         pagosProgramados,
 
+      ctacte: {
+        total:
+          Number(
+            totalCargosCtaCte.toFixed(2)
+          ),
+
+        aplicado:
+          Number(
+            totalAplicadoCtaCte.toFixed(2)
+          ),
+
+        saldo:
+          saldoCtaCte,
+
+        totalmente_cubierta:
+          ctaCteTotalmenteCubierta,
+      },
+
       puede_editar:
         puedeEditar,
 
       motivo_no_editar:
-        puedeEditar
-          ? null
-          : tieneOtroMedioPago
-            ? "El comprobante tiene una forma de pago distinta de Cuenta Corriente."
-            : "El comprobante no posee un cargo activo de Cuenta Corriente.",
+        motivoNoEditar,
     });
   } catch (e) {
     console.error("getComprobanteEgresoDetalle:", e);

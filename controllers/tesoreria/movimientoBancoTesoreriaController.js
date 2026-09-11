@@ -589,8 +589,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
       if (
         String(
-          pagoProgramado.estado ||
-          ""
+          pagoProgramado.estado || ""
         )
           .trim()
           .toLowerCase() !==
@@ -604,8 +603,7 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
       if (
         String(
-          pagoProgramado.medio ||
-          ""
+          pagoProgramado.medio || ""
         )
           .trim()
           .toLowerCase() !==
@@ -617,15 +615,11 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
       }
 
 
-      /*
-       * Defensa:
-       *
-       * El PagoProgramado debe señalar exactamente
-       * este movimiento bancario.
-       */
       if (
         pagoProgramado.movimiento_id &&
-        Number(pagoProgramado.movimiento_id) !==
+        Number(
+          pagoProgramado.movimiento_id
+        ) !==
         Number(mov.id)
       ) {
         throw new Error(
@@ -634,74 +628,201 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
       }
 
 
-      const comprobanteId =
-        Number(
-          mov.comprobanteegreso_id ||
-          pagoProgramado.comprobanteegreso_id ||
-          0
-        ) || null;
-
-
-      const esAnticipo =
-        String(
-          pagoProgramado.tipo ||
-          ""
-        )
-          .trim()
-          .toLowerCase() ===
-        "anticipo";
-
-
       // ============================================================
-      // 2. CASO ANTICIPO
+      // 2. LOCALIZAR LOS ABONOS QUE AL ACREDITAR
+      //    PASARON A APUNTAR AL MOVIMIENTO BANCARIO
       // ============================================================
+
+      const abonosProgramado =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            tipo:
+              "abono",
+
+            referencia_tipo:
+              "MovimientoBancoTesoreria",
+
+            referencia_id:
+              mov.id,
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+
       /*
-       * El ABONO existía ANTES de acreditar el programado.
+       * Estos IDs son fundamentales.
        *
-       * Por eso NO debemos:
-       *
-       * - destruir aplicaciones;
-       * - destruir el abono.
-       *
-       * Solamente restauramos el ABONO para que vuelva
-       * a apuntar al PagoProgramadoTesoreria pendiente.
+       * Las aplicaciones NO se eliminan.
+       * Las necesitamos para saber a qué comprobantes
+       * está aplicado este PagoProgramado.
        */
+      const abonoIds =
+        abonosProgramado
+          .map(
+            (abono) =>
+              Number(abono.id)
+          )
+          .filter(Boolean);
 
+
+      // ============================================================
+      // 3. RECUPERAR TODOS LOS COMPROBANTES AFECTADOS
+      // ============================================================
+
+      const comprobantesAfectados =
+        new Set();
+
+
+      /*
+       * Asociación directa, si existe.
+       */
       if (
-        esAnticipo &&
-        pagoProgramado.movimiento_ctacte_id
+        pagoProgramado.comprobanteegreso_id
       ) {
 
-        const abono =
-          await MovimientoCtaCteProveedor.findByPk(
-            pagoProgramado.movimiento_ctacte_id,
-            {
+        comprobantesAfectados.add(
+          Number(
+            pagoProgramado.comprobanteegreso_id
+          )
+        );
+      }
+
+
+      if (mov.comprobanteegreso_id) {
+
+        comprobantesAfectados.add(
+          Number(
+            mov.comprobanteegreso_id
+          )
+        );
+      }
+
+
+      /*
+       * Asociaciones mediante Cta.Cte.
+       */
+      if (abonoIds.length > 0) {
+
+        const aplicaciones =
+          await MovimientoCtaCteProveedorAplic.findAll({
+            where: {
+              abono_id: {
+                [Op.in]:
+                  abonoIds,
+              },
+            },
+
+            attributes: [
+              "cargo_id",
+            ],
+
+            transaction: t,
+          });
+
+
+        const cargoIds =
+          [
+            ...new Set(
+              aplicaciones
+                .map(
+                  (aplicacion) =>
+                    Number(
+                      aplicacion.cargo_id
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+        if (cargoIds.length > 0) {
+
+          const cargos =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    cargoIds,
+                },
+
+                tipo:
+                  "cargo",
+
+                anulado: {
+                  [Op.not]:
+                    true,
+                },
+              },
+
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
               transaction: t,
-              lock: t.LOCK.UPDATE,
+            });
+
+
+          for (const cargo of cargos) {
+
+            if (
+              cargo.comprobanteegreso_id
+            ) {
+
+              comprobantesAfectados.add(
+                Number(
+                  cargo.comprobanteegreso_id
+                )
+              );
             }
-          );
-
-
-        if (!abono) {
-          throw new Error(
-            `No se encontró el abono de cuenta corriente #${pagoProgramado.movimiento_ctacte_id} del anticipo programado.`
-          );
+          }
         }
+      }
 
 
-        if (abono.anulado) {
-          throw new Error(
-            "El abono de cuenta corriente del anticipo se encuentra anulado."
-          );
-        }
+      // ============================================================
+      // 4. RESTAURAR LOS ABONOS
+      //    MOVIMIENTO REAL → PAGO PROGRAMADO
+      // ============================================================
+      const medioPagoProgramadoDescripcion =
+        String(
+          pagoProgramado.medio || ""
+        )
+          .trim()
+          .toLowerCase() === "caja"
+          ? "Efectivo"
+          : String(
+            pagoProgramado.medio || ""
+          )
+            .trim()
+            .toLowerCase() === "echeq"
+            ? "eCheq"
+            : String(
+              pagoProgramado.medio || ""
+            )
+              .trim()
+              .toLowerCase() === "banco"
+              ? "Transferencia/Banco"
+              : "No especificado";
 
 
-        /*
-         * Conservamos todas las aplicaciones existentes.
-         *
-         * Sólo devolvemos la referencia financiera
-         * al compromiso pendiente.
-         */
+      const descripcionPagoProgramado =
+        String(
+          pagoProgramado.descripcion || ""
+        ).trim();
+
+      for (
+        const abono
+        of abonosProgramado
+      ) {
+
         await abono.update(
           {
             referencia_tipo:
@@ -710,31 +831,28 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
             referencia_id:
               pagoProgramado.id,
 
-            comprobanteegreso_id:
-              pagoProgramado.comprobanteegreso_id ||
-              null,
-
-            fecha:
-              pagoProgramado.fecha_programada ||
-              abono.fecha,
-
+            /*
+             * Vuelve a ser compromiso pendiente.
+             */
             fecha_pago:
               null,
 
-            importe:
-              Number(
-                pagoProgramado.monto ||
-                mov.monto ||
-                0
-              ),
+            descripcion:
+              `Pago programado pendiente #${pagoProgramado.id}` +
+              (
+                descripcionPagoProgramado
+                  ? ` - ${descripcionPagoProgramado}`
+                  : ""
+              ) +
+              ` · Pago acordado con: ${medioPagoProgramadoDescripcion}`,
 
+            /*
+             * Conservamos la FP acordada del programado.
+             */
             formapago_id:
               pagoProgramado.formapago_id ||
               abono.formapago_id ||
               null,
-
-            descripcion:
-              `Anticipo programado pendiente #${pagoProgramado.id}`,
           },
           {
             transaction: t,
@@ -744,16 +862,8 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
 
       // ============================================================
-      // 3. ELIMINAR MOVIMIENTO BANCARIO REAL
+      // 5. ELIMINAR MOVIMIENTO FINANCIERO REAL
       // ============================================================
-
-      const montoRevertido =
-        Number(
-          mov.monto ||
-          pagoProgramado.monto ||
-          0
-        );
-
 
       await mov.destroy({
         transaction: t,
@@ -761,156 +871,9 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
 
       // ============================================================
-      // 4. SI NO ERA ANTICIPO:
-      //    RESTAURAR DEUDA DEL COMPROBANTE EN CTA. CTE.
-      // ============================================================
-      /*
-       * Al eliminar el pago bancario real, esa parte del
-       * comprobante vuelve a quedar impaga.
-       *
-       * Representamos nuevamente esa deuda mediante CARGO.
-       */
-
-      let cargoCreado = null;
-
-
-      if (
-        !esAnticipo &&
-        comprobanteId &&
-        montoRevertido > 0
-      ) {
-
-        const comp =
-          await ComprobanteEgreso.findByPk(
-            comprobanteId,
-            {
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-            }
-          );
-
-
-        if (!comp) {
-          throw new Error(
-            `No se encontró el comprobante #${comprobanteId} vinculado al pago programado.`
-          );
-        }
-
-
-        /*
-         * Defensa contra duplicación.
-         *
-         * Si por alguna razón ya existe un cargo activo
-         * correspondiente a esta reversión, no creamos otro.
-         */
-        const cargoExistente =
-          await MovimientoCtaCteProveedor.findOne({
-            where: {
-              comprobanteegreso_id:
-                comp.id,
-
-              tipo:
-                "cargo",
-
-              anulado: {
-                [Op.not]:
-                  true,
-              },
-            },
-
-            transaction:
-              t,
-
-            lock:
-              t.LOCK.UPDATE,
-          });
-
-
-        if (!cargoExistente) {
-
-          cargoCreado =
-            await MovimientoCtaCteProveedor.create(
-              {
-                proveedor_id:
-                  comp.proveedor_id ||
-                  pagoProgramado.proveedor_id ||
-                  null,
-
-                empresa_id:
-                  comp.empresa_id ||
-                  pagoProgramado.empresa_id ||
-                  null,
-
-                fecha:
-                  mov.fecha ||
-                  comp.fechacomprobante ||
-                  new Date()
-                    .toISOString()
-                    .slice(0, 10),
-
-                fecha_pago:
-                  null,
-
-                descripcion:
-                  `Reversión de pago programado bancario - Comp. ${comp.nrocomprobante ?? comp.id}`,
-
-                tipo:
-                  "cargo",
-
-                importe:
-                  montoRevertido,
-
-                origen_tipo:
-                  "ComprobanteEgreso",
-
-                origen_id:
-                  comp.id,
-
-                comprobanteegreso_id:
-                  comp.id,
-
-                anulado:
-                  false,
-
-                /*
-                 * La deuda pendiente ya no es un pago realizado.
-                 */
-                ordenpago_id:
-                  null,
-
-                formapago_id:
-                  null,
-              },
-              {
-                transaction: t,
-              }
-            );
-        }
-      }
-
-
-      // ============================================================
-      // 5. PAGO PROGRAMADO
+      // 6. PAGO PROGRAMADO
       //    ACREDITADO → PENDIENTE
       // ============================================================
-      /*
-       * MUY IMPORTANTE:
-       *
-       * Estamos REVIRTIENDO la acreditación.
-       *
-       * NO anulamos el compromiso.
-       *
-       * El compromiso vuelve a quedar pendiente y conserva:
-       *
-       * - comprobanteegreso_id;
-       * - monto;
-       * - medio;
-       * - fecha_programada;
-       * - banco_id;
-       * - proyecto;
-       * - movimiento_ctacte_id;
-       * - datos futuros.
-       */
 
       await pagoProgramado.update(
         {
@@ -933,51 +896,65 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
 
       // ============================================================
-      // 6. RECALCULAR COMPROBANTE
+      // 7. RECALCULAR TODOS LOS COMPROBANTES AFECTADOS
       // ============================================================
 
-      let resultadoComprobante =
-        null;
+      const resultadosComprobantes =
+        [];
 
 
-      if (comprobanteId) {
+      for (
+        const comprobanteId
+        of comprobantesAfectados
+      ) {
 
-        await recalcComprobanteEgreso(
-          comprobanteId,
-          t
-        );
+        /*
+         * IMPORTANTE:
+         *
+         * Utilizamos el helper central que ya modificamos
+         * para distinguir:
+         *
+         * - abono real;
+         * - PagoProgramado pendiente.
+         *
+         * Un programado pendiente NO cuenta como pago real.
+         */
+        const resultado =
+          await recalcularComprobanteEgreso(
+            comprobanteId,
+            t
+          );
 
 
+        /*
+         * Reconstruimos además la FP actual
+         * del encabezado del comprobante.
+         */
         await actualizarFormaPagoActualComprobante(
           comprobanteId,
           t
         );
 
 
-        resultadoComprobante =
-          await ComprobanteEgreso.findByPk(
-            comprobanteId,
-            {
-              transaction: t,
-            }
-          );
+        resultadosComprobantes.push(
+          resultado
+        );
       }
 
 
       // ============================================================
-      // 7. COMMIT
+      // 8. COMMIT
       // ============================================================
 
       await t.commit();
 
 
       return res.json({
-        ok: true,
+        ok:
+          true,
 
         mensaje:
-          esAnticipo
-            ? "Acreditación del anticipo programado revertida. El movimiento bancario fue eliminado y el anticipo volvió a estado pendiente."
-            : "Acreditación del pago programado revertida. El movimiento bancario fue eliminado, el pago volvió a pendiente y se restauró la deuda del comprobante.",
+          "Acreditación del Pago Programado revertida. El movimiento bancario fue eliminado y el Pago Programado volvió a estado pendiente.",
 
         pagoProgramado_id:
           pagoProgramado.id,
@@ -985,11 +962,13 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
         pagoProgramado_estado:
           "pendiente",
 
-        cargo_ctacte:
-          cargoCreado,
+        comprobantes_afectados:
+          [
+            ...comprobantesAfectados,
+          ],
 
-        comprobante:
-          resultadoComprobante,
+        comprobantes:
+          resultadosComprobantes,
       });
     }
 
@@ -1293,64 +1272,266 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
 
         const orden = await OrdenPago.findByPk(mov.ordenpago_id, { transaction: t, lock: t.LOCK.UPDATE });
 
-        // 1) Buscar ABONOS asociados
-        const compIdsAfectados = new Set();
+        // ============================================================
+        // 1) BUSCAR TODOS LOS ABONOS ASOCIADOS AL MOVIMIENTO
+        // ============================================================
 
-        const abonoDirecto = await MovimientoCtaCteProveedor.findOne({
-          where: {
-            referencia_tipo: "MovimientoBancoTesoreria",
-            referencia_id: mov.id,
-            tipo: "abono",
-            anulado: { [Op.not]: true },
-          },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        });
-        console.log("     · Abono DIRECTO:", abonoDirecto ? abonoDirecto.id : "—");
+        const compIdsAfectados =
+          new Set();
 
-        let abonoViaOP = null;
-        if (!abonoDirecto && orden) {
-          abonoViaOP = await MovimientoCtaCteProveedor.findOne({
-            where: { ordenpago_id: orden.id, tipo: "abono", anulado: { [Op.not]: true } },
+
+        const abonosDirectos =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              referencia_tipo:
+                "MovimientoBancoTesoreria",
+
+              referencia_id:
+                mov.id,
+
+              tipo:
+                "abono",
+
+              anulado: {
+                [Op.not]:
+                  true,
+              },
+            },
+
             transaction: t,
             lock: t.LOCK.UPDATE,
           });
-          console.log("     · Abono via OP:", abonoViaOP ? abonoViaOP.id : "—");
+
+
+        console.log(
+          "     · Abonos DIRECTOS:",
+          abonosDirectos.map(
+            (a) => a.id
+          )
+        );
+
+
+        /*
+         * Si existe al menos un ABONO directamente
+         * relacionado con este MovimientoBancoTesoreria,
+         * significa que el movimiento fue aplicado
+         * a Cta.Cte.
+         */
+        const tieneAbonosDirectos =
+          abonosDirectos.length > 0;
+
+
+        /*
+         * Sólo buscamos por OP como fallback cuando
+         * NO encontramos relaciones directas.
+         */
+        let abonoViaOP =
+          null;
+
+
+        if (
+          !tieneAbonosDirectos &&
+          orden
+        ) {
+
+          abonoViaOP =
+            await MovimientoCtaCteProveedor.findOne({
+              where: {
+                ordenpago_id:
+                  orden.id,
+
+                tipo:
+                  "abono",
+
+                anulado: {
+                  [Op.not]:
+                    true,
+                },
+              },
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          console.log(
+            "     · Abono via OP:",
+            abonoViaOP
+              ? abonoViaOP.id
+              : "—"
+          );
         }
 
-        // decide CARGO solo si NO hay abono directo
-        let debeCrearCargo = !abonoDirecto;
 
-        // 1.1) limpiar abonoDirecto (aplicaciones + propio abono) y recolectar comprobantes
-        if (abonoDirecto) {
-          const compFromAbono = Number(abonoDirecto.comprobanteegreso_id || 0);
-          if (compFromAbono) compIdsAfectados.add(compFromAbono);
+        /*
+         * Sólo habrá que generar un CARGO de reversión
+         * si el movimiento NO estaba aplicado mediante
+         * ABONOS directos.
+         */
+        let debeCrearCargo =
+          !tieneAbonosDirectos;
 
-          const appls = await MovimientoCtaCteProveedorAplic.findAll({
-            where: { abono_id: abonoDirecto.id },
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-          if (appls.length) {
-            const cargoIds = [...new Set(appls.map(a => Number(a.cargo_id)).filter(Boolean))];
-            if (cargoIds.length) {
-              const cargos = await MovimientoCtaCteProveedor.findAll({
-                where: { id: { [Op.in]: cargoIds } },
-                attributes: ["id", "comprobanteegreso_id"],
-                transaction: t,
-              });
-              for (const cg of cargos) {
-                const cid = Number(cg.comprobanteegreso_id || 0);
-                if (cid) compIdsAfectados.add(cid);
+
+        // ============================================================
+        // 1.1) ELIMINAR TODOS LOS ABONOS DIRECTOS
+        // ============================================================
+
+        if (
+          tieneAbonosDirectos
+        ) {
+
+          const abonoIds =
+            abonosDirectos
+              .map(
+                (abono) =>
+                  Number(abono.id)
+              )
+              .filter(Boolean);
+
+
+          /*
+           * Primero recogemos los comprobantes que
+           * figuran directamente en cada ABONO.
+           */
+          for (
+            const abono
+            of abonosDirectos
+          ) {
+
+            const compFromAbono =
+              Number(
+                abono.comprobanteegreso_id ||
+                0
+              );
+
+
+            if (compFromAbono) {
+
+              compIdsAfectados.add(
+                compFromAbono
+              );
+            }
+          }
+
+
+          /*
+           * Recuperamos TODAS las aplicaciones de
+           * TODOS los ABONOS.
+           */
+          const appls =
+            await MovimientoCtaCteProveedorAplic.findAll({
+              where: {
+                abono_id: {
+                  [Op.in]:
+                    abonoIds,
+                },
+              },
+
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+
+          /*
+           * También recuperamos los comprobantes
+           * a través de los CARGOS.
+           */
+          if (appls.length > 0) {
+
+            const cargoIds =
+              [
+                ...new Set(
+                  appls
+                    .map(
+                      (a) =>
+                        Number(
+                          a.cargo_id
+                        )
+                    )
+                    .filter(Boolean)
+                ),
+              ];
+
+
+            if (cargoIds.length > 0) {
+
+              const cargos =
+                await MovimientoCtaCteProveedor.findAll({
+                  where: {
+                    id: {
+                      [Op.in]:
+                        cargoIds,
+                    },
+                  },
+
+                  attributes: [
+                    "id",
+                    "comprobanteegreso_id",
+                  ],
+
+                  transaction: t,
+                });
+
+
+              for (
+                const cargo
+                of cargos
+              ) {
+
+                const compId =
+                  Number(
+                    cargo.comprobanteegreso_id ||
+                    0
+                  );
+
+
+                if (compId) {
+
+                  compIdsAfectados.add(
+                    compId
+                  );
+                }
               }
             }
-            await MovimientoCtaCteProveedorAplic.destroy({ where: { abono_id: abonoDirecto.id }, transaction: t });
+
+
+            /*
+             * Eliminamos TODAS las aplicaciones.
+             */
+            await MovimientoCtaCteProveedorAplic.destroy({
+              where: {
+                abono_id: {
+                  [Op.in]:
+                    abonoIds,
+                },
+              },
+
+              transaction: t,
+            });
           }
-          await abonoDirecto.destroy({ transaction: t });
+
+
+          /*
+           * Finalmente eliminamos TODOS los ABONOS
+           * relacionados directamente con el movimiento.
+           */
+          await MovimientoCtaCteProveedor.destroy({
+            where: {
+              id: {
+                [Op.in]:
+                  abonoIds,
+              },
+            },
+
+            transaction: t,
+          });
         }
 
         // 1.2) si sólo hay abono vía OP, limpiarlo/ajustarlo y recolectar comprobantes
-        if (!abonoDirecto && abonoViaOP) {
+        if (
+          !tieneAbonosDirectos &&
+          abonoViaOP
+        ) {
           const compFromAbono = Number(abonoViaOP.comprobanteegreso_id || 0);
           if (compFromAbono) compIdsAfectados.add(compFromAbono);
 
@@ -1426,14 +1607,43 @@ export const eliminarMovimientoBancoTesoreria = async (req, res) => {
           }
         }
 
-        // 4) Recalcular TODOS los comprobantes recolectados
-        if (compIdsAfectados.size > 0) {
-          for (const compId of compIdsAfectados) {
-            await recalcComprobanteEgreso(
+        // ============================================================
+        // 4) RECALCULAR TODOS LOS COMPROBANTES AFECTADOS
+        // ============================================================
+
+        if (
+          compIdsAfectados.size > 0
+        ) {
+
+          console.log(
+            "🧾 Comprobantes afectados por eliminación de Banco:",
+            [
+              ...compIdsAfectados,
+            ]
+          );
+
+
+          for (
+            const compId
+            of compIdsAfectados
+          ) {
+
+            /*
+             * Utilizamos el helper CENTRAL.
+             *
+             * Es el mismo utilizado por la reversión
+             * de PagoProgramadoTesoreria.
+             */
+            await recalcularComprobanteEgreso(
               compId,
               t
             );
 
+
+            /*
+             * Reconstruimos además la forma de pago
+             * actual del encabezado.
+             */
             await actualizarFormaPagoActualComprobante(
               compId,
               t

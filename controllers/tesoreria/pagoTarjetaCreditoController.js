@@ -603,7 +603,7 @@ export async function eliminarPagoTarjeta(req, res) {
       ]);
 
       const formasCatalogo =
-        await FormaPagoTesoreria.findAll({ 
+        await FormaPagoTesoreria.findAll({
           transaction: trx,
         });
 
@@ -738,27 +738,75 @@ export async function eliminarPagoTarjeta(req, res) {
       ? await OrdenPago.findByPk(pago.ordenpago_id, { transaction: t, lock: t.LOCK.UPDATE })
       : null;
 
-    // ===== 1) Buscar ABONOS vinculados =====
-    // (a) Abono que referencia directamente a este PagoTarjetaCredito
-    const abonoRef = await MovimientoCtaCteProveedor.findOne({
-      where: {
-        referencia_tipo: "PagoTarjetaCredito",
-        referencia_id: pago.id,
-        tipo: "abono",
-        anulado: { [Op.not]: true },
-      },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
+    // ============================================================
+    // 1.a) BUSCAR TODOS LOS ABONOS DIRECTAMENTE VINCULADOS
+    //      A ESTE PAGO CON TARJETA
+    // ============================================================
 
-    // (b) Abonos por la misma OP (pueden ser varios)
-    const abonosViaOP = pago.ordenpago_id
-      ? await MovimientoCtaCteProveedor.findAll({
-        where: { ordenpago_id: pago.ordenpago_id, tipo: "abono", anulado: { [Op.not]: true } },
+    const abonosRef =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          referencia_tipo:
+            "PagoTarjetaCredito",
+
+          referencia_id:
+            pago.id,
+
+          tipo:
+            "abono",
+
+          anulado: {
+            [Op.not]:
+              true,
+          },
+        },
+
         transaction: t,
         lock: t.LOCK.UPDATE,
-      })
-      : [];
+      });
+
+
+    const tieneAbonosDirectos =
+      abonosRef.length > 0;
+
+
+    console.log(
+      "[tarjeta:delete] abonos directos:",
+      abonosRef.map(
+        (abono) => ({
+          id:
+            abono.id,
+
+          importe:
+            abono.importe,
+        })
+      )
+    );
+
+    // (b) Abonos por la misma OP (pueden ser varios)
+    const abonosViaOP =
+      !tieneAbonosDirectos &&
+        pago.ordenpago_id
+
+        ? await MovimientoCtaCteProveedor.findAll({
+          where: {
+            ordenpago_id:
+              pago.ordenpago_id,
+
+            tipo:
+              "abono",
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        })
+
+        : [];
 
     // Set para acumular comprobantes a recalcular
     const compIdsAfectados = new Set();
@@ -773,55 +821,191 @@ export async function eliminarPagoTarjeta(req, res) {
 
     let debeCrearCargo =
       importeCargoPendiente > EPS;
+    // ============================================================
+    // 2) SI HAY ABONOS DIRECTOS:
+    //    ELIMINAR TODAS SUS APLICACIONES Y TODOS LOS ABONOS
+    // ============================================================
 
-    // ===== 2) Si hay ABONO DIRECTO: eliminar aplicaciones y ajustar/eliminar el ABONO =====
-    if (abonoRef) {
-      // recolecto comp del propio abono
-      const compFromAbono = Number(abonoRef.comprobanteegreso_id || 0);
-      if (compFromAbono) compIdsAfectados.add(compFromAbono);
+    if (
+      tieneAbonosDirectos
+    ) {
 
-      const appls = await MovimientoCtaCteProveedorAplic.findAll({
-        where: { abono_id: abonoRef.id },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
+      const abonoIds =
+        abonosRef
+          .map(
+            (abono) =>
+              Number(abono.id)
+          )
+          .filter(Boolean);
 
-      if (appls.length) {
-        const cargoIds = [...new Set(appls.map(a => Number(a.cargo_id)).filter(Boolean))];
-        if (cargoIds.length) {
-          const cargos = await MovimientoCtaCteProveedor.findAll({
-            where: { id: { [Op.in]: cargoIds } },
-            attributes: ["id", "comprobanteegreso_id"],
-            transaction: t,
-          });
-          for (const cg of cargos) {
-            const cid = Number(cg.comprobanteegreso_id || 0);
-            if (cid) compIdsAfectados.add(cid);
-          }
-        }
-        await MovimientoCtaCteProveedorAplic.destroy({ where: { abono_id: abonoRef.id }, transaction: t });
-      }
-
-      // Ajuste/eliminación del abono (resto el monto del pago que estoy borrando)
-      const nuevoImporteAbono = Math.max(0, Number((Number(abonoRef.importe || 0) - montoPago).toFixed(2)));
-      if (nuevoImporteAbono <= EPS) {
-        await abonoRef.destroy({ transaction: t });
-      } else {
-        await abonoRef.update({ importe: nuevoImporteAbono }, { transaction: t });
-      }
 
       /*
- * El abono directo ya representaba este pago.
- * Al revertirlo no necesitamos crear además
- * una nueva deuda por el mismo importe.
- */
-      importeCargoPendiente = 0;
-      debeCrearCargo = false;
+       * Recuperamos comprobantes informados
+       * directamente en los ABONOS.
+       */
+      for (
+        const abono
+        of abonosRef
+      ) {
+
+        const compFromAbono =
+          Number(
+            abono.comprobanteegreso_id ||
+            0
+          );
+
+
+        if (compFromAbono) {
+
+          compIdsAfectados.add(
+            compFromAbono
+          );
+        }
+      }
+
+
+      /*
+       * Recuperamos TODAS las aplicaciones
+       * de TODOS los ABONOS.
+       */
+      const aplicaciones =
+        await MovimientoCtaCteProveedorAplic.findAll({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+
+      /*
+       * Recuperamos los comprobantes afectados
+       * a través de los CARGOS.
+       */
+      if (
+        aplicaciones.length > 0
+      ) {
+
+        const cargoIds =
+          [
+            ...new Set(
+              aplicaciones
+                .map(
+                  (aplicacion) =>
+                    Number(
+                      aplicacion.cargo_id
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+        if (
+          cargoIds.length > 0
+        ) {
+
+          const cargos =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    cargoIds,
+                },
+              },
+
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
+              transaction: t,
+            });
+
+
+          for (
+            const cargo
+            of cargos
+          ) {
+
+            const compId =
+              Number(
+                cargo.comprobanteegreso_id ||
+                0
+              );
+
+
+            if (compId) {
+
+              compIdsAfectados.add(
+                compId
+              );
+            }
+          }
+        }
+
+
+        /*
+         * Eliminamos TODAS las aplicaciones.
+         */
+        await MovimientoCtaCteProveedorAplic.destroy({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction: t,
+        });
+      }
+
+
+      /*
+       * Eliminamos TODOS los ABONOS que representan
+       * este PagoTarjetaCredito.
+       *
+       * Los CARGOS originales permanecen.
+       */
+      await MovimientoCtaCteProveedor.destroy({
+        where: {
+          id: {
+            [Op.in]:
+              abonoIds,
+          },
+        },
+
+        transaction: t,
+      });
+
+
+      console.log(
+        "[tarjeta:delete] abonos directos eliminados:",
+        abonoIds
+      );
+
+
+      /*
+       * Como los CARGOS originales siguen existiendo,
+       * NO generamos un nuevo CARGO.
+       */
+      importeCargoPendiente =
+        0;
+
+      debeCrearCargo =
+        false;
     }
 
     // ===== 2.bis) Si NO hubo abono directo pero SÍ abonos vía OP:
     // limpiar aplicaciones y reducir/destruir esos abonos repartiendo el monto del pago
-    if (!abonoRef && abonosViaOP.length > 0) {
+    if (
+      !tieneAbonosDirectos &&
+      abonosViaOP.length > 0
+    ) {
       let restante = montoPago;
 
       // ordeno por id (o fecha) para tener determinismo
@@ -932,18 +1116,32 @@ export async function eliminarPagoTarjeta(req, res) {
       }
     }
 
-    // ===== 5) Recalcular COMPROBANTES afectados =====
-    if (compIdsAfectados.size > 0) {
+    // ============================================================
+    // 5) RECALCULAR TODOS LOS COMPROBANTES AFECTADOS
+    // ============================================================
+
+    if (
+      compIdsAfectados.size > 0
+    ) {
+
+      console.log(
+        "🧾 Comprobantes afectados por eliminación de Tarjeta:",
+        [
+          ...compIdsAfectados,
+        ]
+      );
+
 
       for (
         const compId
         of compIdsAfectados
       ) {
 
-        await recalcComprobanteEgreso(
+        await recalcularComprobanteEgreso(
           compId,
           t
         );
+
 
         await actualizarFormaPagoActualComprobante(
           compId,

@@ -15,6 +15,86 @@ function parseDateRange({ desde, hasta }) {
   return Object.keys(where).length ? where : null;
 }
 
+// ============================================================
+// MOVIMIENTOS YA UTILIZADOS EN CTA. CTE.
+// ============================================================
+//
+// Un movimiento financiero deja de estar disponible cuando
+// existe al menos un ABONO ACTIVO que lo referencia.
+//
+// NO utilizamos empresa_id.
+//
+// Tampoco dependemos de comprobanteegreso_id del movimiento,
+// porque un mismo movimiento puede haberse aplicado a uno
+// o varios comprobantes mediante Cta.Cte.
+// ============================================================
+
+async function obtenerIdsYaUtilizados(
+  referenciaTipo,
+  ids
+) {
+
+  const idsNormalizados =
+    [
+      ...new Set(
+        (ids || [])
+          .map(
+            (id) =>
+              Number(id)
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+
+  if (
+    idsNormalizados.length === 0
+  ) {
+    return new Set();
+  }
+
+
+  const abonos =
+    await MovimientoCtaCteProveedor.findAll({
+      where: {
+        tipo:
+          "abono",
+
+        anulado: {
+          [Op.not]:
+            true,
+        },
+
+        referencia_tipo:
+          referenciaTipo,
+
+        referencia_id: {
+          [Op.in]:
+            idsNormalizados,
+        },
+      },
+
+      attributes: [
+        "referencia_id",
+      ],
+
+      raw:
+        true,
+    });
+
+
+  return new Set(
+    abonos
+      .map(
+        (abono) =>
+          Number(
+            abono.referencia_id
+          )
+      )
+      .filter(Boolean)
+  );
+}
+
 export async function listarDisponibles(req, res) {
   try {
     const {
@@ -25,13 +105,48 @@ export async function listarDisponibles(req, res) {
       q,
     } = req.query || {};
 
-    if (!medio) return res.status(400).json({ error: "medio requerido" });
+    if (!medio) {
+      return res.status(400).json({
+        error: "medio requerido",
+      });
+    }
 
-    const like = q ? { [Op.iLike]: `%${q}%` } : null;
+    if (!proveedor_id) {
+      return res.status(400).json({
+        error: "proveedor_id requerido para buscar pagos disponibles",
+      });
+    }
 
-    // Por convención, "disponible" = comprobanteegreso_id NULL
-    const baseCommon = { comprobanteegreso_id: null };
-    if (proveedor_id) baseCommon.proveedor_id = proveedor_id;
+    const proveedorId =
+      Number(proveedor_id);
+
+    if (!Number.isInteger(proveedorId) || proveedorId <= 0) {
+      return res.status(400).json({
+        error: "proveedor_id inválido",
+      });
+    }
+
+    const like =
+      q
+        ? { [Op.iLike]: `%${q}%` }
+        : null;
+
+
+    /*
+     * Un movimiento sólo está disponible si:
+     *
+     * 1) pertenece al proveedor seleccionado;
+     * 2) todavía no está asociado a un comprobante.
+     *
+     * empresa_id NO interviene en la disponibilidad.
+     */
+    const baseCommon = {
+      proveedor_id:
+        proveedorId,
+
+      comprobanteegreso_id:
+        null,
+    };
 
 
 
@@ -69,9 +184,29 @@ export async function listarDisponibles(req, res) {
             ],
           });
 
+        const idsCajaUtilizados =
+          await obtenerIdsYaUtilizados(
+            "MovimientoCajaTesoreria",
+
+            movimientos.map(
+              (movimiento) =>
+                movimiento.id
+            )
+          );
+
+
+        const movimientosDisponibles =
+          movimientos.filter(
+            (movimiento) =>
+              !idsCajaUtilizados.has(
+                Number(
+                  movimiento.id
+                )
+              )
+          );
 
         const movimientosNormalizados =
-          movimientos.map((r) => ({
+          movimientosDisponibles.map((r) => ({
             tipo:
               "caja",
 
@@ -222,9 +357,29 @@ export async function listarDisponibles(req, res) {
             ],
           });
 
+        const idsBancoUtilizados =
+          await obtenerIdsYaUtilizados(
+            "MovimientoBancoTesoreria",
+
+            movimientos.map(
+              (movimiento) =>
+                movimiento.id
+            )
+          );
+
+
+        const movimientosDisponibles =
+          movimientos.filter(
+            (movimiento) =>
+              !idsBancoUtilizados.has(
+                Number(
+                  movimiento.id
+                )
+              )
+          );
 
         const movimientosNormalizados =
-          movimientos.map((r) => ({
+          movimientosDisponibles.map((r) => ({
             tipo:
               "banco",
 
@@ -381,10 +536,29 @@ export async function listarDisponibles(req, res) {
               ["id", "DESC"],
             ],
           });
+        const idsEcheqUtilizados =
+          await obtenerIdsYaUtilizados(
+            "EcheqEmitido",
 
+            echeqs.map(
+              (echeq) =>
+                echeq.id
+            )
+          );
+
+
+        const echeqsDisponibles =
+          echeqs.filter(
+            (echeq) =>
+              !idsEcheqUtilizados.has(
+                Number(
+                  echeq.id
+                )
+              )
+          );
 
         const echeqsNormalizados =
-          echeqs.map((r) => ({
+          echeqsDisponibles.map((r) => ({
             tipo:
               "echeq",
 
@@ -583,24 +757,85 @@ export async function listarDisponibles(req, res) {
         if (desde || hasta) where.fecha = parseDateRange({ desde, hasta });
         if (like) where.concepto = like;
 
-        rows = await PagoTarjetaCredito.findAll({
-          where,
-          order: [["fecha", "DESC"], ["id", "DESC"]],
-        });
+        const pagosTarjeta =
+          await PagoTarjetaCredito.findAll({
+            where,
 
-        rows = rows.map(r => ({
-          tipo: "tarjeta",
-          id: r.id,
-          fecha: r.fecha,
-          monto: Number(r.importe || 0),
-          tipotarjeta_id: r.tipotarjeta_id || null,
-          marcatarjeta_id: r.marcatarjeta_id || null,
-          cupon_numero: r.cupon_numero || null,
-          planpago_id: r.planpago_id || null,
-          estado: r.estado || null,
-          proveedor_id: r.proveedor_id || null,
-          empresa_id: r.empresa_id || null,
-        }));
+            order: [
+              ["fecha", "DESC"],
+              ["id", "DESC"],
+            ],
+          });
+
+
+        const idsTarjetaUtilizados =
+          await obtenerIdsYaUtilizados(
+            "PagoTarjetaCredito",
+
+            pagosTarjeta.map(
+              (pago) =>
+                pago.id
+            )
+          );
+
+
+        const pagosTarjetaDisponibles =
+          pagosTarjeta.filter(
+            (pago) =>
+              !idsTarjetaUtilizados.has(
+                Number(
+                  pago.id
+                )
+              )
+          );
+
+
+        rows =
+          pagosTarjetaDisponibles.map(
+            (r) => ({
+              tipo:
+                "tarjeta",
+
+              id:
+                r.id,
+
+              fecha:
+                r.fecha,
+
+              monto:
+                Number(
+                  r.importe || 0
+                ),
+
+              tipotarjeta_id:
+                r.tipotarjeta_id ||
+                null,
+
+              marcatarjeta_id:
+                r.marcatarjeta_id ||
+                null,
+
+              cupon_numero:
+                r.cupon_numero ||
+                null,
+
+              planpago_id:
+                r.planpago_id ||
+                null,
+
+              estado:
+                r.estado ||
+                null,
+
+              proveedor_id:
+                r.proveedor_id ||
+                null,
+
+              empresa_id:
+                r.empresa_id ||
+                null,
+            })
+          );
         break;
       }
 

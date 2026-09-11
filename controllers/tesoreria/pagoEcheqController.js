@@ -2059,35 +2059,9 @@ export async function eliminarEcheqEmitido(req, res) {
     if (String(ech.estado || "").toLowerCase() === "acreditado") {
       throw new Error("No se puede eliminar un eCheq acreditado (use reversa de banco)");
     }
-
-    // ============================================================
-    // ECHEQ ORIGINADO POR PAGO PROGRAMADO
-    // ============================================================
-    //
-    // Este caso NO debe continuar por la eliminación genérica
-    // de eCheq.
-    //
-    // El PagoProgramadoTesoreria ya existía antes de que se
-    // materializara el eCheq.
-    //
-    // Por lo tanto:
-    //
-    //   PagoProgramado
-    //          ↓ acreditar
-    //   EcheqEmitido
-    //
-    // al eliminar el eCheq debemos volver a:
-    //
-    //   PagoProgramado PENDIENTE
-    //
-    // y NO destruir el compromiso, su OP ni el anticipo
-    // histórico de cuenta corriente.
-    // ============================================================
-
     const referenciaTipoEcheq =
       String(
-        ech.referencia_tipo ||
-        ""
+        ech.referencia_tipo || ""
       )
         .trim()
         .toLowerCase();
@@ -2098,6 +2072,16 @@ export async function eliminarEcheqEmitido(req, res) {
       "pagoprogramadotesoreria" &&
       ech.referencia_id
     ) {
+
+      console.log(
+        "📅 Revirtiendo acreditación de PAGO PROGRAMADO desde ECHEQ:",
+        ech.referencia_id
+      );
+
+
+      // ============================================================
+      // 1. BUSCAR PAGO PROGRAMADO
+      // ============================================================
 
       const pagoProgramado =
         await PagoProgramadoTesoreria.findByPk(
@@ -2116,12 +2100,37 @@ export async function eliminarEcheqEmitido(req, res) {
       }
 
 
-      /*
-       * ========================================================
-       * VALIDAR RELACIÓN INVERSA
-       * ========================================================
-       */
+      if (
+        String(
+          pagoProgramado.estado || ""
+        )
+          .trim()
+          .toLowerCase() !==
+        "acreditado"
+      ) {
+        throw new Error(
+          `El pago programado asociado se encuentra en estado ${pagoProgramado.estado}.`
+        );
+      }
 
+
+      if (
+        String(
+          pagoProgramado.medio || ""
+        )
+          .trim()
+          .toLowerCase() !==
+        "echeq"
+      ) {
+        throw new Error(
+          "El PagoProgramadoTesoreria asociado no corresponde a un pago por eCheq."
+        );
+      }
+
+
+      /*
+       * Defensa de relación inversa.
+       */
       if (
         pagoProgramado.movimiento_tipo &&
         String(
@@ -2141,7 +2150,8 @@ export async function eliminarEcheqEmitido(req, res) {
         pagoProgramado.movimiento_id &&
         Number(
           pagoProgramado.movimiento_id
-        ) !== Number(ech.id)
+        ) !==
+        Number(ech.id)
       ) {
         throw new Error(
           `El PagoProgramadoTesoreria #${pagoProgramado.id} está asociado a otro movimiento financiero.`
@@ -2149,115 +2159,109 @@ export async function eliminarEcheqEmitido(req, res) {
       }
 
 
-      /*
-       * ========================================================
-       * COMPROBANTES QUE PUEDEN NECESITAR RECÁLCULO
-       * ========================================================
-       */
+      // ============================================================
+      // 2. LOCALIZAR ABONOS QUE AL ACREDITAR
+      //    PASARON A APUNTAR AL ECHEQ REAL
+      // ============================================================
 
-      const comprobantesARecalcular =
+      const abonosProgramado =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            tipo:
+              "abono",
+
+            referencia_tipo:
+              "EcheqEmitido",
+
+            referencia_id:
+              ech.id,
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+
+      const abonoIds =
+        abonosProgramado
+          .map(
+            abono =>
+              Number(abono.id)
+          )
+          .filter(Boolean);
+
+
+      // ============================================================
+      // 3. RECUPERAR TODOS LOS COMPROBANTES AFECTADOS
+      // ============================================================
+
+      const comprobantesAfectados =
         new Set();
 
 
-      const comprobantePrincipalId =
-        Number(
-          pagoProgramado.comprobanteegreso_id ||
-          ech.comprobanteegreso_id ||
-          0
+      if (
+        pagoProgramado.comprobanteegreso_id
+      ) {
+
+        comprobantesAfectados.add(
+          Number(
+            pagoProgramado.comprobanteegreso_id
+          )
         );
+      }
 
 
-      const esAnticipo =
-        String(
-          pagoProgramado.tipo ||
-          ""
-        )
-          .trim()
-          .toLowerCase() ===
-        "anticipo";
+      if (
+        ech.comprobanteegreso_id
+      ) {
 
-
-      if (comprobantePrincipalId) {
-        comprobantesARecalcular.add(
-          comprobantePrincipalId
+        comprobantesAfectados.add(
+          Number(
+            ech.comprobanteegreso_id
+          )
         );
       }
 
 
       /*
-       * ========================================================
-       * ANTICIPO PROGRAMADO
-       * ========================================================
+       * Recuperamos las facturas alcanzadas por las
+       * aplicaciones de los abonos.
        *
-       * Este abono existía ANTES de crear el eCheq.
-       *
-       * NO:
-       * - eliminarlo
-       * - reducirlo
-       * - eliminar sus aplicaciones
-       *
-       * Solamente hacemos que vuelva a referenciar al
-       * PagoProgramadoTesoreria.
-       * ========================================================
+       * IMPORTANTE:
+       * NO eliminamos ninguna aplicación.
        */
-
-      if (
-        esAnticipo &&
-        pagoProgramado.movimiento_ctacte_id
-      ) {
-
-        const abono =
-          await MovimientoCtaCteProveedor.findByPk(
-            pagoProgramado.movimiento_ctacte_id,
-            {
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-            }
-          );
-
-
-        if (!abono) {
-          throw new Error(
-            "No se encontró el abono de cuenta corriente asociado al anticipo programado."
-          );
-        }
-
-
-        if (abono.anulado) {
-          throw new Error(
-            "El abono asociado al anticipo programado se encuentra anulado."
-          );
-        }
-
-
-        /*
-         * Recolectamos también los comprobantes donde
-         * este anticipo esté aplicado.
-         *
-         * NO eliminamos las aplicaciones.
-         */
+      if (abonoIds.length > 0) {
 
         const aplicaciones =
           await MovimientoCtaCteProveedorAplic.findAll({
             where: {
-              abono_id:
-                abono.id,
+              abono_id: {
+                [Op.in]:
+                  abonoIds,
+              },
             },
+
+            attributes: [
+              "cargo_id",
+            ],
 
             transaction: t,
           });
 
 
-        if (aplicaciones.length) {
-
-          const cargoIds = [
+        const cargoIds =
+          [
             ...new Set(
               aplicaciones
                 .map(
-                  a =>
+                  aplicacion =>
                     Number(
-                      a.cargo_id ||
-                      0
+                      aplicacion.cargo_id
                     )
                 )
                 .filter(Boolean)
@@ -2265,232 +2269,15 @@ export async function eliminarEcheqEmitido(req, res) {
           ];
 
 
-          if (cargoIds.length) {
+        if (cargoIds.length > 0) {
 
-            const cargos =
-              await MovimientoCtaCteProveedor.findAll({
-                where: {
-                  id: {
-                    [Op.in]:
-                      cargoIds,
-                  },
+          const cargos =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    cargoIds,
                 },
-
-                attributes: [
-                  "id",
-                  "comprobanteegreso_id",
-                ],
-
-                transaction: t,
-              });
-
-
-            for (const cargo of cargos) {
-
-              const compId =
-                Number(
-                  cargo.comprobanteegreso_id ||
-                  0
-                );
-
-
-              if (compId) {
-                comprobantesARecalcular.add(
-                  compId
-                );
-              }
-            }
-          }
-        }
-
-
-        /*
-         * Restauramos el origen histórico del abono.
-         */
-
-        await abono.update(
-          {
-            referencia_tipo:
-              "PagoProgramadoTesoreria",
-
-            referencia_id:
-              pagoProgramado.id,
-
-            comprobanteegreso_id:
-              pagoProgramado.comprobanteegreso_id ||
-              null,
-
-            fecha:
-              pagoProgramado.fecha_programada,
-
-            fecha_pago:
-              pagoProgramado.fecha_programada,
-
-            importe:
-              Number(
-                pagoProgramado.monto ||
-                0
-              ),
-
-            formapago_id:
-              pagoProgramado.formapago_id ||
-              null,
-
-            descripcion:
-              `Anticipo programado #${pagoProgramado.id} - ${pagoProgramado.descripcion || ""}`,
-          },
-
-          {
-            transaction: t,
-          }
-        );
-      }
-
-
-      /*
-       * ========================================================
-       * ABONO CREADO AL ACREDITAR UN EGRESO PROGRAMADO NORMAL
-       * ========================================================
-       *
-       * Este es distinto del anticipo.
-       *
-       * Si se utilizó generar_abono_ctacte=true, ese abono
-       * nació con la materialización del eCheq.
-       *
-       * Si tiene aplicaciones, no podemos eliminar el eCheq
-       * silenciosamente.
-       * ========================================================
-       */
-
-      if (!esAnticipo) {
-
-        const abonosGenerados =
-          await MovimientoCtaCteProveedor.findAll({
-            where: {
-              referencia_tipo:
-                "EcheqEmitido",
-
-              referencia_id:
-                ech.id,
-
-              tipo:
-                "abono",
-
-              anulado: {
-                [Op.not]:
-                  true,
-              },
-            },
-
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-
-
-        for (
-          const abono
-          of abonosGenerados
-        ) {
-
-          const aplicaciones =
-            await MovimientoCtaCteProveedorAplic.count({
-              where: {
-                abono_id:
-                  abono.id,
-              },
-
-              transaction: t,
-            });
-
-
-          if (aplicaciones > 0) {
-            throw new Error(
-              `No se puede eliminar el eCheq porque el abono de cuenta corriente #${abono.id} ya fue aplicado a facturas. Primero deben desaplicarse esas aplicaciones.`
-            );
-          }
-
-
-          await abono.update(
-            {
-              anulado:
-                true,
-            },
-            {
-              transaction: t,
-            }
-          );
-        }
-      }
-
-
-      /*
-       * ========================================================
-       * ELIMINAR ECHEQ
-       * ========================================================
-       *
-       * Ya sabemos que NO está acreditado bancariamente porque
-       * esa validación se hizo antes de entrar aquí.
-       * ========================================================
-       */
-
-      await ech.destroy({
-        transaction: t,
-      });
-
-      /*
- * ========================================================
- * RESTAURAR DEUDA DEL COMPROBANTE EN CTA. CTE.
- * ========================================================
- *
- * Si era un PagoProgramado normal y el eCheq estaba
- * asociado a un comprobante, al eliminar el eCheq esa
- * porción vuelve a quedar pendiente.
- *
- * Los anticipos NO crean cargo aquí porque conservan
- * su ABONO histórico.
- * ========================================================
- */
-
-      if (
-        !esAnticipo &&
-        comprobantePrincipalId
-      ) {
-
-        const comp =
-          await ComprobanteEgreso.findByPk(
-            comprobantePrincipalId,
-            {
-              transaction: t,
-              lock: t.LOCK.UPDATE,
-            }
-          );
-
-
-        if (!comp) {
-          throw new Error(
-            `No se encontró el comprobante #${comprobantePrincipalId} asociado al eCheq.`
-          );
-        }
-
-
-        const importeCargo =
-          Number(
-            ech.importe ||
-            0
-          );
-
-
-        if (importeCargo > EPS) {
-
-          /*
-           * Evitar duplicar exactamente la deuda si ya existe
-           * un cargo activo para este comprobante.
-           */
-          const cargoExistente =
-            await MovimientoCtaCteProveedor.findOne({
-              where: {
-                comprobanteegreso_id:
-                  comp.id,
 
                 tipo:
                   "cargo",
@@ -2501,113 +2288,149 @@ export async function eliminarEcheqEmitido(req, res) {
                 },
               },
 
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
               transaction: t,
-              lock: t.LOCK.UPDATE,
             });
 
 
-          if (!cargoExistente) {
+          for (const cargo of cargos) {
 
-            const nuevoCargo =
-              await MovimientoCtaCteProveedor.create(
-                {
-                  proveedor_id:
-                    comp.proveedor_id ||
-                    ech.proveedor_id ||
-                    null,
+            if (
+              cargo.comprobanteegreso_id
+            ) {
 
-                  empresa_id:
-                    comp.empresa_id ||
-                    ech.empresa_id ||
-                    null,
-
-                  fecha:
-                    ech.fecha_emision ||
-                    comp.fechacomprobante ||
-                    new Date()
-                      .toISOString()
-                      .slice(0, 10),
-
-                  fecha_pago:
-                    null,
-
-                  descripcion:
-                    `Reversión pago programado con eCheq - Comp. ${comp.nrocomprobante ?? comp.id}`,
-
-                  tipo:
-                    "cargo",
-
-                  importe:
-                    importeCargo,
-
-                  origen_tipo:
-                    "ComprobanteEgreso",
-
-                  origen_id:
-                    comp.id,
-
-                  comprobanteegreso_id:
-                    comp.id,
-
-                  anulado:
-                    false,
-
-                  ordenpago_id:
-                    null,
-
-                  formapago_id:
-                    null,
-                },
-                {
-                  transaction: t,
-                }
+              comprobantesAfectados.add(
+                Number(
+                  cargo.comprobanteegreso_id
+                )
               );
-
-
-            console.log(
-              "[echeq:delete/programado] CARGO creado en CtaCte",
-              {
-                cargo_id:
-                  nuevoCargo.id,
-
-                comprobante_id:
-                  comp.id,
-
-                importe:
-                  importeCargo,
-              }
-            );
+            }
           }
         }
-
-
-        comprobantesARecalcular.add(
-          Number(comp.id)
-        );
       }
 
-      /*
-       * ========================================================
-       * RECALCULAR COMPROBANTES
-       * ========================================================
-       */
+
+      // ============================================================
+      // 4. RESTAURAR LOS ABONOS
+      //    ECHEQ REAL → PAGO PROGRAMADO
+      // ============================================================
+
+      const descripcionPagoProgramado =
+        String(
+          pagoProgramado.descripcion || ""
+        ).trim();
+
 
       for (
-        const compId
-        of comprobantesARecalcular
+        const abono
+        of abonosProgramado
       ) {
 
-        await recalcComprobanteEgreso(
-          compId,
-          t
-        );
+        await abono.update(
+          {
+            referencia_tipo:
+              "PagoProgramadoTesoreria",
 
-        await actualizarFormaPagoActualComprobante(
-          compId,
-          t
+            referencia_id:
+              pagoProgramado.id,
+
+            fecha_pago:
+              null,
+
+            descripcion:
+              `Pago programado pendiente #${pagoProgramado.id}` +
+              (
+                descripcionPagoProgramado
+                  ? ` - ${descripcionPagoProgramado}`
+                  : ""
+              ) +
+              ` · Pago acordado con: eCheq`,
+
+            formapago_id:
+              pagoProgramado.formapago_id ||
+              abono.formapago_id ||
+              null,
+          },
+          {
+            transaction: t,
+          }
         );
       }
 
+
+      // ============================================================
+      // 5. ELIMINAR ECHEQ REAL
+      // ============================================================
+
+      await ech.destroy({
+        transaction: t,
+      });
+
+
+      // ============================================================
+      // 6. PAGO PROGRAMADO
+      //    ACREDITADO → PENDIENTE
+      // ============================================================
+
+      await pagoProgramado.update(
+        {
+          estado:
+            "pendiente",
+
+          fecha_acreditacion:
+            null,
+
+          movimiento_tipo:
+            null,
+
+          movimiento_id:
+            null,
+        },
+        {
+          transaction: t,
+        }
+      );
+
+
+      // ============================================================
+      // 7. RECALCULAR TODOS LOS COMPROBANTES AFECTADOS
+      // ============================================================
+
+      const resultadosComprobantes =
+        [];
+
+
+      for (
+        const comprobanteId
+        of comprobantesAfectados
+      ) {
+
+        const resultado =
+          await recalcularComprobanteEgreso(
+            comprobanteId,
+            t
+          );
+
+
+        await actualizarFormaPagoActualComprobante(
+          comprobanteId,
+          t
+        );
+
+
+        resultadosComprobantes.push(
+          resultado
+        );
+      }
+
+
+      // ============================================================
+      // 8. COMMIT
+      // ============================================================
 
       await safeCommit();
 
@@ -2617,33 +2440,61 @@ export async function eliminarEcheqEmitido(req, res) {
           true,
 
         mensaje:
-          "eCheq eliminado. El PagoProgramadoTesoreria volvió a estado pendiente.",
+          "Acreditación del Pago Programado revertida. El eCheq fue eliminado y el Pago Programado volvió a estado pendiente.",
 
         pagoProgramado_id:
           pagoProgramado.id,
 
-        comprobantes_recalculados:
-          Array.from(
-            comprobantesARecalcular
-          ),
+        pagoProgramado_estado:
+          "pendiente",
+
+        comprobantes_afectados:
+          [
+            ...comprobantesAfectados,
+          ],
+
+        comprobantes:
+          resultadosComprobantes,
       });
     }
+    // ============================================================
+    // 1.a) BUSCAR TODOS LOS ABONOS QUE REFERENCIAN
+    //      DIRECTAMENTE A ESTE ECHEQ
+    // ============================================================
+
+    const abonosRef =
+      await MovimientoCtaCteProveedor.findAll({
+        where: {
+          referencia_tipo:
+            "EcheqEmitido",
+
+          referencia_id:
+            ech.id,
+
+          tipo:
+            "abono",
+
+          anulado: {
+            [Op.not]:
+              true,
+          },
+        },
+
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
 
 
-    // ===== 1) Buscar ABONOS asociados =====
+    console.log(
+      "[echeq:delete] abonos directos:",
+      abonosRef.map(
+        (abono) => abono.id
+      )
+    );
 
-    // ===== 1) Buscar ABONOS asociados =====
-    // (a) ABONO que referencia directamente a ESTE eCheq
-    const abonoRef = await MovimientoCtaCteProveedor.findOne({
-      where: {
-        referencia_tipo: "EcheqEmitido",
-        referencia_id: ech.id,
-        tipo: "abono",
-        anulado: { [Op.not]: true },
-      },
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
+
+    const tieneAbonosDirectos =
+      abonosRef.length > 0;
 
     // (b) Abonos por la misma OP (fallback)
     /*
@@ -2655,7 +2506,8 @@ export async function eliminarEcheqEmitido(req, res) {
      * reversión del eCheq.
      */
     const abonosViaOP =
-      !ech.comprobanteegreso_id &&
+      !tieneAbonosDirectos &&
+        !ech.comprobanteegreso_id &&
         ech.ordenpago_id
 
         ? await MovimientoCtaCteProveedor.findAll({
@@ -2678,65 +2530,217 @@ export async function eliminarEcheqEmitido(req, res) {
 
         : [];
 
-    console.log("[echeq:delete] abonoRef?", !!abonoRef, abonoRef ? { abono_id: abonoRef.id, importe: abonoRef.importe } : {});
-    console.log("[echeq:delete] abonosViaOP:", abonosViaOP.length);
+    console.log(
+      "[echeq:delete] abonosRef:",
+      abonosRef.map(
+        (abono) => ({
+          abono_id:
+            abono.id,
+
+          importe:
+            abono.importe,
+        })
+      )
+    );
 
     const compIdsAfectados = new Set();
     if (ech.comprobanteegreso_id) compIdsAfectados.add(Number(ech.comprobanteegreso_id));
 
     // Flag para decidir si crear CARGO de reversión
     let debeCrearCargo = true;
+    // ============================================================
+    // 2) SI HAY ABONOS DIRECTOS:
+    //    ELIMINAR TODAS SUS APLICACIONES Y TODOS LOS ABONOS
+    // ============================================================
 
-    // ===== 2) Si hay ABONO DIRECTO: eliminar aplicaciones y ajustar/eliminar el ABONO
-    if (abonoRef) {
-      // también considerar el comp del propio abono (si ahora viene informado)
-      const compFromAbono = Number(abonoRef.comprobanteegreso_id || 0);
-      if (compFromAbono) compIdsAfectados.add(compFromAbono);
+    if (
+      tieneAbonosDirectos
+    ) {
 
-      const appls = await MovimientoCtaCteProveedorAplic.findAll({
-        where: { abono_id: abonoRef.id },
-        transaction: t,
-        lock: t.LOCK.UPDATE, // (no todos los dialectos soportan lock acá; si no, quítalo)
-      }).catch(() => MovimientoCtaCteProveedorAplic.findAll({
-        where: { abono_id: abonoRef.id },
-        transaction: t,
-      }));
+      const abonoIds =
+        abonosRef
+          .map(
+            (abono) =>
+              Number(abono.id)
+          )
+          .filter(Boolean);
 
-      if (appls.length) {
-        const cargoIds = [...new Set(appls.map(a => Number(a.cargo_id)).filter(Boolean))];
-        if (cargoIds.length) {
-          const cargos = await MovimientoCtaCteProveedor.findAll({
-            where: { id: { [Op.in]: cargoIds } },
-            attributes: ["id", "comprobanteegreso_id"],
-            transaction: t,
-          });
-          for (const cg of cargos) {
-            const compId = Number(cg.comprobanteegreso_id || 0);
-            if (compId) compIdsAfectados.add(compId);
+
+      /*
+       * Primero recogemos cualquier comprobante
+       * informado directamente en los ABONOS.
+       */
+      for (
+        const abono
+        of abonosRef
+      ) {
+
+        const compFromAbono =
+          Number(
+            abono.comprobanteegreso_id ||
+            0
+          );
+
+
+        if (compFromAbono) {
+
+          compIdsAfectados.add(
+            compFromAbono
+          );
+        }
+      }
+
+
+      /*
+       * Recuperamos TODAS las aplicaciones pertenecientes
+       * a TODOS los ABONOS de este eCheq.
+       */
+      const aplicaciones =
+        await MovimientoCtaCteProveedorAplic.findAll({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+
+
+      /*
+       * Recuperamos los comprobantes afectados
+       * a través de los CARGOS.
+       */
+      if (
+        aplicaciones.length > 0
+      ) {
+
+        const cargoIds =
+          [
+            ...new Set(
+              aplicaciones
+                .map(
+                  (aplicacion) =>
+                    Number(
+                      aplicacion.cargo_id
+                    )
+                )
+                .filter(Boolean)
+            ),
+          ];
+
+
+        if (
+          cargoIds.length > 0
+        ) {
+
+          const cargos =
+            await MovimientoCtaCteProveedor.findAll({
+              where: {
+                id: {
+                  [Op.in]:
+                    cargoIds,
+                },
+              },
+
+              attributes: [
+                "id",
+                "comprobanteegreso_id",
+              ],
+
+              transaction: t,
+            });
+
+
+          for (
+            const cargo
+            of cargos
+          ) {
+
+            const compId =
+              Number(
+                cargo.comprobanteegreso_id ||
+                0
+              );
+
+
+            if (compId) {
+
+              compIdsAfectados.add(
+                compId
+              );
+            }
           }
         }
 
-        await MovimientoCtaCteProveedorAplic.destroy({ where: { abono_id: abonoRef.id }, transaction: t });
-        console.log("[echeq:delete] aplicaciones eliminadas (abonoRef)", { abono_id: abonoRef.id });
+
+        /*
+         * Eliminamos TODAS las aplicaciones.
+         */
+        await MovimientoCtaCteProveedorAplic.destroy({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction: t,
+        });
+
+
+        console.log(
+          "[echeq:delete] aplicaciones eliminadas:",
+          {
+            abonoIds,
+            cantidad:
+              aplicaciones.length,
+          }
+        );
       }
 
-      // Ajustar o eliminar el abono principal (restar el importe del eCheq)
-      const nuevoImporteAbono = Math.max(0, Number((Number(abonoRef.importe || 0) - Number(ech.importe || 0)).toFixed(2)));
-      if (nuevoImporteAbono <= EPS) {
-        await abonoRef.destroy({ transaction: t });
-        console.log("[echeq:delete] abonoRef destruido", { abono_id: abonoRef.id });
-      } else {
-        await abonoRef.update({ importe: nuevoImporteAbono }, { transaction: t });
-        console.log("[echeq:delete] abonoRef actualizado", { abono_id: abonoRef.id, nuevoImporteAbono });
-      }
 
-      // ⛔ Si existía abono directo, NO creamos CARGO
-      debeCrearCargo = false;
+      /*
+       * Eliminamos TODOS los ABONOS.
+       *
+       * Los CARGOS originales permanecen,
+       * porque representan las deudas de las facturas.
+       */
+      await MovimientoCtaCteProveedor.destroy({
+        where: {
+          id: {
+            [Op.in]:
+              abonoIds,
+          },
+        },
+
+        transaction: t,
+      });
+
+
+      console.log(
+        "[echeq:delete] abonos directos eliminados:",
+        abonoIds
+      );
+
+
+      /*
+       * Como existían ABONOS aplicados sobre los
+       * CARGOS originales, NO debemos crear
+       * ningún CARGO nuevo.
+       */
+      debeCrearCargo =
+        false;
     }
 
     // ===== 2.bis) Si NO hubo abono directo pero SÍ abonos vía OP:
     // limpiar aplicaciones y reducir/destruir esos abonos repartiendo el importe del eCheq
-    if (!abonoRef && abonosViaOP.length > 0) {
+    if (
+      !tieneAbonosDirectos &&
+      abonosViaOP.length > 0
+    ) {
       let restante = Number(ech.importe || 0);
 
       // orden determinista
@@ -3058,7 +3062,7 @@ export async function eliminarEcheqEmitido(req, res) {
       of compIdsAfectados
     ) {
 
-      await recalcComprobanteEgreso(
+      await recalcularComprobanteEgreso(
         compId,
         t
       );

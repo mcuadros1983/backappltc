@@ -24,6 +24,9 @@ import EcheqEmitido
 import AjusteComprobanteEgreso
   from "../../../models/tesoreria/ajusteComprobanteEgreso.js";
 
+import PagoProgramadoTesoreria
+  from "../../../models/tesoreria/PagoProgramadoTesoreria.js";
+
 
 const EPS = 0.0001;
 
@@ -346,14 +349,28 @@ export async function recalcularComprobanteEgreso(
       c => c.id
     );
 
-
   let aplicadoAbonos = 0;
+
+  /*
+   * Importe aplicado mediante PagoProgramadoTesoreria
+   * que TODAVÍA está pendiente.
+   *
+   * Se informa por separado porque:
+   *
+   * - cancela saldo operativo de Cta.Cte.;
+   * - pero NO constituye un pago financiero real.
+   */
+  let aplicadoProgramadoPendiente = 0;
 
 
   if (
     cargoIds.length > 0
   ) {
 
+    /*
+     * Necesitamos conocer el abono que originó
+     * cada aplicación.
+     */
     const aplicaciones =
       await MovCtaCteProvAplic.findAll({
         where: {
@@ -365,24 +382,304 @@ export async function recalcularComprobanteEgreso(
 
         attributes: [
           "importe",
+          "abono_id",
         ],
 
         transaction,
       });
 
 
-    aplicadoAbonos =
-      aplicaciones.reduce(
-        (acc, a) =>
-          acc +
+    /*
+     * =========================================================
+     * ABONOS INVOLUCRADOS
+     * =========================================================
+     */
+
+    const abonoIds =
+      [
+        ...new Set(
+          aplicaciones
+            .map(
+              a =>
+                Number(
+                  a.abono_id || 0
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    let abonosById =
+      new Map();
+
+
+    if (
+      abonoIds.length > 0
+    ) {
+
+      const abonos =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            id: {
+              [Op.in]:
+                abonoIds,
+            },
+
+            tipo:
+              "abono",
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          attributes: [
+            "id",
+            "referencia_tipo",
+            "referencia_id",
+          ],
+
+          transaction,
+        });
+
+
+      abonosById =
+        new Map(
+          abonos.map(
+            abono => [
+              Number(abono.id),
+              abono,
+            ]
+          )
+        );
+    }
+
+
+    /*
+     * =========================================================
+     * PAGOS PROGRAMADOS REFERENCIADOS POR ESOS ABONOS
+     * =========================================================
+     */
+
+    const pagoProgramadoIds =
+      [
+        ...new Set(
+          Array.from(
+            abonosById.values()
+          )
+            .filter(
+              abono =>
+                String(
+                  abono.referencia_tipo ||
+                  ""
+                )
+                  .trim()
+                  .toLowerCase() ===
+                "pagoprogramadotesoreria"
+            )
+            .map(
+              abono =>
+                Number(
+                  abono.referencia_id ||
+                  0
+                )
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+
+    let pagosProgramadosById =
+      new Map();
+
+
+    if (
+      pagoProgramadoIds.length > 0
+    ) {
+
+      const pagosProgramados =
+        await PagoProgramadoTesoreria.findAll({
+          where: {
+            id: {
+              [Op.in]:
+                pagoProgramadoIds,
+            },
+          },
+
+          attributes: [
+            "id",
+            "estado",
+          ],
+
+          transaction,
+        });
+
+
+      pagosProgramadosById =
+        new Map(
+          pagosProgramados.map(
+            pago => [
+              Number(pago.id),
+              pago,
+            ]
+          )
+        );
+    }
+
+
+    /*
+     * =========================================================
+     * CLASIFICAR CADA APLICACIÓN
+     * =========================================================
+     *
+     * Caso normal:
+     *
+     *   ABONO REAL
+     *      ↓
+     *   aplicación
+     *
+     *   => cuenta como pago real.
+     *
+     *
+     * Caso PagoProgramado:
+     *
+     *   PagoProgramado PENDIENTE
+     *      ↓
+     *   ABONO
+     *      ↓
+     *   aplicación
+     *
+     *   => cancela Cta.Cte.
+     *   => NO paga financieramente el comprobante.
+     */
+
+    for (
+      const aplicacion
+      of aplicaciones
+    ) {
+
+      const importe =
+        Number(
+          aplicacion.importe || 0
+        );
+
+
+      const abono =
+        abonosById.get(
           Number(
-            a.importe || 0
-          ),
-        0
+            aplicacion.abono_id
+          )
+        );
+
+
+      /*
+       * Si el abono no existe o está anulado,
+       * no contamos la aplicación.
+       */
+      if (!abono) {
+        continue;
+      }
+
+
+      const referenciaTipo =
+        String(
+          abono.referencia_tipo ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      /*
+       * ¿Este abono proviene de un
+       * PagoProgramadoTesoreria?
+       */
+      if (
+        referenciaTipo ===
+        "pagoprogramadotesoreria"
+      ) {
+
+        const pagoProgramado =
+          pagosProgramadosById.get(
+            Number(
+              abono.referencia_id ||
+              0
+            )
+          );
+
+
+        const estadoProgramado =
+          String(
+            pagoProgramado?.estado ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
+
+
+        /*
+         * PENDIENTE:
+         *
+         * NO es pago real.
+         */
+        if (
+          estadoProgramado ===
+          "pendiente"
+        ) {
+
+          aplicadoProgramadoPendiente +=
+            importe;
+
+          continue;
+        }
+
+
+        /*
+         * Si el PagoProgramado ya fue acreditado,
+         * la aplicación sí representa dinero
+         * efectivamente materializado.
+         */
+        if (
+          estadoProgramado ===
+          "acreditado"
+        ) {
+
+          aplicadoAbonos +=
+            importe;
+
+          continue;
+        }
+
+
+        /*
+         * Programado anulado o estado no válido:
+         * no cuenta como pago real.
+         */
+        continue;
+      }
+
+
+      /*
+       * ABONO NORMAL / REAL
+       */
+      aplicadoAbonos +=
+        importe;
+    }
+
+
+    aplicadoAbonos =
+      Number(
+        aplicadoAbonos.toFixed(2)
+      );
+
+
+    aplicadoProgramadoPendiente =
+      Number(
+        aplicadoProgramadoPendiente.toFixed(2)
       );
   }
-
-
   // =========================================================
   // TOTAL REALMENTE PAGADO
   // =========================================================
@@ -501,7 +798,20 @@ export async function recalcularComprobanteEgreso(
 
     pagosDirectos,
 
+    /*
+     * Aplicaciones que sí constituyen
+     * pago real.
+     */
     aplicadoAbonos,
+
+    /*
+     * Aplicaciones de pagos programados
+     * todavía pendientes.
+     *
+     * Reducen la Cta.Cte., pero NO el saldo
+     * financiero del comprobante.
+     */
+    aplicadoProgramadoPendiente,
 
     pagadoReal,
 
