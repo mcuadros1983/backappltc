@@ -5,6 +5,55 @@ import MovimientoCajaTesoreria from "../../models/tesoreria/movimientocajatesore
 import Retiro from "../../models/caja/retiroModel.js";
 import Sucursal from "../../models/gmedias/sucursalModel.js"
 
+/**
+ * Calcula de forma segura una expresión de retiros.
+ * Solo admite números, + y -.
+ *
+ * Ejemplos válidos:
+ * 15000
+ * 15000 + 12500
+ * 15000 + 12500 - 3000
+ */
+function calcularExpresionRetiros(texto) {
+  const original = String(texto || "").trim();
+
+  if (!original) {
+    throw new Error("La expresión de retiros está vacía");
+  }
+
+  const limpio = original
+    .replace(/\s+/g, "")
+    .replace(/,/g, ".");
+
+  // Solamente números, punto decimal, + y -
+  if (!/^[0-9.+-]+$/.test(limpio)) {
+    throw new Error("La expresión de retiros contiene caracteres inválidos");
+  }
+
+  // En backend exigimos una expresión COMPLETA.
+  // A diferencia del frontend, no aceptamos que termine en + o -.
+  if (!/^\d+(?:\.\d+)?(?:[+-]\d+(?:\.\d+)?)*$/.test(limpio)) {
+    throw new Error("Formato inválido en la expresión de retiros");
+  }
+
+  const partes = limpio.match(/[+-]?\d+(?:\.\d+)?/g);
+
+  if (!partes?.length) {
+    throw new Error("No se pudo calcular la expresión de retiros");
+  }
+
+  const total = partes.reduce(
+    (acumulado, parte) => acumulado + Number(parte),
+    0
+  );
+
+  if (!Number.isFinite(total)) {
+    throw new Error("El resultado de la expresión de retiros es inválido");
+  }
+
+  return total;
+}
+
 // ---------- helper ----------
 async function recalcMovimientoFromRetiros(movimientoId, t) {
   const mov = await MovimientoCajaTesoreria.findByPk(movimientoId, { transaction: t, lock: t?.LOCK?.UPDATE });
@@ -36,11 +85,14 @@ export const registrarRetirosSucursalIngreso = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const {
-      caja_id, sucursal_id, fecha,
+      caja_id,
+      sucursal_id,
+      fecha,
       formacobro_id,
       categoriaingreso_id = null,
       descripcion = null,
       observaciones = null,
+      expresion_retiros,
       idempotencyKey = null,
       retiros = [],
     } = req.body || {};
@@ -50,6 +102,37 @@ export const registrarRetirosSucursalIngreso = async (req, res) => {
     if (!fecha) throw new Error("fecha requerida");
     if (!formacobro_id) throw new Error("formacobro_id requerido");
     if (!Array.isArray(retiros) || retiros.length === 0) throw new Error("Debe enviar al menos un sobre");
+
+    const usaExpresionRetiros =
+      typeof expresion_retiros === "string" &&
+      expresion_retiros.trim() !== "";
+
+    if (usaExpresionRetiros) {
+      if (retiros.length !== 1) {
+        throw new Error(
+          "Cuando se utiliza expresion_retiros debe enviarse un único retiro consolidado"
+        );
+      }
+
+      const totalExpresion = calcularExpresionRetiros(expresion_retiros);
+      const totalRecibido = Number(retiros[0]?.importe || 0);
+
+      if (!(totalExpresion > 0)) {
+        throw new Error(
+          "El resultado de la expresión de retiros debe ser mayor a cero"
+        );
+      }
+
+      // Comparamos a centavos para evitar problemas de punto flotante.
+      const expresionCentavos = Math.round(totalExpresion * 100);
+      const recibidoCentavos = Math.round(totalRecibido * 100);
+
+      if (expresionCentavos !== recibidoCentavos) {
+        throw new Error(
+          `El total de la expresión (${totalExpresion.toFixed(2)}) no coincide con el importe enviado (${totalRecibido.toFixed(2)})`
+        );
+      }
+    }
 
     // 👇 Buscar nombre de la sucursal
     const sucursal = await Sucursal.findByPk(sucursal_id, {
@@ -82,6 +165,7 @@ export const registrarRetirosSucursalIngreso = async (req, res) => {
         referencia_id: sucursal_id,
         referencia_tipo: "RetiroSucursal",
         observaciones: observaciones || null,
+        expresion_retiros: expresion_retiros?.trim() || null,
         anulado: false,
         ordenpago_id: null,
         categoriaegreso_id: null,
@@ -91,12 +175,35 @@ export const registrarRetirosSucursalIngreso = async (req, res) => {
         proyecto_id: null,
       }, { transaction: t });
     } else {
+      const cambiosMovimiento = {};
+
       if (movimiento.anulado) {
-        await movimiento.update({ anulado: false }, { transaction: t });
+        cambiosMovimiento.anulado = false;
       }
+
       if (categoriaingreso_id && !movimiento.categoriaingreso_id) {
-        await movimiento.update({ categoriaingreso_id }, { transaction: t });
+        cambiosMovimiento.categoriaingreso_id = categoriaingreso_id;
       }
+
+      // En el nuevo modo guardamos siempre la última expresión completa.
+      if (usaExpresionRetiros) {
+        cambiosMovimiento.expresion_retiros = expresion_retiros.trim();
+      }
+
+      if (Object.keys(cambiosMovimiento).length > 0) {
+        await movimiento.update(cambiosMovimiento, { transaction: t });
+      }
+    }
+
+    // NUEVO MODO:
+    // cuando viene expresion_retiros, el importe recibido representa
+    // el TOTAL COMPLETO de la expresión, no un sobre adicional.
+    // Por eso eliminamos los retiros anteriores del movimiento.
+    if (usaExpresionRetiros) {
+      await RetiroTesoreria.destroy({
+        where: { movimiento_id: movimiento.id },
+        transaction: t,
+      });
     }
 
     // crear sobres
@@ -258,7 +365,45 @@ export const actualizarRetirosPorMovimiento = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const movimiento_id = Number(req.params.movimientoId || req.params.id);
-    const { retiros = [], fecha, descripcion, observaciones, categoriaingreso_id } = req.body || {};
+    const {
+      retiros = [],
+      fecha,
+      descripcion,
+      observaciones,
+      categoriaingreso_id,
+      expresion_retiros = null,
+    } = req.body || {};
+
+    const usaExpresionRetiros =
+      typeof expresion_retiros === "string" &&
+      expresion_retiros.trim() !== "";
+
+    if (usaExpresionRetiros) {
+      if (!Array.isArray(retiros) || retiros.length !== 1) {
+        throw new Error(
+          "Cuando se utiliza expresion_retiros debe enviarse un único retiro consolidado"
+        );
+      }
+
+      const totalExpresion = calcularExpresionRetiros(expresion_retiros);
+      const totalRecibido = Number(retiros[0]?.importe || 0);
+
+      if (!(totalExpresion > 0)) {
+        throw new Error(
+          "El resultado de la expresión de retiros debe ser mayor a cero"
+        );
+      }
+
+      const expresionCentavos = Math.round(totalExpresion * 100);
+      const recibidoCentavos = Math.round(totalRecibido * 100);
+
+      if (expresionCentavos !== recibidoCentavos) {
+        throw new Error(
+          `El total de la expresión (${totalExpresion.toFixed(2)}) no coincide con el importe enviado (${totalRecibido.toFixed(2)})`
+        );
+      }
+    }
+
 
     const mov = await MovimientoCajaTesoreria.findByPk(movimiento_id, { transaction: t, lock: t.LOCK.UPDATE });
     if (!mov) {
@@ -327,6 +472,9 @@ export const actualizarRetirosPorMovimiento = async (req, res) => {
         ...(fecha ? { fecha } : {}),
         ...(descripcion !== undefined ? { descripcion } : {}),
         ...(observaciones !== undefined ? { observaciones } : {}),
+        ...(expresion_retiros !== undefined
+          ? { expresion_retiros: expresion_retiros?.trim() || null }
+          : {}),
         ...(categoriaingreso_id !== undefined ? { categoriaingreso_id } : {}),
       },
       { transaction: t }

@@ -40,6 +40,10 @@ const MovimientoCajaTesoreria = sequelize.define("MovimientoCajaTesoreria", {
     type: DataTypes.TEXT,
     allowNull: true,
   },  // 🔹 NUEVOS CAMPOS
+  expresion_retiros: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   anulado: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
