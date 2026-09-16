@@ -555,9 +555,27 @@ export const getRecepcionPorFecha = async (req, res) => {
       nest: true,
     });
 
+    // Traemos los egresos que fueron cargados en Tesorería
+    // en la misma fecha de recepción seleccionada.
+    const egresos = await MovimientoCajaTesoreria.findAll({
+      where: {
+        tipo: "egreso",
+        fecha_recepcion,
+        anulado: false,
+      },
+      raw: true,
+    });
+
     // Agrupar en memoria por sucursal y fecha origen
     const resumenMap = {};
     let totalGeneral = 0;
+
+    // Total de egresos cargados en la fecha de recepción seleccionada.
+    let totalEgresos = 0;
+
+    for (const e of egresos) {
+      totalEgresos += Number(e.monto || 0);
+    }
 
     for (const r of rows) {
       const sucId = r.sucursal_id;
@@ -591,10 +609,23 @@ export const getRecepcionPorFecha = async (req, res) => {
       total_sucursal: s.total_sucursal,
     }));
 
+    const cuadratura = totalGeneral - totalEgresos;
+
     return res.json({
       fecha_recepcion,
       resumen,
+
+      // Ingresos recepcionados
       total_general: totalGeneral,
+
+      // Egresos cargados en la misma fecha de recepción
+      total_egresos: totalEgresos,
+
+      // Detalle de los egresos que forman ese total
+      egresos,
+
+      // Ingresos - egresos
+      cuadratura,
     });
   } catch (err) {
     console.error("getRecepcionPorFecha:", err);

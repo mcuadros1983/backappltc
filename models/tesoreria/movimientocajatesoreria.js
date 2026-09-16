@@ -20,6 +20,11 @@ const MovimientoCajaTesoreria = sequelize.define("MovimientoCajaTesoreria", {
     type: DataTypes.DATEONLY,
     allowNull: false
   },
+  fecha_recepcion: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    defaultValue: DataTypes.NOW,
+  },
   caja_id: {
     type: DataTypes.INTEGER,
     allowNull: false
