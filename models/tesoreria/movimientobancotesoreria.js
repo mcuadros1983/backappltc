@@ -77,7 +77,11 @@ const MovimientoBancoTesoreria = sequelize.define("MovimientoBancoTesoreria", {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
-    proveedor_id: {               // 💡 en vez de caja_id
+  proveedor_id: {               // 💡 en vez de caja_id
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  cliente_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
   },

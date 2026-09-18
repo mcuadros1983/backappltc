@@ -477,6 +477,10 @@ export async function acreditarEcheq(req, res) {
             ech.imputacioncontable_id ||
             null,
 
+          proyecto_id:
+            ech.proyecto_id ||
+            null,
+
           proveedor_id:
             ech.proveedor_id ||
             null,
@@ -2056,16 +2060,96 @@ export async function eliminarEcheqEmitido(req, res) {
       ordenpago_id: ech.ordenpago_id, comprobanteegreso_id: ech.comprobanteegreso_id
     });
 
-    if (String(ech.estado || "").toLowerCase() === "acreditado") {
-      throw new Error("No se puede eliminar un eCheq acreditado (use reversa de banco)");
+    if (
+      String(ech.estado || "")
+        .trim()
+        .toLowerCase() === "acreditado"
+    ) {
+      throw new Error(
+        "No se puede eliminar un eCheq acreditado (use reversa de banco)"
+      );
     }
+
+
+    // ============================================================
+    // DETECTAR SI EL ECHEQ ES UN ANTICIPO DE PROVEEDOR
+    //
+    // IMPORTANTE:
+    // No utilizamos comprobanteegreso_id para decidir esto.
+    //
+    // Un anticipo puede:
+    // - no estar aplicado;
+    // - estar aplicado a un comprobante;
+    // - estar aplicado a varios comprobantes.
+    //
+    // La fuente de verdad es OrdenPago.origen.
+    // ============================================================
+
+    let ordenAnticipoEcheq =
+      null;
+
+
+    if (ech.ordenpago_id) {
+
+      const ordenPosibleAnticipo =
+        await OrdenPago.findByPk(
+          ech.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+
+      const origenOrden =
+        String(
+          ordenPosibleAnticipo?.origen || ""
+        )
+          .trim()
+          .toLowerCase();
+
+
+      if (
+        origenOrden === "anticipo_echeq"
+      ) {
+
+        ordenAnticipoEcheq =
+          ordenPosibleAnticipo;
+      }
+    }
+
+
+    const esAnticipoEcheq =
+      !!ordenAnticipoEcheq;
+
+
+    console.log(
+      "[echeq:delete] clasificación",
+      {
+        echeq_id:
+          ech.id,
+
+        ordenpago_id:
+          ech.ordenpago_id,
+
+        comprobanteegreso_id:
+          ech.comprobanteegreso_id,
+
+        origen_op:
+          ordenAnticipoEcheq?.origen ||
+          null,
+
+        esAnticipoEcheq,
+      }
+    );
+
+
     const referenciaTipoEcheq =
       String(
         ech.referencia_tipo || ""
       )
         .trim()
         .toLowerCase();
-
 
     if (
       referenciaTipoEcheq ===
@@ -2457,6 +2541,450 @@ export async function eliminarEcheqEmitido(req, res) {
           resultadosComprobantes,
       });
     }
+
+    // ============================================================
+    // ANTICIPO DE PROVEEDOR POR ECHEQ
+    // ============================================================
+    //
+    // Este flujo se maneja por separado.
+    //
+    // Un eCheq anticipo puede estar aplicado a uno o varios
+    // comprobantes.
+    //
+    // Las relaciones reales son:
+    //
+    // EcheqEmitido
+    //      ↓
+    // MovimientoCtaCteProveedor (ABONO)
+    //      ↓
+    // MovimientoCtaCteProveedorAplic
+    //      ↓
+    // MovimientoCtaCteProveedor (CARGO)
+    //      ↓
+    // ComprobanteEgreso
+    //
+    // Por eso NO dependemos de ech.comprobanteegreso_id.
+    // ============================================================
+
+    if (esAnticipoEcheq) {
+
+      console.log(
+        "[echeq:delete] 💼 ANTICIPO ECHEQ",
+        {
+          echeq_id:
+            ech.id,
+
+          ordenpago_id:
+            ordenAnticipoEcheq.id,
+
+          importe:
+            ech.importe,
+        }
+      );
+
+
+      // ==========================================================
+      // 1. BUSCAR LOS ABONOS CREADOS ESPECÍFICAMENTE
+      //    POR ESTE ECHEQ
+      // ==========================================================
+
+      const abonosAnticipo =
+        await MovimientoCtaCteProveedor.findAll({
+          where: {
+            referencia_tipo:
+              "EcheqEmitido",
+
+            referencia_id:
+              ech.id,
+
+            tipo:
+              "abono",
+
+            anulado: {
+              [Op.not]:
+                true,
+            },
+          },
+
+          transaction:
+            t,
+
+          lock:
+            t.LOCK.UPDATE,
+        });
+
+
+      if (
+        abonosAnticipo.length === 0
+      ) {
+        throw new Error(
+          `No se encontró el abono asociado al anticipo eCheq #${ech.id}`
+        );
+      }
+
+
+      const abonoIds =
+        abonosAnticipo
+          .map(
+            abono =>
+              Number(abono.id)
+          )
+          .filter(Boolean);
+
+
+      // ==========================================================
+      // 2. BUSCAR TODAS LAS APLICACIONES DE ESTE ANTICIPO
+      // ==========================================================
+
+      const aplicacionesAnticipo =
+        await MovimientoCtaCteProveedorAplic.findAll({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction:
+            t,
+
+          lock:
+            t.LOCK.UPDATE,
+        });
+
+
+      // ==========================================================
+      // 3. DETERMINAR TODOS LOS COMPROBANTES AFECTADOS
+      //
+      // NO usamos ech.comprobanteegreso_id como fuente principal.
+      // Seguimos las aplicaciones reales.
+      // ==========================================================
+
+      const comprobantesAfectados =
+        new Set();
+
+
+      const cargoIds =
+        [
+          ...new Set(
+            aplicacionesAnticipo
+              .map(
+                aplicacion =>
+                  Number(
+                    aplicacion.cargo_id
+                  )
+              )
+              .filter(Boolean)
+          ),
+        ];
+
+
+      if (
+        cargoIds.length > 0
+      ) {
+
+        const cargos =
+          await MovimientoCtaCteProveedor.findAll({
+            where: {
+              id: {
+                [Op.in]:
+                  cargoIds,
+              },
+
+              tipo:
+                "cargo",
+
+              [Op.or]: [
+                {
+                  anulado:
+                    false,
+                },
+                {
+                  anulado:
+                    null,
+                },
+              ],
+            },
+
+            attributes: [
+              "id",
+              "comprobanteegreso_id",
+            ],
+
+            transaction:
+              t,
+
+            lock:
+              t.LOCK.UPDATE,
+          });
+
+
+        for (
+          const cargo
+          of cargos
+        ) {
+
+          const comprobanteId =
+            Number(
+              cargo.comprobanteegreso_id ||
+              0
+            );
+
+
+          if (comprobanteId) {
+
+            comprobantesAfectados.add(
+              comprobanteId
+            );
+          }
+        }
+      }
+
+
+      /*
+       * Compatibilidad adicional con registros donde el abono
+       * haya quedado vinculado directamente a un comprobante.
+       *
+       * No es nuestra fuente principal.
+       */
+
+      for (
+        const abono
+        of abonosAnticipo
+      ) {
+
+        const comprobanteId =
+          Number(
+            abono.comprobanteegreso_id ||
+            0
+          );
+
+
+        if (comprobanteId) {
+
+          comprobantesAfectados.add(
+            comprobanteId
+          );
+        }
+      }
+
+
+      // ==========================================================
+      // 4. ELIMINAR LAS APLICACIONES DEL ANTICIPO
+      //
+      // Solamente eliminamos aplicaciones cuyos abono_id
+      // pertenecen a ESTE eCheq.
+      //
+      // Aplicaciones de otros eCheqs permanecen intactas.
+      // ==========================================================
+
+      if (
+        aplicacionesAnticipo.length > 0
+      ) {
+
+        await MovimientoCtaCteProveedorAplic.destroy({
+          where: {
+            abono_id: {
+              [Op.in]:
+                abonoIds,
+            },
+          },
+
+          transaction:
+            t,
+        });
+      }
+
+
+      // ==========================================================
+      // 5. ELIMINAR LOS ABONOS DE ESTE ECHEQ
+      // ==========================================================
+
+      await MovimientoCtaCteProveedor.destroy({
+        where: {
+          id: {
+            [Op.in]:
+              abonoIds,
+          },
+        },
+
+        transaction:
+          t,
+      });
+
+
+      // ==========================================================
+      // 6. ELIMINAR EL ECHEQ
+      // ==========================================================
+
+      await ech.destroy({
+        transaction:
+          t,
+      });
+
+
+      // ==========================================================
+      // 7. VERIFICAR SI LA OP TIENE OTROS ECHEQS
+      //
+      // Actualmente registrarAnticipoProveedorEcheq crea una OP
+      // para este anticipo. Aun así verificamos antes de eliminar
+      // la OP para evitar referencias colgantes.
+      // ==========================================================
+
+      const echeqsRestantes =
+        await EcheqEmitido.findAll({
+          where: {
+            ordenpago_id:
+              ordenAnticipoEcheq.id,
+
+            [Op.or]: [
+              {
+                anulado:
+                  false,
+              },
+              {
+                anulado:
+                  null,
+              },
+            ],
+          },
+
+          transaction:
+            t,
+        });
+
+
+      if (
+        echeqsRestantes.length === 0
+      ) {
+
+        await ordenAnticipoEcheq.destroy({
+          transaction:
+            t,
+        });
+
+      } else {
+
+        const totalRestante =
+          Number(
+            echeqsRestantes
+              .reduce(
+                (
+                  acumulado,
+                  item
+                ) =>
+                  acumulado +
+                  Number(
+                    item.importe ||
+                    0
+                  ),
+                0
+              )
+              .toFixed(2)
+          );
+
+
+        await ordenAnticipoEcheq.update(
+          {
+            total:
+              totalRestante,
+
+            comprobanteegreso_id:
+              null,
+
+            estado:
+              "pendiente_aplicacion",
+          },
+          {
+            transaction:
+              t,
+          }
+        );
+      }
+
+
+      // ==========================================================
+      // 8. RECALCULAR TODOS LOS COMPROBANTES AFECTADOS
+      // ==========================================================
+
+      const resultadosComprobantes =
+        [];
+
+
+      for (
+        const comprobanteId
+        of comprobantesAfectados
+      ) {
+
+        const resultado =
+          await recalcularComprobanteEgreso(
+            comprobanteId,
+            t
+          );
+
+
+        await actualizarFormaPagoActualComprobante(
+          comprobanteId,
+          t
+        );
+
+
+        resultadosComprobantes.push(
+          resultado
+        );
+      }
+
+
+      // ==========================================================
+      // 9. COMMIT
+      // ==========================================================
+
+      await safeCommit();
+
+
+      console.log(
+        "[echeq:delete] ✅ ANTICIPO ECHEQ eliminado",
+        {
+          echeq_id:
+            id,
+
+          abonos_eliminados:
+            abonoIds,
+
+          aplicaciones_eliminadas:
+            aplicacionesAnticipo.length,
+
+          comprobantes_recalculados:
+            [
+              ...comprobantesAfectados,
+            ],
+        }
+      );
+
+
+      return res.json({
+        ok:
+          true,
+
+        mensaje:
+          "Anticipo por eCheq eliminado correctamente.",
+
+        echeq_id:
+          id,
+
+        aplicaciones_eliminadas:
+          aplicacionesAnticipo.length,
+
+        comprobantes_recalculados:
+          [
+            ...comprobantesAfectados,
+          ],
+
+        comprobantes:
+          resultadosComprobantes,
+      });
+    }
+
     // ============================================================
     // 1.a) BUSCAR TODOS LOS ABONOS QUE REFERENCIAN
     //      DIRECTAMENTE A ESTE ECHEQ

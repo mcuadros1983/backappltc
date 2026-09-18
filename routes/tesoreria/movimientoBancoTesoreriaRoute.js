@@ -18,6 +18,11 @@ movimientoBancoTesoreriaRouter.post(
   controller.registrarEgresoBancoIndependiente
 );
 
+movimientoBancoTesoreriaRouter.post(
+  "/movimientos-banco-tesoreria/importar-grilla",
+  controller.importarMovimientosBancoGrilla
+);
+
 // Anticipo a Proveedores (banco)
 movimientoBancoTesoreriaRouter.post(
   "/movimientos-banco-tesoreria/anticiposaproveedores",

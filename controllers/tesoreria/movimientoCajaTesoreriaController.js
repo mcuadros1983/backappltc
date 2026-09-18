@@ -122,8 +122,17 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
     // ===== 1) Crear MovimientoCajaTesoreria (INGRESO)
     const movimiento = await MovimientoCajaTesoreria.create(
       {
+        empresa_id: Number(empresa_id),
+
+        cliente_id: Number(cliente.id),
+
         tipo: "ingreso",
-        descripcion: `COBRANZA - ${cliente.razonsocial || cliente.nombre || "Cliente #" + cliente.id}`,
+
+        descripcion:
+          `COBRANZA - ${cliente.razonsocial ||
+          cliente.nombre ||
+          "Cliente #" + cliente.id
+          }`,
         monto,
         fecha: fecha || sequelize.literal("CURRENT_DATE"),
         caja_id,
@@ -143,61 +152,63 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
 
     let movCtaCte = null;
 
-    if (egreso.generar_abono_ctacte === true) {
+    // if (egreso.generar_abono_ctacte === true) {
 
-      movCtaCte =
-        await MovimientoCtaCteProveedor.create(
-          {
-            proveedor_id:
-              Number(egreso.proveedor_id),
+    //   movCtaCte =
+    //     await MovimientoCtaCteProveedor.create(
+    //       {
+    //         proveedor_id:
+    //           Number(egreso.proveedor_id),
 
-            empresa_id:
-              Number(empresa_id),
+    //         empresa_id:
+    //           Number(empresa_id),
 
-            fecha,
+    //         fecha,
 
-            fecha_pago:
-              fecha,
+    //         fecha_pago:
+    //           fecha,
 
-            descripcion:
-              `Pago disponible desde Caja OP #${orden.id}`,
+    //         descripcion:
+    //           `Pago disponible desde Caja OP #${orden.id}`,
 
-            tipo:
-              "abono",
+    //         tipo:
+    //           "abono",
 
-            importe:
-              monto,
+    //         importe:
+    //           monto,
 
-            origen_tipo:
-              "OrdenPago",
+    //         origen_tipo:
+    //           "OrdenPago",
 
-            origen_id:
-              orden.id,
+    //         origen_id:
+    //           orden.id,
 
-            comprobanteegreso_id:
-              null,
+    //         comprobanteegreso_id:
+    //           null,
 
-            anulado:
-              false,
+    //         anulado:
+    //           false,
 
-            ordenpago_id:
-              orden.id,
+    //         ordenpago_id:
+    //           orden.id,
 
-            referencia_tipo:
-              "MovimientoCajaTesoreria",
+    //         referencia_tipo:
+    //           "MovimientoCajaTesoreria",
 
-            referencia_id:
-              movimiento.id,
+    //         referencia_id:
+    //           movimiento.id,
 
-            formapago_id:
-              egreso.formapago_id || null,
-          },
-          {
-            transaction: t,
-          }
-        );
-    }
+    //         formapago_id:
+    //           egreso.formapago_id || null,
+    //       },
+    //       {
+    //         transaction: t,
+    //       }
+    //     );
+    // }
+
     // ===== 2) Crear Cobranza vinculada a CC y al movimiento de caja
+
     const cobranza = await Cobranza.create(
       {
         monto_total: monto,
@@ -252,12 +263,22 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
 
     await t.commit();
 
+    // return res.json({
+    //   ok: true,
+    //   movimiento,
+    //   cobranza,
+    //   cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
+    //   movCtaCte
+    // });
+
     return res.json({
       ok: true,
       movimiento,
       cobranza,
-      cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
-      movCtaCte
+      cuentaCorriente: {
+        id: cc.id,
+        saldoActual: cc.saldoActual,
+      },
     });
   } catch (err) {
     await t.rollback();
@@ -1177,8 +1198,54 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
           resultadosComprobantes,
       });
     }
+
+    // ============================================================
+    // DETECTAR ANTICIPO DE CAJA POR EL ORIGEN DE LA ORDEN DE PAGO
+    // ============================================================
+
+    let ordenAnticipoCaja = null;
+
+    if (
+      ref === "ordenpago" &&
+      hasOP
+    ) {
+
+      const ordenPosibleAnticipo =
+        await OrdenPago.findByPk(
+          mov.ordenpago_id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+      if (
+        ordenPosibleAnticipo &&
+        String(
+          ordenPosibleAnticipo.origen || ""
+        )
+          .trim()
+          .toLowerCase() ===
+        "anticipo_caja"
+      ) {
+
+        ordenAnticipoCaja =
+          ordenPosibleAnticipo;
+      }
+    }
+
+    const isAnticipoCaja =
+      !!ordenAnticipoCaja;
+
+
     // 1) Pago de Comprobante
-    const isPagoDeComprobante = hasComp && (ref === "comprobanteegreso" || ref === "ordenpago");
+    const isPagoDeComprobante =
+      !isAnticipoCaja &&
+      hasComp &&
+      (
+        ref === "comprobanteegreso" ||
+        ref === "ordenpago"
+      );
 
     // 2) Depósito
     const isDeposito = !hasComp && ref === "ordenpago" && hasOP && provIsNull;
@@ -1187,7 +1254,12 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
     const isRetiroSucursal = ref === "retirosucursal";
 
     // 4) Egreso Varios (con proveedor, sin comp)
-    const isEgresoVarios = !hasComp && ref === "ordenpago" && hasOP && provExists;
+    const isEgresoVarios =
+      !isAnticipoCaja &&
+      !hasComp &&
+      ref === "ordenpago" &&
+      hasOP &&
+      provExists;
 
     // Sueldos
     const isPagoSueldoCaja = ref === "pagosueldoempleado";
@@ -1773,51 +1845,308 @@ export const eliminarMovimientoCajaTesoreria = async (req, res) => {
       return res.json({ ok: true, mensaje: "Movimiento de caja eliminado y comprobante recalculado." });
     }
 
-    // 4.5) 💼 Anticipo (OP origen 'anticipo')
-    let handledAnticipo = false;
-    try {
-      if (ref === "ordenpago" && hasOP && !isPagoDeComprobante) {
-        const ordenAnt = await OrdenPago.findByPk(mov.ordenpago_id, { transaction: t });
-        if (ordenAnt && String(ordenAnt.origen || "").toLowerCase() === "anticipo") {
-          handledAnticipo = true;
-          console.log("💼 Detectado caso ANTICIPO: OP", ordenAnt.id);
+    // ============================================================
+    // 4.5) 💼 ANTICIPO DE PROVEEDOR POR CAJA
+    //
+    // El anticipo fue identificado previamente mediante:
+    //
+    //   OrdenPago.origen === "anticipo_caja"
+    //
+    // A esta altura ya se eliminaron:
+    //   - aplicaciones del abono
+    //   - MovimientoCtaCteProveedor vinculado al movimiento
+    //
+    // y sus comprobantes fueron recolectados en:
+    //   compIdsFromAnticipoAplic
+    // ============================================================
 
-          // 1) Eliminar el movimiento de caja (efectivo del anticipo)
-          const montoDelMov = Number(mov.monto || 0);
-          const compVincMov = Number(mov.comprobanteegreso_id || 0) || null;
-          console.log("🗑️ Eliminando MovimientoCajaTesoreria (anticipo)...");
-          await mov.destroy({ transaction: t });
+    if (isAnticipoCaja) {
 
-          // 2) Ajustar / eliminar la OP de anticipo
-          const newTotalOP = Math.max(0, Number(ordenAnt.total || 0) - montoDelMov);
-          let opFueEliminada = false;
-
-          if (Math.abs(Number(ordenAnt.total || 0) - montoDelMov) <= EPS) {
-            console.log("   🗑️ Eliminando Orden de Pago (quedó en cero por la baja del anticipo)...");
-            await ordenAnt.destroy({ transaction: t });
-            opFueEliminada = true;
-          } else {
-            const patchOP = { total: newTotalOP, estado: "pendiente_aplicacion" };
-            await ordenAnt.update(patchOP, { transaction: t });
-          }
-
-          // 3) Recalcular comprobantes afectados
-          if (compVincMov) compIdsFromAnticipoAplic.add(compVincMov);
-
-          await recalcRecolectados(); // (NUEVO)
-
-          await t.commit();
-          console.log("✅ Eliminación completada (anticipo).");
-          return res.json({
-            ok: true,
-            mensaje: "Anticipo eliminado, aplicaciones revertidas y comprobantes recalculados.",
-            ordenpago_eliminada: opFueEliminada,
-            comprobantes_recalculados: Array.from(compIdsFromAnticipoAplic),
-          });
+      console.log(
+        "💼 Caso ANTICIPO DE PROVEEDOR POR CAJA:",
+        {
+          movimiento_id: mov.id,
+          ordenpago_id: mov.ordenpago_id,
+          comprobantes_afectados:
+            [...compIdsFromAnticipoAplic],
         }
+      );
+
+
+      // ==========================================================
+      // 1. Guardar datos necesarios antes de eliminar
+      // ==========================================================
+
+      const montoDelMov =
+        Number(mov.monto || 0);
+
+      if (!(montoDelMov > 0)) {
+        throw new Error(
+          "El movimiento de anticipo tiene un monto inválido."
+        );
       }
-    } catch (e) {
-      console.warn("⚠️ Error manejando rama ANTICIPO (se continuará con el flujo normal):", e);
+
+
+      // Si el propio movimiento estaba vinculado a un comprobante,
+      // también debe recalcularse.
+
+      if (mov.comprobanteegreso_id) {
+
+        compIdsFromAnticipoAplic.add(
+          Number(mov.comprobanteegreso_id)
+        );
+      }
+
+
+      // La OP ya fue cargada anteriormente al detectar
+      // isAnticipoCaja.
+
+      const ordenAnt =
+        ordenAnticipoCaja;
+
+      if (!ordenAnt) {
+        throw new Error(
+          "No se encontró la Orden de Pago del anticipo."
+        );
+      }
+
+
+      // ==========================================================
+      // 2. Eliminar el movimiento real de Caja
+      // ==========================================================
+
+      console.log(
+        "🗑️ Eliminando MovimientoCajaTesoreria del anticipo:",
+        mov.id
+      );
+
+      await mov.destroy({
+        transaction: t,
+      });
+
+
+      // ==========================================================
+      // 3. Verificar si quedan otros movimientos financieros
+      //    asociados a la misma OrdenPago
+      //
+      // Esto hace que el código también sea seguro si en el futuro
+      // una OP de anticipo posee más de un movimiento.
+      // ==========================================================
+
+      const [
+        cajaRestante,
+        bancoRestante,
+        tarjetaRestante,
+        echeqRestante,
+      ] = await Promise.all([
+
+        MovimientoCajaTesoreria.findAll({
+          where: {
+            ordenpago_id: ordenAnt.id,
+
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+
+          transaction: t,
+        }),
+
+        MovimientoBancoTesoreria.findAll({
+          where: {
+            ordenpago_id: ordenAnt.id,
+
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+
+          transaction: t,
+        }),
+
+        PagoTarjetaCredito.findAll({
+          where: {
+            ordenpago_id: ordenAnt.id,
+
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+
+          transaction: t,
+        }),
+
+        EcheqEmitido.findAll({
+          where: {
+            ordenpago_id: ordenAnt.id,
+
+            [Op.or]: [
+              { anulado: false },
+              { anulado: null },
+            ],
+          },
+
+          transaction: t,
+        }),
+      ]);
+
+
+      // ==========================================================
+      // 4. Calcular cuánto dinero real continúa asociado a la OP
+      // ==========================================================
+
+      const totalRestante =
+        Number(
+          (
+            cajaRestante.reduce(
+              (acc, r) =>
+                acc + Number(r.monto || 0),
+              0
+            ) +
+
+            bancoRestante.reduce(
+              (acc, r) =>
+                acc + Number(r.monto || 0),
+              0
+            ) +
+
+            tarjetaRestante.reduce(
+              (acc, r) =>
+                acc + Number(
+                  r.importe ??
+                  r.monto ??
+                  0
+                ),
+              0
+            ) +
+
+            echeqRestante.reduce(
+              (acc, r) =>
+                acc + Number(
+                  r.importe ??
+                  r.monto ??
+                  0
+                ),
+              0
+            )
+          ).toFixed(2)
+        );
+
+
+      console.log(
+        "💰 Total restante de la OP después de eliminar anticipo:",
+        {
+          ordenpago_id:
+            ordenAnt.id,
+
+          total_anterior:
+            Number(ordenAnt.total || 0),
+
+          movimiento_eliminado:
+            montoDelMov,
+
+          total_restante:
+            totalRestante,
+        }
+      );
+
+
+      // ==========================================================
+      // 5. Ajustar o eliminar OrdenPago
+      // ==========================================================
+
+      let opFueEliminada =
+        false;
+
+
+      if (totalRestante <= EPS) {
+
+        console.log(
+          "🗑️ La OP quedó sin movimientos financieros. Eliminando OP:",
+          ordenAnt.id
+        );
+
+        await ordenAnt.destroy({
+          transaction: t,
+        });
+
+        opFueEliminada =
+          true;
+
+      } else {
+
+        /*
+         * Todavía existen otros movimientos correspondientes
+         * al anticipo.
+         *
+         * La OP continúa existiendo pero deja de considerarse
+         * totalmente aplicada hasta que su situación vuelva
+         * a determinarse.
+         */
+
+        await ordenAnt.update(
+          {
+            total:
+              totalRestante,
+
+            estado:
+              "pendiente_aplicacion",
+
+            comprobanteegreso_id:
+              null,
+          },
+          {
+            transaction: t,
+          }
+        );
+      }
+
+
+      // ==========================================================
+      // 6. Recalcular comprobantes que habían recibido
+      //    aplicaciones de este anticipo
+      // ==========================================================
+
+      await recalcRecolectados();
+
+
+      // ==========================================================
+      // 7. COMMIT
+      // ==========================================================
+
+      await t.commit();
+
+
+      console.log(
+        "✅ Eliminación completada (anticipo de proveedor por Caja)."
+      );
+
+
+      return res.json({
+        ok:
+          true,
+
+        mensaje:
+          "Anticipo de proveedor eliminado correctamente. Se revirtieron sus aplicaciones y se recalcularon los comprobantes afectados.",
+
+        movimiento_id:
+          id,
+
+        ordenpago_id:
+          ordenAnt.id,
+
+        ordenpago_eliminada:
+          opFueEliminada,
+
+        ordenpago_total_restante:
+          totalRestante,
+
+        comprobantes_recalculados:
+          [...compIdsFromAnticipoAplic],
+      });
     }
 
     // 5) 🏦 Depósito (sin proveedor)
@@ -2023,8 +2352,18 @@ export const registrarEgresoCajaIndependiente = async (req, res) => {
         observaciones: egreso.observaciones || null,
         anulado: false,
         ordenpago_id: orden.id,
-        categoriaegreso_id: egreso.categoriaegreso_id || null,
-        imputacioncontable_id: imputacion || null,
+        ordenpago_id: orden.id,
+
+        proyecto_id:
+          egreso.proyecto_id
+            ? Number(egreso.proyecto_id)
+            : null,
+
+        categoriaegreso_id:
+          egreso.categoriaegreso_id || null,
+
+        imputacioncontable_id:
+          imputacion || null,
         idempotency_key: idempotencyKey || null,
         proveedor_id: egreso.proveedor_id || null,
       },
@@ -2258,8 +2597,17 @@ export const registrarAnticipoProveedor = async (req, res) => {
           observaciones: p.observaciones || null,
           anulado: false,
           ordenpago_id: orden.id,
-          categoriaegreso_id: p.categoriaegreso_id || null,
-          imputacioncontable_id: p.imputacioncontable_id || null,
+
+          proyecto_id:
+            p.proyecto_id
+              ? Number(p.proyecto_id)
+              : null,
+
+          categoriaegreso_id:
+            p.categoriaegreso_id || null,
+
+          imputacioncontable_id:
+            p.imputacioncontable_id || null,
           idempotency_key: p.idempotency_key || (idempotencyKey ? `${idempotencyKey}#${i}` : null),
           proveedor_id,
         },
@@ -2468,6 +2816,7 @@ export const registrarIngresoVarios = async (req, res, next) => {
     // Crear movimiento de caja (INGRESO)
     const movimiento = await MovimientoCajaTesoreria.create(
       {
+        empresa_id: Number(empresa_id),
         tipo: "ingreso",
         descripcion: descripcion.trim(),
         monto,

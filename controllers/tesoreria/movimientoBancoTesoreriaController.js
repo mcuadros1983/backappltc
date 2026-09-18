@@ -28,7 +28,7 @@ import {
   recalcularComprobanteEgreso,
 } from "./helpers/recalcularComprobanteEgreso.js";
 import FormaPagoTesoreria from "../../models/comun/formapagotesoreria.js";
-
+import CategoriaIngreso from "../../models/tesoreria/categoriaIngreso.js";
 /* ===================== CRUD BÁSICO ===================== */
 
 export const crearMovimientoBancoTesoreria = async (req, res) => {
@@ -1894,10 +1894,23 @@ export const registrarEgresoBancoIndependiente = async (req, res) => {
         observaciones: egreso.observaciones || null,
         anulado: false,
         ordenpago_id: orden.id,
-        categoriaegreso_id: egreso.categoriaegreso_id || null,
-        imputacioncontable_id: imputacion || null,
-        idempotency_key: idempotencyKey || null,
-        proveedor_id: egreso.proveedor_id,
+
+        proyecto_id:
+          egreso.proyecto_id
+            ? Number(egreso.proyecto_id)
+            : null,
+
+        categoriaegreso_id:
+          egreso.categoriaegreso_id || null,
+
+        imputacioncontable_id:
+          imputacion || null,
+
+        idempotency_key:
+          idempotencyKey || null,
+
+        proveedor_id:
+          egreso.proveedor_id,
       },
       { transaction: t }
     );
@@ -2056,7 +2069,13 @@ export const registrarAnticipoProveedorBanco = async (req, res) => {
     const orden = await OrdenPago.create(
       {
         empresa_id,
-        proveedor_id,
+        proveedor_id: Number(proveedor_id),
+
+        proyecto_id:
+          pagos[0]?.proyecto_id
+            ? Number(pagos[0].proyecto_id)
+            : null,
+
         comprobanteegreso_id: null,
         fecha: fechaOP,
         total,
@@ -2100,9 +2119,23 @@ export const registrarAnticipoProveedorBanco = async (req, res) => {
           observaciones: p.observaciones || null,
           anulado: false,
           ordenpago_id: orden.id,
-          categoriaegreso_id: p.categoriaegreso_id || null,
-          imputacioncontable_id: p.imputacioncontable_id || null,
-          idempotency_key: p.idempotency_key || (idempotencyKey ? `${idempotencyKey}#${i}` : null),
+
+          proyecto_id:
+            p.proyecto_id
+              ? Number(p.proyecto_id)
+              : null,
+
+          categoriaegreso_id:
+            p.categoriaegreso_id || null,
+
+          imputacioncontable_id:
+            p.imputacioncontable_id || null,
+
+          idempotency_key:
+            p.idempotency_key ||
+            (idempotencyKey
+              ? `${idempotencyKey}#${i}`
+              : null),
         },
         { transaction: t }
       );
@@ -2148,276 +2181,2110 @@ export const registrarAnticipoProveedorBanco = async (req, res) => {
 };
 
 
-/* ===================== IMPORTACIÓN DESDE EXCEL (EGRESOS VARIOS) ===================== */
+/* ===================== IMPORTACIÓN DESDE EXCEL - CONCILIACIÓN BANCARIA ===================== */
 /**
  * POST /movimientos-banco-tesoreria/importar-excel
- * FormData: file (xlsx/xls), empresa_id (number)
- * 
- * Columnas esperadas (case-insensitive):
- * - fecha             -> Fecha del movimiento (YYYY-MM-DD, DD/MM/YYYY, etc.)
- * - tipo              -> Debe ser "egreso" (se valida case-insensitive)
- * - descripcion       -> Texto
- * - monto             -> Número (admite coma como separador decimal)
- * - banco             -> Nombre/descripcion/alias del banco (se resuelve a banco_id por empresa)
- * - proveedor         -> Nombre/Razón Social/Descripción (se resuelve a proveedor_id)
- * - categoria         -> Nombre de la categoría de egreso (se resuelve a categoriaegreso_id)
- * - proyecto          -> Descripción/Nombre de proyecto (se resuelve a proyecto_id)
- * - observaciones     -> (opcional)
- * 
- * Comportamiento:
- *  1) Valida TODAS las filas (existencia/consistencia). Si hay errores => 400 con detalle.
- *  2) Si todo OK, crea en una única transacción:
- *     - OrdenPago (pendiente_aplicacion, origen: "egreso_varios_banco_excel")
- *     - MovimientoBancoTesoreria (egreso) con categoriaegreso_id e imputacioncontable_id derivados
+ *
+ * FormData:
+ * - file
+ * - empresa_id
+ * - banco_id
+ *
+ * Columnas esperadas:
+ * - fecha
+ * - descripcion
+ * - monto
+ * - tipo              -> "ingreso" | "egreso"
+ * - proveedor
+ * - categoria
+ * - proyecto
+ * - observaciones     -> opcional
+ *
+ * IMPORTANTE:
+ * Esta importación corresponde exclusivamente a movimientos
+ * utilizados para conciliación bancaria.
+ *
+ * Por lo tanto:
+ * - NO genera OrdenPago.
+ * - NO genera movimientos de Cuenta Corriente.
+ * - NO genera cobranzas.
+ * - NO genera comprobantes.
+ * - NO genera ningún otro efecto financiero.
+ *
+ * Cada fila crea ÚNICAMENTE un MovimientoBancoTesoreria.
  */
 export const importarMovimientosBancoExcel = async (req, res) => {
+
   try {
-    const empresa_id = Number(req.body?.empresa_id);
-    const banco_id = Number(req.body?.banco_id); // 👈 ahora viene por body
+
+    const empresa_id =
+      Number(req.body?.empresa_id);
+
+    const banco_id =
+      Number(req.body?.banco_id);
+
+
+    // ============================================================
+    // 1. VALIDACIONES GENERALES
+    // ============================================================
 
     if (!empresa_id) {
-      return res.status(400).json({ error: "empresa_id es requerido." });
-    }
-    if (!banco_id) {
-      return res.status(400).json({ error: "banco_id es requerido." });
-    }
-    // Valida que el banco exista y pertenezca a la empresa
-    const banco = await Banco.findOne({ where: { id: banco_id, empresa_id } });
-    if (!banco) {
+
       return res.status(400).json({
-        error: "El banco no existe o no pertenece a la empresa indicada.",
+        error: "empresa_id es requerido.",
       });
     }
+
+
+    if (!banco_id) {
+
+      return res.status(400).json({
+        error: "banco_id es requerido.",
+      });
+    }
+
+
+    /*
+     * El banco se selecciona UNA SOLA VEZ en el frontend
+     * y se aplica a todas las filas importadas.
+     */
+
+    const banco =
+      await Banco.findOne({
+        where: {
+          id: banco_id,
+          empresa_id,
+        },
+      });
+
+
+    if (!banco) {
+
+      return res.status(400).json({
+        error:
+          "El banco no existe o no pertenece a la empresa indicada.",
+      });
+    }
+
 
     if (!req.file?.buffer) {
-      return res
-        .status(400)
-        .json({ error: "Debe adjuntar un archivo Excel en el campo 'file'." });
+
+      return res.status(400).json({
+        error:
+          "Debe adjuntar un archivo Excel en el campo 'file'.",
+      });
     }
 
-    // Parse Excel a objetos
-    const wb = xlsx.read(req.file.buffer, { type: "buffer" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rowsRaw = xlsx.utils.sheet_to_json(ws, { defval: "" }); // cada fila => objeto
+
+    // ============================================================
+    // 2. LEER EXCEL
+    // ============================================================
+
+    const wb =
+      xlsx.read(
+        req.file.buffer,
+        {
+          type: "buffer",
+        }
+      );
+
+
+    const ws =
+      wb.Sheets[
+      wb.SheetNames[0]
+      ];
+
+
+    const rowsRaw =
+      xlsx.utils.sheet_to_json(
+        ws,
+        {
+          defval: "",
+        }
+      );
+
+
     if (!rowsRaw.length) {
-      return res.status(400).json({ error: "El Excel no contiene filas." });
+
+      return res.status(400).json({
+        error:
+          "El Excel no contiene filas.",
+      });
     }
 
-    // Normalizadores / ayudantes
-    const norm = (s) => String(s || "").trim().toLowerCase();
+
+    // ============================================================
+    // 3. NORMALIZADORES
+    // ============================================================
+
+    const norm = (s) =>
+      String(s || "")
+        .trim()
+        .toLowerCase();
+
+
     const toISODate = (v) => {
-      const raw = String(v || "").trim();
-      if (!raw) return null;
-      // 1) Si viene como número serial Excel:
-      if (!Number.isNaN(Number(raw)) && Number(raw) > 25569) {
-        const d = new Date(Math.round((Number(raw) - 25569) * 86400 * 1000));
-        return d.toISOString().slice(0, 10);
+
+      const raw =
+        String(v || "").trim();
+
+
+      if (!raw) {
+        return null;
       }
-      // 2) dd/mm/yyyy
-      const m1 = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(raw);
+
+
+      /*
+       * Serial de Excel.
+       */
+
+      if (
+        !Number.isNaN(Number(raw)) &&
+        Number(raw) > 25569
+      ) {
+
+        const d =
+          new Date(
+            Math.round(
+              (Number(raw) - 25569) *
+              86400 *
+              1000
+            )
+          );
+
+
+        return d
+          .toISOString()
+          .slice(0, 10);
+      }
+
+
+      /*
+       * DD/MM/YYYY
+       * DD-MM-YYYY
+       */
+
+      const m1 =
+        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/
+          .exec(raw);
+
+
       if (m1) {
-        const dd = m1[1].padStart(2, "0");
-        const mm = m1[2].padStart(2, "0");
-        const yyyy = m1[3];
+
+        const dd =
+          m1[1].padStart(2, "0");
+
+        const mm =
+          m1[2].padStart(2, "0");
+
+        const yyyy =
+          m1[3];
+
+
         return `${yyyy}-${mm}-${dd}`;
       }
-      // 3) yyyy-mm-dd
-      const m2 = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw);
+
+
+      /*
+       * YYYY-MM-DD
+       */
+
+      const m2 =
+        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+          .exec(raw);
+
+
       if (m2) {
-        const yyyy = m2[1];
-        const mm = m2[2].padStart(2, "0");
-        const dd = m2[3].padStart(2, "0");
+
+        const yyyy =
+          m2[1];
+
+        const mm =
+          m2[2].padStart(2, "0");
+
+        const dd =
+          m2[3].padStart(2, "0");
+
+
         return `${yyyy}-${mm}-${dd}`;
       }
-      // fallback
-      const d = new Date(raw);
-      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-      return null;
-    };
-    const toNumber = (v) => {
-      if (typeof v === "number") return v;
-      const s = String(v || "").replace(/\./g, "").replace(",", ".");
-      const n = Number(s);
-      return Number.isFinite(n) ? n : NaN;
-    };
 
-    // Pre-cargar catálogos de la empresa / globales
-    const proveedores = await Proveedor.findAll();
-    const categorias = await CategoriaEgreso.findAll();
-    const proyectos = await Proyecto.findAll();
 
-    // Mapas de búsqueda (case-insensitive)
-    const proveedorMap = new Map();
-    console.log("proveedorMap", proveedorMap)
-    for (const p of proveedores) {
-      [p.nombre].forEach((k) => {
-        const key = norm(k);
-        if (key && !proveedorMap.has(key)) proveedorMap.set(key, p);
-      });
-    }
-    const categoriaMap = new Map();
-    for (const c of categorias) {
-      const key = norm(c.nombre);
-      if (key) categoriaMap.set(key, c);
-    }
-    const proyectoMap = new Map();
-    for (const pr of proyectos) {
-      [pr.descripcion, pr.nombre].forEach((k) => {
-        const key = norm(k);
-        if (key && !proyectoMap.has(key)) proyectoMap.set(key, pr);
-      });
-    }
+      /*
+       * Fallback.
+       */
 
-    // Mapeo de columnas (case-insensitive)
-    const keyOf = (row, ...cands) => {
-      const keys = Object.keys(row);
-      const wanted = cands.map(norm);
-      for (const k of keys) {
-        if (wanted.includes(norm(k))) return k;
+      const d =
+        new Date(raw);
+
+
+      if (!isNaN(d.getTime())) {
+
+        return d
+          .toISOString()
+          .slice(0, 10);
       }
+
+
       return null;
     };
+
+
+    const toNumber = (v) => {
+
+      if (typeof v === "number") {
+        return Number.isFinite(v)
+          ? v
+          : NaN;
+      }
+
+      let s =
+        String(v ?? "")
+          .trim()
+          .replace(/\s/g, "");
+
+      if (!s) {
+        return NaN;
+      }
+
+      // Permitir valores monetarios pegados como "$ 1.500,50"
+      s =
+        s.replace(/[$]/g, "");
+
+      const tienePunto =
+        s.includes(".");
+
+      const tieneComa =
+        s.includes(",");
+
+
+      // ============================================================
+      // CASO 1: tiene punto Y coma
+      //
+      // El separador que aparece último se considera decimal.
+      //
+      // 1.500,50  -> 1500.50
+      // 1,500.50  -> 1500.50
+      // ============================================================
+
+      if (
+        tienePunto &&
+        tieneComa
+      ) {
+
+        const ultimoPunto =
+          s.lastIndexOf(".");
+
+        const ultimaComa =
+          s.lastIndexOf(",");
+
+
+        if (
+          ultimaComa >
+          ultimoPunto
+        ) {
+
+          // Formato argentino:
+          // 1.500,50
+
+          s =
+            s
+              .replace(/\./g, "")
+              .replace(",", ".");
+
+        } else {
+
+          // Formato internacional:
+          // 1,500.50
+
+          s =
+            s.replace(/,/g, "");
+        }
+
+      } else if (tieneComa) {
+
+        // ==========================================================
+        // CASO 2: solamente coma
+        //
+        // 150000,50 -> decimal
+        // 1,500     -> miles
+        // ==========================================================
+
+        const partes =
+          s.split(",");
+
+
+        if (
+          partes.length === 2 &&
+          partes[1].length === 3
+        ) {
+
+          s =
+            partes.join("");
+
+        } else {
+
+          s =
+            s.replace(",", ".");
+        }
+
+      } else if (tienePunto) {
+
+        // ==========================================================
+        // CASO 3: solamente punto
+        //
+        // 150000.50 -> decimal
+        // 1.500     -> miles
+        // ==========================================================
+
+        const partes =
+          s.split(".");
+
+
+        if (
+          partes.length === 2 &&
+          partes[1].length === 3
+        ) {
+
+          s =
+            partes.join("");
+
+        }
+        // Si no tiene exactamente 3 decimales,
+        // dejamos el punto como separador decimal.
+      }
+
+
+      const n =
+        Number(s);
+
+
+      return Number.isFinite(n)
+        ? n
+        : NaN;
+    };
+
+
+    // ============================================================
+    // 4. CATÁLOGOS
+    // ============================================================
+
+    const proveedores =
+      await Proveedor.findAll();
+
+    const clientes =
+      await Cliente.findAll();
+
+    const categoriasEgreso =
+      await CategoriaEgreso.findAll();
+
+    const categoriasIngreso =
+      await CategoriaIngreso.findAll();
+
+    const proyectos =
+      await Proyecto.findAll();
+
+
+    /*
+     * Proveedores.
+     *
+     * Conservamos las tres formas que utiliza también
+     * el frontend:
+     *
+     * - razonsocial
+     * - nombre
+     * - descripcion
+     */
+
+    const proveedorMap =
+      new Map();
+
+
+    for (const p of proveedores) {
+
+      [
+        p.razonsocial,
+        p.nombre,
+        p.descripcion,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+
+        if (
+          key &&
+          !proveedorMap.has(key)
+        ) {
+
+          proveedorMap.set(
+            key,
+            p
+          );
+        }
+      });
+    }
+
+    /*
+     * Clientes.
+     */
+
+    const clienteMap =
+      new Map();
+
+
+    for (const c of clientes) {
+
+      [
+        c.razonsocial,
+        c.razon_social,
+        c.nombre,
+        c.descripcion,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+
+        if (
+          key &&
+          !clienteMap.has(key)
+        ) {
+
+          clienteMap.set(
+            key,
+            c
+          );
+        }
+      });
+    }
+
+    /*
+     * Categorías.
+     */
+
+    // ============================================================
+    // CATEGORÍAS DE EGRESO
+    // ============================================================
+
+    const categoriaEgresoMap =
+      new Map();
+
+    for (const c of categoriasEgreso) {
+
+      const key =
+        norm(c.nombre);
+
+      if (key) {
+
+        categoriaEgresoMap.set(
+          key,
+          c
+        );
+      }
+    }
+
+
+    // ============================================================
+    // CATEGORÍAS DE INGRESO
+    // ============================================================
+
+    const categoriaIngresoMap =
+      new Map();
+
+    for (const c of categoriasIngreso) {
+
+      const key =
+        norm(c.nombre);
+
+      if (key) {
+
+        categoriaIngresoMap.set(
+          key,
+          c
+        );
+      }
+    }
+
+
+    /*
+     * Proyectos.
+     */
+
+    const proyectoMap =
+      new Map();
+
+
+    for (const pr of proyectos) {
+
+      [
+        pr.descripcion,
+        pr.nombre,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+
+        if (
+          key &&
+          !proyectoMap.has(key)
+        ) {
+
+          proyectoMap.set(
+            key,
+            pr
+          );
+        }
+      });
+    }
+
+
+    // ============================================================
+    // 5. LOCALIZAR COLUMNAS
+    // ============================================================
+
+    const keyOf = (
+      row,
+      ...cands
+    ) => {
+
+      const keys =
+        Object.keys(row);
+
+      const wanted =
+        cands.map(norm);
+
+
+      for (const k of keys) {
+
+        if (
+          wanted.includes(
+            norm(k)
+          )
+        ) {
+
+          return k;
+        }
+      }
+
+
+      return null;
+    };
+
+
+    // ============================================================
+    // 6. VALIDAR Y PREPARAR TODAS LAS FILAS
+    // ============================================================
 
     const errores = [];
-    const parsed = rowsRaw.map((row, idx0) => {
-      const idx = idx0 + 2; // fila humana (encabezado en 1)
-      const kFecha = keyOf(row, "fecha");
-      const kTipo = keyOf(row, "tipo");
-      const kDesc = keyOf(row, "descripcion", "descripción", "concepto");
-      const kMonto = keyOf(row, "monto", "importe", "total");
-      const kProv = keyOf(row, "proveedor", "entidad");
-      const kCat = keyOf(row, "categoria", "categoría");
-      const kProy = keyOf(row, "proyecto");
-      const kObs = keyOf(row, "observaciones", "obs");
 
-      const fecha = toISODate(row[kFecha]);
-      const tipoRaw = String(row[kTipo] || "").trim();
-      const tipo = norm(tipoRaw);
-      const descripcion = String(row[kDesc] || "").trim();
-      const monto = toNumber(row[kMonto]);
-      const proveedorNombre = norm(row[kProv]);
-      const categoriaNombre = norm(row[kCat]);
-      const proyectoNombre = norm(row[kProy]);
-      const observaciones = String(row[kObs] || "").trim() || null;
 
-      // Validaciones por fila (SIN banco)
-      const filaErrores = [];
-      if (!fecha) filaErrores.push("Fecha inválida o ausente.");
-      if (tipo !== "egreso") filaErrores.push('Tipo inválido. Solo se permite "egreso".');
-      if (!descripcion) filaErrores.push("Descripción requerida.");
-      if (!(Number.isFinite(monto) && monto > 0)) filaErrores.push("Monto inválido (> 0).");
-      if (!proveedorNombre) filaErrores.push("Proveedor requerido.");
-      if (!categoriaNombre) filaErrores.push("Categoría requerida.");
-      if (!proyectoNombre) filaErrores.push("Proyecto requerido.");
+    const parsed =
+      rowsRaw.map(
+        (row, idx0) => {
 
-      const proveedor = proveedorNombre ? proveedorMap.get(proveedorNombre) : null;
-      if (!proveedor) filaErrores.push("Proveedor no encontrado.");
+          /*
+           * +2 porque:
+           *
+           * fila 1 = encabezado Excel
+           * fila 2 = primer movimiento
+           */
 
-      const categoria = categoriaNombre ? categoriaMap.get(categoriaNombre) : null;
-      if (!categoria) filaErrores.push("Categoría de egreso no encontrada.");
-      const imputacioncontable_id = categoria?.imputacioncontable_id || null;
-      if (!imputacioncontable_id)
-        filaErrores.push("La categoría no tiene imputación contable asociada.");
+          const idx =
+            idx0 + 2;
 
-      const proyecto = proyectoNombre ? proyectoMap.get(proyectoNombre) : null;
-      if (!proyecto) filaErrores.push("Proyecto no encontrado.");
 
-      if (filaErrores.length) {
-        errores.push({ fila: idx, errores: filaErrores });
-      }
+          const kFecha =
+            keyOf(
+              row,
+              "fecha"
+            );
 
-      return {
-        idx,
-        fecha,
-        tipo: "egreso",
-        descripcion,
-        monto,
-        observaciones,
-        banco_id, // 👈 tomado del body y validado arriba
-        proveedor_id: proveedor?.id || null,
-        categoriaegreso_id: categoria?.id || null,
-        imputacioncontable_id,
-        proyecto_id: proyecto?.id || null,
-      };
-    });
+
+          const kTipo =
+            keyOf(
+              row,
+              "tipo"
+            );
+
+
+          const kDesc =
+            keyOf(
+              row,
+              "descripcion",
+              "descripción",
+              "concepto"
+            );
+
+
+          const kMonto =
+            keyOf(
+              row,
+              "monto",
+              "importe",
+              "total"
+            );
+
+
+          const kEntidad =
+            keyOf(
+              row,
+              "entidad",
+              "proveedor"
+            );
+
+          const kCat =
+            keyOf(
+              row,
+              "categoria",
+              "categoría"
+            );
+
+
+          const kProy =
+            keyOf(
+              row,
+              "proyecto"
+            );
+
+
+          const kObs =
+            keyOf(
+              row,
+              "observaciones",
+              "obs"
+            );
+
+
+          const fecha =
+            toISODate(
+              row[kFecha]
+            );
+
+
+          const tipo =
+            norm(
+              row[kTipo]
+            );
+
+
+          const descripcion =
+            String(
+              row[kDesc] || ""
+            ).trim();
+
+
+          const monto =
+            toNumber(
+              row[kMonto]
+            );
+
+
+          const entidadNombre =
+            norm(
+              row[kEntidad]
+            );
+
+
+          const categoriaNombre =
+            norm(
+              row[kCat]
+            );
+
+
+          const proyectoNombre =
+            norm(
+              row[kProy]
+            );
+
+
+          const observaciones =
+            String(
+              row[kObs] || ""
+            ).trim() || null;
+
+
+          // ======================================================
+          // VALIDACIONES DE LA FILA
+          // ======================================================
+
+          const filaErrores =
+            [];
+
+
+          if (!fecha) {
+
+            filaErrores.push(
+              "Fecha inválida o ausente."
+            );
+          }
+
+
+          /*
+           * AHORA la importación admite ambos tipos.
+           */
+
+          if (
+            tipo !== "ingreso" &&
+            tipo !== "egreso"
+          ) {
+
+            filaErrores.push(
+              'Tipo inválido. Debe ser "ingreso" o "egreso".'
+            );
+          }
+
+
+          if (!descripcion) {
+
+            filaErrores.push(
+              "Descripción requerida."
+            );
+          }
+
+
+          if (
+            !Number.isFinite(monto) ||
+            monto <= 0
+          ) {
+
+            filaErrores.push(
+              "Monto inválido (> 0)."
+            );
+          }
+
+
+          if (!entidadNombre) {
+
+            filaErrores.push(
+              "Entidad requerida."
+            );
+          }
+
+
+          if (!categoriaNombre) {
+
+            filaErrores.push(
+              "Categoría requerida."
+            );
+          }
+
+
+          if (!proyectoNombre) {
+
+            filaErrores.push(
+              "Proyecto requerido."
+            );
+          }
+
+
+          // ======================================================
+          // ENTIDAD
+          //
+          // ingreso → cliente
+          // egreso  → proveedor
+          // ======================================================
+
+          let proveedor =
+            null;
+
+          let cliente =
+            null;
+
+
+          if (tipo === "egreso") {
+
+            proveedor =
+              entidadNombre
+                ? proveedorMap.get(
+                  entidadNombre
+                )
+                : null;
+
+
+            if (!proveedor) {
+
+              filaErrores.push(
+                `Proveedor no encontrado: "${row[kEntidad] || ""}".`
+              );
+            }
+          }
+
+
+          if (tipo === "ingreso") {
+
+            cliente =
+              entidadNombre
+                ? clienteMap.get(
+                  entidadNombre
+                )
+                : null;
+
+
+            if (!cliente) {
+
+              filaErrores.push(
+                `Cliente no encontrado: "${row[kEntidad] || ""}".`
+              );
+            }
+          }
+
+
+          let categoriaegreso_id =
+            null;
+
+          let categoriaingreso_id =
+            null;
+
+          let imputacioncontable_id =
+            null;
+
+
+          // ======================================================
+          // EGRESO
+          // ======================================================
+
+          if (tipo === "egreso") {
+
+            const categoria =
+              categoriaNombre
+                ? categoriaEgresoMap.get(
+                  categoriaNombre
+                )
+                : null;
+
+
+            if (!categoria) {
+
+              filaErrores.push(
+                "Categoría de egreso no encontrada."
+              );
+
+            } else {
+
+              categoriaegreso_id =
+                categoria.id;
+
+              imputacioncontable_id =
+                categoria.imputacioncontable_id ||
+                null;
+
+
+              if (!imputacioncontable_id) {
+
+                filaErrores.push(
+                  "La categoría de egreso no tiene imputación contable asociada."
+                );
+              }
+            }
+          }
+
+
+          // ======================================================
+          // INGRESO
+          // ======================================================
+
+          if (tipo === "ingreso") {
+
+            const categoria =
+              categoriaNombre
+                ? categoriaIngresoMap.get(
+                  categoriaNombre
+                )
+                : null;
+
+
+            if (!categoria) {
+
+              filaErrores.push(
+                "Categoría de ingreso no encontrada."
+              );
+
+            } else {
+
+              categoriaingreso_id =
+                categoria.id;
+            }
+          }
+
+          // ======================================================
+          // RESOLVER PROYECTO
+          // ======================================================
+
+          const proyecto =
+            proyectoNombre
+              ? proyectoMap.get(
+                proyectoNombre
+              )
+              : null;
+
+
+          if (!proyecto) {
+
+            filaErrores.push(
+              "Proyecto no encontrado."
+            );
+          }
+
+
+          if (filaErrores.length) {
+
+            errores.push({
+              fila: idx,
+              errores:
+                filaErrores,
+            });
+          }
+
+
+          return {
+
+            idx,
+
+            fecha,
+
+            /*
+             * MUY IMPORTANTE:
+             * conservamos el tipo real de la fila.
+             */
+
+            tipo,
+
+            descripcion,
+
+            monto,
+
+            observaciones,
+
+            banco_id,
+
+            proveedor_id:
+              tipo === "egreso"
+                ? (proveedor?.id || null)
+                : null,
+
+            cliente_id:
+              tipo === "ingreso"
+                ? (cliente?.id || null)
+                : null,
+
+            categoriaegreso_id,
+
+            categoriaingreso_id,
+
+            imputacioncontable_id,
+
+            proyecto_id:
+              proyecto?.id ||
+              null,
+          };
+        }
+      );
+
+
+    /*
+     * Si existe aunque sea una fila inválida,
+     * NO registramos absolutamente nada.
+     */
 
     if (errores.length) {
+
       return res.status(400).json({
-        error: "Validación fallida. Corrija los datos e intente nuevamente.",
-        detalles: errores,
+        error:
+          "Validación fallida. Corrija los datos e intente nuevamente.",
+
+        detalles:
+          errores,
       });
     }
 
-    // Crear dentro de UNA transacción
-    const t = await sequelize.transaction();
+
+    // ============================================================
+    // 7. CREAR MOVIMIENTOS PARA CONCILIACIÓN
+    // ============================================================
+
+    const t =
+      await sequelize.transaction();
+
+
     try {
-      const resultados = [];
+
+      const resultados =
+        [];
+
+
       for (const r of parsed) {
-        // 1) Orden de Pago pendiente de aplicación
-        const orden = await OrdenPago.create(
-          {
-            empresa_id,
-            proveedor_id: r.proveedor_id,
-            comprobanteegreso_id: null,
-            fecha: r.fecha,
-            total: r.monto,
-            estado: "pendiente_aplicacion",
-            numero: null,
-            observaciones: r.observaciones,
-            origen: "egreso_varios_banco_excel",
-            idempotency_key: null,
-          },
-          { transaction: t }
-        );
 
-        // 2) Movimiento de Banco (EGRESO)
-        const mov = await MovimientoBancoTesoreria.create(
-          {
-            empresa_id,
-            tipo: "egreso",
-            descripcion: r.descripcion,
-            monto: r.monto,
-            fecha: r.fecha,
-            banco_id: r.banco_id, // 👈 body
-            formapago_id: null,
-            referencia_id: orden.id,
-            referencia_tipo: "OrdenPago",
-            observaciones: r.observaciones,
-            anulado: false,
-            ordenpago_id: orden.id,
-            categoriaegreso_id: r.categoriaegreso_id,
-            imputacioncontable_id: r.imputacioncontable_id,
-            proyecto_id: r.proyecto_id,
-          },
-          { transaction: t }
-        );
+        /*
+         * IMPORTANTE:
+         *
+         * Este flujo NO crea:
+         *
+         * - OrdenPago
+         * - MovimientoCtaCteProveedor
+         * - Cobranza
+         * - Comprobante
+         * - ningún otro registro auxiliar
+         *
+         * ÚNICAMENTE MovimientoBancoTesoreria.
+         */
 
-        resultados.push({ ordenpago_id: orden.id, movimiento_id: mov.id });
+        const mov =
+          await MovimientoBancoTesoreria.create(
+            {
+              empresa_id,
+
+              tipo:
+                r.tipo,
+
+              descripcion:
+                r.descripcion,
+
+              monto:
+                r.monto,
+
+              fecha:
+                r.fecha,
+
+              banco_id:
+                r.banco_id,
+
+              formapago_id:
+                null,
+
+              referencia_id:
+                null,
+
+              referencia_tipo:
+                null,
+
+              observaciones:
+                r.observaciones,
+
+              anulado:
+                false,
+
+              ordenpago_id:
+                null,
+
+              categoriaegreso_id:
+                r.categoriaegreso_id,
+
+              categoriaingreso_id:
+                r.categoriaingreso_id,
+
+              imputacioncontable_id:
+                r.imputacioncontable_id,
+
+              proyecto_id:
+                r.proyecto_id,
+
+              /*
+               * La entidad queda registrada directamente
+               * en el movimiento:
+               *
+               * ingreso → cliente_id
+               * egreso  → proveedor_id
+               */
+
+              proveedor_id:
+                r.proveedor_id,
+
+              cliente_id:
+                r.cliente_id,
+            },
+            {
+              transaction: t,
+            }
+          );
+
+
+        resultados.push({
+          movimiento_id:
+            mov.id,
+
+          tipo:
+            r.tipo,
+        });
       }
 
+
+      // ==========================================================
+      // 8. COMMIT
+      // ==========================================================
+
       await t.commit();
+
+
       return res.status(201).json({
-        ok: true,
-        creados: resultados.length,
+        ok:
+          true,
+
+        creados:
+          resultados.length,
+
         resultados,
       });
+
+
     } catch (errTx) {
+
       await t.rollback();
-      console.error("❌ importarMovimientosBancoExcel (TX):", errTx);
-      return res
-        .status(500)
-        .json({ error: "Error al crear movimientos en base", detalle: errTx.message });
+
+
+      console.error(
+        "❌ importarMovimientosBancoExcel (TX):",
+        errTx
+      );
+
+
+      return res.status(500).json({
+        error:
+          "Error al crear movimientos en base",
+
+        detalle:
+          errTx.message,
+      });
     }
+
+
   } catch (error) {
-    console.error("❌ importarMovimientosBancoExcel:", error);
-    return res
-      .status(500)
-      .json({ error: "Error al procesar el archivo Excel", detalle: error.message });
+
+    console.error(
+      "❌ importarMovimientosBancoExcel:",
+      error
+    );
+
+
+    return res.status(500).json({
+      error:
+        "Error al procesar el archivo Excel",
+
+      detalle:
+        error.message,
+    });
   }
 };
 
+// ============================================================
+// IMPORTAR MOVIMIENTOS DESDE GRILLA
+// ============================================================
+
+export const importarMovimientosBancoGrilla = async (req, res) => {
+
+  try {
+
+    const empresa_id =
+      Number(req.body?.empresa_id);
+
+    const banco_id =
+      Number(req.body?.banco_id);
+
+    const movimientos =
+      Array.isArray(req.body?.movimientos)
+        ? req.body.movimientos
+        : [];
 
 
+    // ============================================================
+    // 1. VALIDACIONES GENERALES
+    // ============================================================
+
+    if (!empresa_id) {
+
+      return res.status(400).json({
+        error: "empresa_id es requerido.",
+      });
+    }
+
+
+    if (!banco_id) {
+
+      return res.status(400).json({
+        error: "banco_id es requerido.",
+      });
+    }
+
+
+    if (!movimientos.length) {
+
+      return res.status(400).json({
+        error: "Debe enviar al menos un movimiento.",
+      });
+    }
+
+
+    const banco =
+      await Banco.findOne({
+        where: {
+          id: banco_id,
+          empresa_id,
+        },
+      });
+
+
+    if (!banco) {
+
+      return res.status(400).json({
+        error:
+          "El banco no existe o no pertenece a la empresa indicada.",
+      });
+    }
+
+
+    // ============================================================
+    // 2. NORMALIZADORES
+    // ============================================================
+
+    const norm = (s) =>
+      String(s || "")
+        .trim()
+        .toLowerCase();
+
+
+    const toISODate = (v) => {
+
+      const raw =
+        String(v || "").trim();
+
+      if (!raw) {
+        return null;
+      }
+
+
+      // DD/MM/YYYY o DD-MM-YYYY
+
+      const m1 =
+        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/
+          .exec(raw);
+
+      if (m1) {
+
+        const dd =
+          m1[1].padStart(2, "0");
+
+        const mm =
+          m1[2].padStart(2, "0");
+
+        const yyyy =
+          m1[3];
+
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+
+      // YYYY-MM-DD
+
+      const m2 =
+        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+          .exec(raw);
+
+      if (m2) {
+
+        const yyyy =
+          m2[1];
+
+        const mm =
+          m2[2].padStart(2, "0");
+
+        const dd =
+          m2[3].padStart(2, "0");
+
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+
+      return null;
+    };
+
+
+    const toNumber = (v) => {
+
+      if (typeof v === "number") {
+        return Number.isFinite(v)
+          ? v
+          : NaN;
+      }
+
+      let s =
+        String(v ?? "")
+          .trim()
+          .replace(/\s/g, "");
+
+      if (!s) {
+        return NaN;
+      }
+
+      // Permitir valores monetarios pegados como "$ 1.500,50"
+      s =
+        s.replace(/[$]/g, "");
+
+      const tienePunto =
+        s.includes(".");
+
+      const tieneComa =
+        s.includes(",");
+
+
+      // ============================================================
+      // CASO 1: tiene punto Y coma
+      //
+      // El separador que aparece último se considera decimal.
+      //
+      // 1.500,50  -> 1500.50
+      // 1,500.50  -> 1500.50
+      // ============================================================
+
+      if (
+        tienePunto &&
+        tieneComa
+      ) {
+
+        const ultimoPunto =
+          s.lastIndexOf(".");
+
+        const ultimaComa =
+          s.lastIndexOf(",");
+
+
+        if (
+          ultimaComa >
+          ultimoPunto
+        ) {
+
+          // Formato argentino:
+          // 1.500,50
+
+          s =
+            s
+              .replace(/\./g, "")
+              .replace(",", ".");
+
+        } else {
+
+          // Formato internacional:
+          // 1,500.50
+
+          s =
+            s.replace(/,/g, "");
+        }
+
+      } else if (tieneComa) {
+
+        // ==========================================================
+        // CASO 2: solamente coma
+        //
+        // 150000,50 -> decimal
+        // 1,500     -> miles
+        // ==========================================================
+
+        const partes =
+          s.split(",");
+
+
+        if (
+          partes.length === 2 &&
+          partes[1].length === 3
+        ) {
+
+          s =
+            partes.join("");
+
+        } else {
+
+          s =
+            s.replace(",", ".");
+        }
+
+      } else if (tienePunto) {
+
+        // ==========================================================
+        // CASO 3: solamente punto
+        //
+        // 150000.50 -> decimal
+        // 1.500     -> miles
+        // ==========================================================
+
+        const partes =
+          s.split(".");
+
+
+        if (
+          partes.length === 2 &&
+          partes[1].length === 3
+        ) {
+
+          s =
+            partes.join("");
+
+        }
+        // Si no tiene exactamente 3 decimales,
+        // dejamos el punto como separador decimal.
+      }
+
+
+      const n =
+        Number(s);
+
+
+      return Number.isFinite(n)
+        ? n
+        : NaN;
+    };
+
+
+    // ============================================================
+    // 3. CATÁLOGOS
+    // ============================================================
+
+    const proveedores =
+      await Proveedor.findAll();
+
+    const clientes =
+      await Cliente.findAll();
+
+    const categoriasEgreso =
+      await CategoriaEgreso.findAll();
+
+    const categoriasIngreso =
+      await CategoriaIngreso.findAll();
+
+    const proyectos =
+      await Proyecto.findAll();
+
+
+    const proveedorMap =
+      new Map();
+
+
+    for (const p of proveedores) {
+
+      [
+        p.razonsocial,
+        p.nombre,
+        p.descripcion,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+        if (
+          key &&
+          !proveedorMap.has(key)
+        ) {
+
+          proveedorMap.set(
+            key,
+            p
+          );
+        }
+      });
+    }
+
+    const clienteMap =
+      new Map();
+
+
+    for (const c of clientes) {
+
+      [
+        c.razonsocial,
+        c.razon_social,
+        c.nombre,
+        c.descripcion,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+        if (
+          key &&
+          !clienteMap.has(key)
+        ) {
+
+          clienteMap.set(
+            key,
+            c
+          );
+        }
+      });
+    }
+
+    const categoriaEgresoMap =
+      new Map();
+
+    for (const c of categoriasEgreso) {
+
+      const key =
+        norm(c.nombre);
+
+      if (key) {
+
+        categoriaEgresoMap.set(
+          key,
+          c
+        );
+      }
+    }
+
+
+    const categoriaIngresoMap =
+      new Map();
+
+    for (const c of categoriasIngreso) {
+
+      const key =
+        norm(c.nombre);
+
+      if (key) {
+
+        categoriaIngresoMap.set(
+          key,
+          c
+        );
+      }
+    }
+
+    const proyectoMap =
+      new Map();
+
+
+    for (const pr of proyectos) {
+
+      [
+        pr.descripcion,
+        pr.nombre,
+      ].forEach((k) => {
+
+        const key =
+          norm(k);
+
+        if (
+          key &&
+          !proyectoMap.has(key)
+        ) {
+
+          proyectoMap.set(
+            key,
+            pr
+          );
+        }
+      });
+    }
+
+
+    // ============================================================
+    // 4. VALIDAR Y PREPARAR FILAS
+    // ============================================================
+
+    const errores = [];
+
+
+    const parsed =
+      movimientos.map(
+        (row, idx0) => {
+
+          /*
+           * En la grilla no existe encabezado.
+           * Primera fila = 1.
+           */
+
+          const idx =
+            idx0 + 1;
+
+
+          const fecha =
+            toISODate(
+              row?.fecha
+            );
+
+
+          const tipo =
+            norm(
+              row?.tipo
+            );
+
+
+          const descripcion =
+            String(
+              row?.descripcion || ""
+            ).trim();
+
+
+          const monto =
+            toNumber(
+              row?.monto
+            );
+
+
+          const entidadNombre =
+            norm(
+              row?.entidad
+            );
+
+
+          const categoriaNombre =
+            norm(
+              row?.categoria
+            );
+
+
+          const proyectoNombre =
+            norm(
+              row?.proyecto
+            );
+
+
+          const observaciones =
+            String(
+              row?.observaciones || ""
+            ).trim() || null;
+
+
+          // ======================================================
+          // VALIDACIONES
+          // ======================================================
+
+          const filaErrores =
+            [];
+
+
+          if (!fecha) {
+
+            filaErrores.push(
+              "Fecha inválida o ausente."
+            );
+          }
+
+
+          if (
+            tipo !== "ingreso" &&
+            tipo !== "egreso"
+          ) {
+
+            filaErrores.push(
+              'Tipo inválido. Debe ser "ingreso" o "egreso".'
+            );
+          }
+
+
+          if (!descripcion) {
+
+            filaErrores.push(
+              "Descripción requerida."
+            );
+          }
+
+
+          if (
+            !Number.isFinite(monto) ||
+            monto <= 0
+          ) {
+
+            filaErrores.push(
+              "Monto inválido (> 0)."
+            );
+          }
+
+
+          if (!entidadNombre) {
+
+            filaErrores.push(
+              "Entidad requerida."
+            );
+          }
+
+          if (!categoriaNombre) {
+
+            filaErrores.push(
+              "Categoría requerida."
+            );
+          }
+
+
+          if (!proyectoNombre) {
+
+            filaErrores.push(
+              "Proyecto requerido."
+            );
+          }
+
+
+          // ======================================================
+          // ENTIDAD
+          //
+          // ingreso → cliente
+          // egreso  → proveedor
+          // ======================================================
+
+          let proveedor =
+            null;
+
+          let cliente =
+            null;
+
+
+          if (tipo === "egreso") {
+
+            proveedor =
+              entidadNombre
+                ? proveedorMap.get(
+                  entidadNombre
+                )
+                : null;
+
+
+            if (!proveedor) {
+
+              filaErrores.push(
+                `Proveedor no encontrado: "${row?.entidad || ""}".`
+              );
+            }
+          }
+
+
+          if (tipo === "ingreso") {
+
+            cliente =
+              entidadNombre
+                ? clienteMap.get(
+                  entidadNombre
+                )
+                : null;
+
+
+            if (!cliente) {
+
+              filaErrores.push(
+                `Cliente no encontrado: "${row?.entidad || ""}".`
+              );
+            }
+          }
+
+
+          // ======================================================
+          // CATEGORÍA
+          // ======================================================
+
+          let categoriaegreso_id =
+            null;
+
+          let categoriaingreso_id =
+            null;
+
+          let imputacioncontable_id =
+            null;
+
+
+          // ======================================================
+          // EGRESO
+          // ======================================================
+
+          if (tipo === "egreso") {
+
+            const categoria =
+              categoriaNombre
+                ? categoriaEgresoMap.get(
+                  categoriaNombre
+                )
+                : null;
+
+
+            if (!categoria) {
+
+              filaErrores.push(
+                "Categoría de egreso no encontrada."
+              );
+
+            } else {
+
+              categoriaegreso_id =
+                categoria.id;
+
+              imputacioncontable_id =
+                categoria.imputacioncontable_id ||
+                null;
+
+
+              if (!imputacioncontable_id) {
+
+                filaErrores.push(
+                  "La categoría de egreso no tiene imputación contable asociada."
+                );
+              }
+            }
+          }
+
+
+          // ======================================================
+          // INGRESO
+          // ======================================================
+
+          if (tipo === "ingreso") {
+
+            const categoria =
+              categoriaNombre
+                ? categoriaIngresoMap.get(
+                  categoriaNombre
+                )
+                : null;
+
+
+            if (!categoria) {
+
+              filaErrores.push(
+                "Categoría de ingreso no encontrada."
+              );
+
+            } else {
+
+              categoriaingreso_id =
+                categoria.id;
+            }
+          }
+
+
+          // ======================================================
+          // PROYECTO
+          // ======================================================
+
+          const proyecto =
+            proyectoNombre
+              ? proyectoMap.get(
+                proyectoNombre
+              )
+              : null;
+
+
+          if (!proyecto) {
+
+            filaErrores.push(
+              "Proyecto no encontrado."
+            );
+          }
+
+
+          if (filaErrores.length) {
+
+            errores.push({
+              fila: idx,
+              errores: filaErrores,
+            });
+          }
+
+
+          return {
+
+            idx,
+
+            fecha,
+
+            tipo,
+
+            descripcion,
+
+            monto,
+
+            observaciones,
+
+            banco_id,
+
+            proveedor_id:
+              tipo === "egreso"
+                ? (proveedor?.id || null)
+                : null,
+
+            cliente_id:
+              tipo === "ingreso"
+                ? (cliente?.id || null)
+                : null,
+
+            categoriaegreso_id,
+
+            categoriaingreso_id,
+
+            imputacioncontable_id,
+
+            proyecto_id:
+              proyecto?.id ||
+              null,
+          };
+        }
+      );
+
+
+    /*
+     * Atomicidad:
+     * si UNA fila falla, no grabamos ninguna.
+     */
+
+    if (errores.length) {
+
+      return res.status(400).json({
+        error:
+          "Validación fallida. Corrija los datos e intente nuevamente.",
+
+        detalles:
+          errores,
+      });
+    }
+
+
+    // ============================================================
+    // 5. CREAR SOLAMENTE MOVIMIENTOS BANCARIOS
+    // ============================================================
+
+    const t =
+      await sequelize.transaction();
+
+
+    try {
+
+      const resultados =
+        [];
+
+
+      for (const r of parsed) {
+
+        /*
+         * Este flujo de conciliación crea ÚNICAMENTE:
+         *
+         * MovimientoBancoTesoreria
+         *
+         * No crea OP, cuenta corriente, cobranza,
+         * comprobantes ni ningún otro registro.
+         */
+
+        const mov =
+          await MovimientoBancoTesoreria.create(
+            {
+              empresa_id,
+
+              tipo:
+                r.tipo,
+
+              descripcion:
+                r.descripcion,
+
+              monto:
+                r.monto,
+
+              fecha:
+                r.fecha,
+
+              banco_id:
+                r.banco_id,
+
+              proveedor_id:
+                r.proveedor_id,
+
+              cliente_id:
+                r.cliente_id,
+
+              proyecto_id:
+                r.proyecto_id,
+
+              categoriaegreso_id:
+                r.categoriaegreso_id,
+
+              categoriaingreso_id:
+                r.categoriaingreso_id,
+
+              imputacioncontable_id:
+                r.imputacioncontable_id,
+
+              formapago_id:
+                null,
+
+              referencia_id:
+                null,
+
+              referencia_tipo:
+                null,
+
+              ordenpago_id:
+                null,
+
+              comprobanteegreso_id:
+                null,
+
+              comprobanteingreso_id:
+                null,
+
+              observaciones:
+                r.observaciones,
+
+              anulado:
+                false,
+            },
+            {
+              transaction: t,
+            }
+          );
+
+
+        resultados.push({
+          movimiento_id:
+            mov.id,
+
+          tipo:
+            r.tipo,
+        });
+      }
+
+
+      await t.commit();
+
+
+      return res.status(201).json({
+        ok: true,
+
+        creados:
+          resultados.length,
+
+        resultados,
+      });
+
+
+    } catch (errTx) {
+
+      await t.rollback();
+
+
+      console.error(
+        "❌ importarMovimientosBancoGrilla (TX):",
+        errTx
+      );
+
+
+      return res.status(500).json({
+        error:
+          "Error al crear movimientos en base",
+
+        detalle:
+          errTx.message,
+      });
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      "❌ importarMovimientosBancoGrilla:",
+      error
+    );
+
+
+    return res.status(500).json({
+      error:
+        "Error al procesar la grilla",
+
+      detalle:
+        error.message,
+    });
+  }
+};
 /**
  * POST /movimientos-banco-tesoreria/ingresos/varios
  * Crea un movimiento bancario (ingreso) genérico (no asociado a clientes)
@@ -2498,167 +4365,6 @@ export const registrarIngresoBancoVarios = async (req, res, next) => {
   }
 };
 
-/**
- * POST /movimientos-banco-tesoreria/ingresos/cobranza-clientes
- * Crea un ingreso bancario por COBRANZA (impacta la cuenta corriente).
- */
-// export const registrarIngresoBancoCobranzaClientes = async (req, res, next) => {
-//   const t = await sequelize.transaction();
-//   try {
-//     const {
-//       empresa_id,
-//       banco_id,
-//       clienteId,
-//       fecha,
-//       descripcion,
-//       montoTotal,
-//       proyecto_id = null,
-//       categoriaingreso_id = null,
-//       observaciones = null,
-//       formapago_id = null,  // transferencia, cheque, etc.
-//       idempotencyKey = null,
-//       detallesCobranza = [], // [{ monto, fecha? }]
-//     } = req.body || {};
-
-//     // Validaciones mínimas
-//     if (!empresa_id || !banco_id) {
-//       await t.rollback();
-//       return res.status(400).json({ error: "empresa_id y banco_id son requeridos" });
-//     }
-//     if (!clienteId) {
-//       await t.rollback();
-//       return res.status(400).json({ error: "clienteId es requerido" });
-//     }
-//     if (!descripcion?.trim()) {
-//       await t.rollback();
-//       return res.status(400).json({ error: "descripcion es requerida" });
-//     }
-//     const monto = Number(montoTotal);
-//     if (!Number.isFinite(monto) || monto <= 0) {
-//       await t.rollback();
-//       return res.status(400).json({ error: "Monto inválido" });
-//     }
-
-//     // Idempotencia (opcional)
-//     if (idempotencyKey) {
-//       const existente = await MovimientoBancoTesoreria.findOne({
-//         where: { idempotency_key: idempotencyKey, tipo: "ingreso" },
-//         transaction: t,
-//         lock: t.LOCK.UPDATE,
-//       });
-//       if (existente) {
-//         await t.commit();
-//         return res.json({ ok: true, reused: true, movimiento: existente });
-//       }
-//     }
-
-//     // Cliente + Cuenta Corriente
-//     const cliente = await Cliente.findByPk(clienteId, { transaction: t, lock: t.LOCK.UPDATE });
-//     if (!cliente) {
-//       await t.rollback();
-//       return res.status(404).json({ error: "Cliente no encontrado" });
-//     }
-
-//     const [cc] = await CuentaCorriente.findOrCreate({
-//       where: { cliente_id: cliente.id },
-//       defaults: { cliente_id: cliente.id, saldoActual: 0, fecha: fecha || sequelize.literal("CURRENT_DATE") },
-//       transaction: t,
-//       lock: t.LOCK.UPDATE,
-//     });
-
-//     // 1) Crear movimiento bancario (INGRESO)
-//     const movimiento = await MovimientoBancoTesoreria.create(
-//       {
-//         tipo: "ingreso",
-//         descripcion: `COBRANZA BANCO - ${cliente.nombre || "Cliente #" + cliente.id}`,
-//         monto,
-//         fecha: fecha || sequelize.literal("CURRENT_DATE"),
-//         banco_id,
-//         empresa_id,
-//         formapago_id: formapago_id || null,
-//         referencia_id: null,
-//         referencia_tipo: "CobranzaBanco",
-//         observaciones: observaciones || null,
-//         categoriaegreso_id: null,
-//         categoriaingreso_id: categoriaingreso_id || null,
-//         imputacioncontable_id: null,
-//         idempotency_key: idempotencyKey || null,
-//         proyecto_id: proyecto_id || null,
-//         ordenpago_id: null,
-//         anulado: false,
-//       },
-//       { transaction: t }
-//     );
-
-//     // 2) Crear Cobranza vinculada al movimiento bancario y CC
-//     const cobranza = await Cobranza.create(
-//       {
-//         monto_total: monto,
-//         descripcion_cobro: descripcion?.trim(),
-//         forma_cobro: "Banco", // descriptivo
-//         fecha: fecha || sequelize.literal("CURRENT_DATE"),
-//         formacobro_id: formapago_id || null,
-//         movimientoBanco_id: movimiento.id,   // si tu modelo Cobranza no tiene este campo, podés usar `movimiento_id` genérico
-//         cuentaCorriente_id: cc.id,
-//       },
-//       { transaction: t }
-//     );
-
-//     // si tu Cobranza solo tiene movimiento_id y antes lo usabas con caja,
-//     // podés conservar el mismo campo:
-//     // await cobranza.update({ movimiento_id: movimiento.id }, { transaction: t });
-
-//     // opcional: actualizar referencia del movimiento
-//     await movimiento.update(
-//       { referencia_id: cobranza.id, referencia_tipo: "CobranzaBanco" },
-//       { transaction: t }
-//     );
-
-//     // 3) Detalles
-//     if (Array.isArray(detallesCobranza) && detallesCobranza.length > 0) {
-//       for (const det of detallesCobranza) {
-//         const md = Number(det?.monto ?? 0);
-//         if (!Number.isFinite(md) || md <= 0) {
-//           await t.rollback();
-//           return res.status(400).json({ error: "Monto de detalle inválido" });
-//         }
-//         await DetalleCobranza.create(
-//           {
-//             cobranza_id: cobranza.id,
-//             monto_total: md,
-//             fecha: det?.fecha || fecha || sequelize.literal("CURRENT_DATE"),
-//           },
-//           { transaction: t }
-//         );
-//       }
-//     } else {
-//       await DetalleCobranza.create(
-//         {
-//           cobranza_id: cobranza.id,
-//           monto_total: monto,
-//           fecha: fecha || sequelize.literal("CURRENT_DATE"),
-//         },
-//         { transaction: t }
-//       );
-//     }
-
-//     // 4) Impacto en cuenta corriente (pago ↓ saldo)
-//     await cc.decrement("saldoActual", { by: monto, transaction: t });
-//     await cc.reload({ transaction: t });
-
-//     await t.commit();
-//     return res.json({
-//       ok: true,
-//       movimiento,
-//       cobranza,
-//       cuentaCorriente: { id: cc.id, saldoActual: cc.saldoActual },
-//     });
-//   } catch (err) {
-//     await t.rollback();
-//     next(err);
-//   }
-// };
-
 export const registrarIngresoBancoCobranzaClientes = async (req, res, next) => {
   const t = await sequelize.transaction();
   try {
@@ -2729,6 +4435,7 @@ export const registrarIngresoBancoCobranzaClientes = async (req, res, next) => {
         fecha: fecha || sequelize.literal("CURRENT_DATE"),
         banco_id,
         empresa_id,
+        cliente_id: Number(clienteId),
         formapago_id, // obligatorio en banco
         referencia_id: null,
         referencia_tipo: null, // ya no apuntamos a Cobranza
