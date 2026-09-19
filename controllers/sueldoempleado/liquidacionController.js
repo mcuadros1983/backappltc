@@ -11,6 +11,10 @@ import AdicionalVariableTipo from "../../models/sueldoempleado/adicionalvariable
 import Recibo from "../../models/sueldoempleado/recibo.js";
 import ReciboItem from "../../models/sueldoempleado/reciboitem.js";
 import AdelantoEmpleado from "../../models/sueldoempleado/adelantoempleado.js";
+import PrestamoEmpleado from "../../models/sueldoempleado/prestamoEmpleadoModel.js";
+import {
+  recalcularSaldoPrestamo,
+} from "../../services/sueldos/prestamoEmpleadoService.js";
 
 async function getFijosVigentes({ empleado_id, fecha }) {
   const asignaciones = await EmpleadoAdicionalFijo.findAll({
@@ -58,7 +62,8 @@ export const liquidarPeriodo = async (req, res) => {
     parts.map(p => (p == null ? "" : String(p).trim())).filter(Boolean).join(" — ");
 
   const {
-    excluir = {}
+    excluir = {},
+    prestamos = [],
   } = req.body || {};
 
   const exclVars = new Set((excluir.variables || []).map(Number));     // ids de AdicionalVariable
@@ -158,6 +163,239 @@ export const liquidarPeriodo = async (req, res) => {
         const m = Number(f.monto || 0);
         if (m >= 0) haberesItemsPos += m;
         else descuentosItemsAbs += Math.abs(m);
+      }
+
+      // =========================================================
+      // CUOTAS DE PRÉSTAMOS DEL PERÍODO
+      // =========================================================
+      //
+      // prestamos esperado desde frontend:
+      // [
+      //   { prestamo_id: 15, monto: 150000 },
+      //   { prestamo_id: 18, monto: 50000 }
+      // ]
+      //
+      // Si prestamos = [], no se modifica nada y la liquidación
+      // continúa exactamente con la lógica anterior.
+      // =========================================================
+
+      if (Array.isArray(prestamos) && prestamos.length > 0) {
+
+        // -------------------------------------------------------
+        // 1) Buscar / crear el tipo PRESTAMO
+        // -------------------------------------------------------
+
+        let tipoPrestamo = await AdicionalVariableTipo.findOne({
+          where: {
+            descripcion: "PRESTAMO",
+          },
+          transaction: t,
+        });
+
+        if (!tipoPrestamo) {
+          tipoPrestamo = await AdicionalVariableTipo.create(
+            {
+              descripcion: "PRESTAMO",
+              categoria: "descuento",
+            },
+            {
+              transaction: t,
+            }
+          );
+        }
+
+        // -------------------------------------------------------
+        // 2) Procesar cada préstamo enviado por el frontend
+        // -------------------------------------------------------
+
+        for (const p of prestamos) {
+
+          const prestamoId = Number(p?.prestamo_id);
+          const incluir = p?.incluir === true;
+
+          const montoCuota = incluir
+            ? Number(p?.monto || 0)
+            : 0;
+
+          const descripcionCuota =
+            String(p?.descripcion || "PRESTAMO").trim() ||
+            "PRESTAMO";
+
+          if (!prestamoId) {
+            throw new Error(
+              "Se recibió un prestamo_id inválido."
+            );
+          }
+
+          if (
+            incluir &&
+            (!Number.isFinite(montoCuota) || montoCuota <= 0)
+          ) {
+            throw new Error(
+              `El monto del préstamo ${prestamoId} debe ser mayor a cero.`
+            );
+          }
+
+          // -----------------------------------------------------
+          // 3) Obtener y bloquear el préstamo
+          // -----------------------------------------------------
+
+          const prestamo = await PrestamoEmpleado.findByPk(
+            prestamoId,
+            {
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            }
+          );
+
+          if (!prestamo) {
+            throw new Error(
+              `Préstamo ${prestamoId} no encontrado.`
+            );
+          }
+
+          // El préstamo debe pertenecer al empleado liquidado.
+          if (
+            Number(prestamo.empleado_id) !== Number(emp.id)
+          ) {
+            throw new Error(
+              `El préstamo ${prestamoId} no pertenece al empleado ${emp.id}.`
+            );
+          }
+
+          if (prestamo.estado === "anulado") {
+            throw new Error(
+              `El préstamo ${prestamoId} está anulado.`
+            );
+          }
+
+          // -----------------------------------------------------
+          // 4) Buscar si YA existe cuota para este préstamo
+          //    en este período
+          // -----------------------------------------------------
+
+          const cuotaExistente =
+            await AdicionalVariable.findOne({
+              where: {
+                empleado_id: emp.id,
+                prestamo_id: prestamoId,
+                periodo: periodoStr,
+              },
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+          // -----------------------------------------------------
+          // 5) Si el préstamo está DESMARCADO:
+          //
+          //    - si ya existía una cuota para este período,
+          //      la eliminamos;
+          //    - recalculamos el saldo;
+          //    - no generamos ningún descuento.
+          // -----------------------------------------------------
+
+          if (!incluir) {
+
+            if (cuotaExistente) {
+              await cuotaExistente.destroy({
+                transaction: t,
+              });
+
+              await recalcularSaldoPrestamo(
+                prestamoId,
+                t
+              );
+            }
+
+            continue;
+          }
+
+          // -----------------------------------------------------
+          // 6) Validar que la cuota no supere el saldo disponible
+          //
+          // IMPORTANTE:
+          // Si estamos EDITANDO una cuota existente, debemos
+          // devolver primero esa cuota al saldo.
+          // -----------------------------------------------------
+
+          const saldoActual =
+            Number(prestamo.saldo || 0);
+
+          const cuotaAnterior =
+            cuotaExistente
+              ? Math.abs(
+                Number(cuotaExistente.monto || 0)
+              )
+              : 0;
+
+          const saldoDisponible =
+            saldoActual + cuotaAnterior;
+
+          if (montoCuota > saldoDisponible) {
+            throw new Error(
+              `La cuota del préstamo ${prestamoId} ` +
+              `($${montoCuota.toFixed(2)}) supera el saldo ` +
+              `disponible ($${saldoDisponible.toFixed(2)}).`
+            );
+          }
+
+          // -----------------------------------------------------
+          // 7) Crear o actualizar AdicionalVariable
+          //
+          // Se guarda NEGATIVO porque es un descuento.
+          // -----------------------------------------------------
+
+          const datosCuota = {
+            empleado_id: emp.id,
+
+            adicionalvariabletipo_id:
+              tipoPrestamo.id,
+
+            prestamo_id: prestamoId,
+
+            descripcion: descripcionCuota,
+
+            periodo: periodoStr,
+
+            periodo_id: periodo.id,
+
+            fecha: fechaHasta,
+
+            monto: -Math.abs(montoCuota),
+
+            observaciones:
+              prestamo.numero
+                ? `Préstamo ${prestamo.numero}`
+                : `Préstamo #${prestamo.id}`,
+          };
+
+          if (cuotaExistente) {
+
+            await cuotaExistente.update(
+              datosCuota,
+              {
+                transaction: t,
+              }
+            );
+
+          } else {
+
+            await AdicionalVariable.create(
+              datosCuota,
+              {
+                transaction: t,
+              }
+            );
+          }
+
+          // -----------------------------------------------------
+          // 8) Recalcular saldo real del préstamo
+          // -----------------------------------------------------
+
+          await recalcularSaldoPrestamo(
+            prestamoId,
+            t
+          );
+        }
       }
 
       // 2) Variables (excluir por id de AdicionalVariable)

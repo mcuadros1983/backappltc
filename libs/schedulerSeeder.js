@@ -162,6 +162,54 @@ const schedulerSeeder = async () => {
 
     });
 
+    /*
+|--------------------------------------------------------------------------
+| SUELDOS - PERÍODO LIQUIDACIÓN
+|--------------------------------------------------------------------------
+*/
+
+    await SchedulerJob.findOrCreate({
+
+        where: {
+            codigo:
+                "sueldos.periodoliquidacion.mensual",
+        },
+
+        defaults: {
+
+            nombre:
+                "Crear período de liquidación mensual",
+
+            descripcion:
+                "Verifica y crea automáticamente el período de liquidación correspondiente al mes actual.",
+
+            modulo:
+                "Sueldos",
+
+            handler:
+                "periodoLiquidacionMensualJob",
+
+            /*
+             * Ejecutar todos los días
+             * a las 05:20.
+             *
+             * El job es idempotente:
+             * si el período ya existe,
+             * no vuelve a crearlo.
+             */
+            cron:
+                "20 5 * * *",
+
+            activo:
+                true,
+
+            orden:
+                1,
+
+        },
+
+    });
+
 };
 
 

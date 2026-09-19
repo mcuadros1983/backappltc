@@ -14,6 +14,82 @@ import PeriodoLiquidacion from "../../models/sueldoempleado/periodoliquidacion.j
    Helpers
    ========================= */
 
+// Convierte un número serial de Excel a año, mes y día
+// sin pasar por la zona horaria local.
+const parseExcelSerialDate = (serial) => {
+  if (typeof serial !== "number" || Number.isNaN(serial)) {
+    return null;
+  }
+
+  // Excel usa como base 1899-12-30.
+  // Trabajamos completamente en UTC para evitar
+  // que Argentina reste horas y cambie el día.
+  const utcMs =
+    Date.UTC(1899, 11, 30) +
+    Math.floor(serial) * 86400000;
+
+  const d = new Date(utcMs);
+
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+  };
+};
+// Normaliza período a YYYY-MM.
+// Acepta:
+// - "2026-08"
+// - "2026-08-01"
+// - Date
+// - número serial de Excel
+const normalizarPeriodo = (v) => {
+  if (v === null || v === undefined || v === "") return "";
+
+  // Ya viene como YYYY-MM
+  if (typeof v === "string") {
+    const s = v.trim();
+
+    if (/^\d{4}-\d{2}$/.test(s)) {
+      return s;
+    }
+
+    // Fecha completa YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = dayjs(s, "YYYY-MM-DD", true);
+      return d.isValid() ? d.format("YYYY-MM") : "";
+    }
+  }
+
+  // Date real
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const d = dayjs(v);
+    return d.isValid() ? d.format("YYYY-MM") : "";
+  }
+
+  // Serial Excel
+  if (typeof v === "number" && !Number.isNaN(v)) {
+    const parsed = parseExcelSerialDate(v);
+
+    if (!parsed) return "";
+
+    return (
+      `${String(parsed.year).padStart(4, "0")}-` +
+      `${String(parsed.month).padStart(2, "0")}`
+    );
+  }
+
+  // Último intento
+  const d = dayjs(String(v).trim());
+
+  return d.isValid()
+    ? d.format("YYYY-MM")
+    : "";
+};
+
 // Normaliza celdas a string (o vacío)
 const cell = (v) => (v === undefined || v === null ? "" : String(v).trim());
 
@@ -22,6 +98,8 @@ const isPeriodoValido = (s) =>
   typeof s === "string" &&
   /^\d{4}-\d{2}$/.test(s) &&
   dayjs(s + "-01", "YYYY-MM-DD", true).isValid();
+
+
 
 // Convierte varias entradas de fecha a ISO (YYYY-MM-DD)
 // Acepta: "DD/MM/YYYY", "YYYY-MM-DD", Date, número serial Excel
@@ -34,14 +112,16 @@ const toISODate = (v) => {
     return d.isValid() ? d.format("YYYY-MM-DD") : null;
   }
 
-  // Número serial Excel (muy común si el archivo trae celdas con formato fecha)
   if (typeof v === "number" && !Number.isNaN(v)) {
-    // Excel serial date: días desde 1899-12-30 (corrección del bug de 1900).
-    // XLSX utils trae ya Date a veces; por compatibilidad convertimos manual:
-    // 25569 = 1970-01-01; cada día = 86400 seg
-    const epochMs = Math.round((v - 25569) * 86400 * 1000);
-    const d = dayjs(epochMs);
-    return d.isValid() ? d.format("YYYY-MM-DD") : null;
+    const parsed = parseExcelSerialDate(v);
+
+    if (!parsed) return null;
+
+    return (
+      `${String(parsed.year).padStart(4, "0")}-` +
+      `${String(parsed.month).padStart(2, "0")}-` +
+      `${String(parsed.day).padStart(2, "0")}`
+    );
   }
 
   const s = String(v).trim();
@@ -212,7 +292,9 @@ export const descargarTemplateAdicionalVariable = async (_req, res) => {
 
 /* =========================
    Importación
-   ========================= */export const importarAdicionalVariable = async (req, res) => {
+   ========================= */
+
+export const importarAdicionalVariable = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Archivo no enviado (campo 'file')." });
 
@@ -242,8 +324,8 @@ export const descargarTemplateAdicionalVariable = async (_req, res) => {
       const idx = i + 2; // fila real (asumiendo encabezados en 1)
 
       const dni = cell(raw.dni);
-      const periodo = cell(raw.periodo);
-      const tipo = raw.tipo;           // id o descripción
+      const periodo = normalizarPeriodo(raw.periodo);
+      const tipo = raw.tipo;
       const fechaRaw = raw.fecha;          // puede ser string DD/MM/YYYY o YYYY-MM-DD, Date o serial
       const montoVal = raw.monto;
       const observaciones = raw.observaciones == null ? null : String(raw.observaciones);
@@ -287,19 +369,49 @@ export const descargarTemplateAdicionalVariable = async (_req, res) => {
         // viene como id
         tipoRow = await AdicionalVariableTipo.findByPk(asNum);
       } else {
-        // viene como descripción exacta
-        const desc = String(tipo).trim();
-        tipoRow = await AdicionalVariableTipo.findOne({ where: { descripcion: desc } });
-      }
+        // viene como descripción
+        const descOriginal = String(tipo).trim();
+        const descUpper = descOriginal.toUpperCase();
 
-      // Crear tipo si no existe y está habilitado
-      if (!tipoRow && createMissing) {
-        tipoRow = await AdicionalVariableTipo.create({
-          descripcion: String(tipo).trim(),
-          categoria: null,
+        // VALE, ADELANTO y PRESTAMO se normalizan
+        const desc =
+          descUpper === "VALE" ||
+            descUpper === "ADELANTO" ||
+            descUpper === "PRESTAMO"
+            ? descUpper
+            : descOriginal;
+
+        tipoRow = await AdicionalVariableTipo.findOne({
+          where: { descripcion: desc }
         });
       }
 
+      // Crear automáticamente VALE, ADELANTO y PRESTAMO si no existen.
+      // Para cualquier otro tipo, respetamos createMissing.
+      if (!tipoRow) {
+        const tipoTexto = String(tipo).trim();
+        const tipoUpper = tipoTexto.toUpperCase();
+
+        if (
+          tipoUpper === "VALE" ||
+          tipoUpper === "ADELANTO" ||
+          tipoUpper === "PRESTAMO"
+        ) {
+
+          tipoRow = await AdicionalVariableTipo.create({
+            descripcion: tipoUpper,
+            categoria: "descuento",
+          });
+
+        } else if (createMissing) {
+
+          tipoRow = await AdicionalVariableTipo.create({
+            descripcion: tipoTexto,
+            categoria: null,
+          });
+
+        }
+      }
       if (!tipoRow) {
         out.errores.push({ row: idx, error: `Tipo no existente: ${String(tipo)}` });
         continue;

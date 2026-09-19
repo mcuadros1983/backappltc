@@ -101,9 +101,9 @@ export const listarAdicionalesVariables = async (req, res) => {
       const term = `%${String(q).trim()}%`;
       where[Op.or] = [
         { descripcion: { [likeOp]: term } },
-        { "$Empleado.apellido$": { [likeOp]: term } },
-        { "$Empleado.nombre$": { [likeOp]: term } },
-        { "$Empleado.numero$": { [likeOp]: term } },
+        { "$EmpleadoAV.apellido$": { [likeOp]: term } },
+        { "$EmpleadoAV.nombre$": { [likeOp]: term } },
+        { "$EmpleadoAV.numero$": { [likeOp]: term } },
       ];
     }
 

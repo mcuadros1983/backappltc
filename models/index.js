@@ -61,6 +61,8 @@ import Recibo from "../models/sueldoempleado/recibo.js";
 import ReciboItem from "../models/sueldoempleado/reciboitem.js";
 import AdicionalVariableTipo from "./sueldoempleado/adicionalvariabletipo.js";
 
+import PrestamoEmpleado from "../models/sueldoempleado/prestamoEmpleadoModel.js";
+
 import GastoEstimado from "./tesoreria/gastoestimado.js";
 import GastoEstimadoInstancia from "./tesoreria/gastoestimadoinstancia.js";
 import GastoEstimadoPago from "./tesoreria/gastoestimadopago.js";
@@ -297,6 +299,26 @@ AudioSegmentAnalysis.belongsTo(AudioSegment, {
   as: "segment",
 });
 registerAuditHooks(sequelize);
+
+EmpleadoTabla.hasMany(PrestamoEmpleado, {
+  foreignKey: "empleado_id",
+  as: "Prestamos",
+});
+
+PrestamoEmpleado.belongsTo(EmpleadoTabla, {
+  foreignKey: "empleado_id",
+  as: "Empleado",
+});
+
+PrestamoEmpleado.hasMany(AdicionalVariable, {
+  foreignKey: "prestamo_id",
+  as: "Cuotas",
+});
+
+AdicionalVariable.belongsTo(PrestamoEmpleado, {
+  foreignKey: "prestamo_id",
+  as: "Prestamo",
+});
 
 // Relaciones para MovimientoCajaTesoreria
 MovimientoCajaTesoreria.belongsTo(CajaTesoreria, { foreignKey: "caja_id" });

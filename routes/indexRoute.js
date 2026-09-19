@@ -92,6 +92,7 @@ import adicionalFijoValorRouter from "./sueldoempleado/adicionalFijoValorRoute.j
 import empleadoAdicionalFijoRouter from "./sueldoempleado/empleadoAdicionalFijoRoute.js";
 import adicionalVariableTipoRouter from "./sueldoempleado/adicionalVariableTipoRoute.js";
 import adicionalVariableRouter from "./sueldoempleado/adicionalVariableRoute.js";
+import prestamoEmpleadoRouter from "./sueldoempleado/prestamoEmpleadoRoutes.js";
 import periodoLiquidacionRouter from "./sueldoempleado/periodoLiquidacionRoute.js";
 import liquidacionRouter from "./sueldoempleado/liquidacionRoute.js";
 import adicionalVariableImportRouter from "./sueldoempleado/adicionalVariableImportRoute.js";
@@ -505,6 +506,7 @@ router.use(adicionalFijoValorRouter);
 router.use(empleadoAdicionalFijoRouter);
 router.use(adicionalVariableTipoRouter);
 router.use(adicionalVariableRouter);
+router.use(prestamoEmpleadoRouter);
 router.use(periodoLiquidacionRouter);
 router.use(liquidacionRouter);
 router.use(adicionalVariableImportRouter);

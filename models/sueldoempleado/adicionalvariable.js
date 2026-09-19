@@ -7,6 +7,10 @@ const AdicionalVariable = sequelize.define("AdicionalVariable", {
     descripcion: { type: DataTypes.TEXT, allowNull: true },
     empleado_id: { type: DataTypes.INTEGER, allowNull: false },
     adicionalvariabletipo_id: { type: DataTypes.INTEGER, allowNull: true },
+    prestamo_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+    },
     periodo: { type: DataTypes.STRING, allowNull: false }, // "YYYY-MM"
     periodo_id: { type: DataTypes.INTEGER, allowNull: true },
     monto: { type: DataTypes.DECIMAL(12, 2), allowNull: false },

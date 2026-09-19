@@ -10,7 +10,7 @@ export const listarTiposVariables = async (_req, res) => {
   }
 };
 
-const CATEGORIAS_VALIDAS = ["adicional", "descuento"];
+const CATEGORIAS_VALIDAS = ["adicional", "descuento","ADELANTO","VALE"];
 
 export const crearTipoVariable = async (req, res) => {
   try {

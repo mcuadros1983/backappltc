@@ -24,6 +24,8 @@ import schedulerService
   from "./services/scheduler/schedulerService.js";
 import libroIVAMensualJob
   from "./services/scheduler/jobs/libroIVAMensualJob.js";
+import periodoLiquidacionMensualJob
+  from "./services/scheduler/jobs/periodoLiquidacionMensualJob.js";
 import { WebSocketServer } from "ws"; // Importar WebSocket
 import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos de WebSocket
 import { runFidelizacionJobs } from "./jobs/fidelizacion/fidelizacionJobs.js";
@@ -165,9 +167,21 @@ async function main() {
 
     await libroIVAMensualJob();
 
+
     console.log(
       "[STARTUP] ✅ Libros IVA verificados"
     );
+
+    console.log(
+      "[STARTUP] Verificando período de liquidación..."
+    );
+
+    await periodoLiquidacionMensualJob();
+
+    console.log(
+      "[STARTUP] ✅ Período de liquidación verificado"
+    );
+
     /*
     |--------------------------------------------------------------------------
     | 6. SUBSCRIBERS

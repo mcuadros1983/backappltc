@@ -18,6 +18,9 @@ import inteligenciaSnapshotDiarioJob
 
 import libroIVAMensualJob
     from "./jobs/libroIVAMensualJob.js";
+
+import periodoLiquidacionMensualJob
+    from "./jobs/periodoLiquidacionMensualJob.js";
 /*=========================================================
   MAPA DE JOBS
 =========================================================*/
@@ -32,7 +35,9 @@ const handlers = {
 
     inteligenciaSnapshotDiarioJob,
 
-    libroIVAMensualJob
+    libroIVAMensualJob,
+
+    periodoLiquidacionMensualJob
 
 };
 
