@@ -91,6 +91,9 @@ function inferPerm(path = "") {
   if (p === "/asistencias") return "asistencia:view";
   if (p === "/jornadasasistencias") return "asistencia:jornada.manage";
   if (p === "/parametrosasistencias") return "asistencia:parametro.manage";
+  // ===== Sueldos =====
+  if (p === "/sueldostesoreria/prestamosempleados")
+    return "sueldos:prestamos.tesoreria";
 
   // ===== Tesorería =====
   if (p === "/tesoreria/cajas/apertura") return "tesoreria:caja.open";
@@ -274,6 +277,8 @@ const KNOWN_PATHS = [
   "/asistencias/listarvacaciones", "/asistencias/planificacion",
   "/asistencias/horarios", "/asistencias/asignarempleado", "/asistencias/huellanavegador",
   "/asistencias", "/jornadasasistencias", "/parametrosasistencias",
+  // Sueldos
+  "/sueldostesoreria/prestamosempleados",
 
   // Tesorería
   "/tesoreria/cajas/apertura", "/tesoreria/movimientos-caja-tesoreria", "/tesoreria/retirossucursales",
@@ -471,7 +476,8 @@ const LABELS_ES = {
   "/asistencias": "Asistencias",
   "/jornadasasistencias": "Jornadas",
   "/parametrosasistencias": "Parámetros de asistencia",
-
+  // Sueldos
+  "/sueldostesoreria/prestamosempleados": "Préstamos a Empleados",
   // Tesorería
   "/tesoreria/cajas/apertura": "Apertura de caja",
   "/tesoreria/movimientos-caja-tesoreria": "Movimientos de caja",
