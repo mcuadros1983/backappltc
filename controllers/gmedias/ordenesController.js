@@ -32,7 +32,7 @@ const obtenerOrdenes = async (req, res, next) => {
       ],
     });
 
-    res.json(ordenes); 
+    res.json(ordenes);
   } catch (error) {
     next(error);
   }
@@ -329,7 +329,7 @@ const actualizarOrden = async (req, res, next) => {
 //             product.tropa ? product.tropa : 0,
 //             product.fecha
 
-        
+
 //           );
 //         } else {
 //           // Si la categoría del producto no es porcino, simplemente actualiza el producto sin modificar el ingreso
@@ -709,7 +709,11 @@ const crearOrdenesDesdeExcel = async (req, res, next) => {
     for (let i = 0; i < data.length; i++) {
       const fila = data[i];
       for (const campo of camposEsperados) {
-        if (!fila[campo]) {
+        if (
+          fila[campo] === undefined ||
+          fila[campo] === null ||
+          String(fila[campo]).trim() === ""
+        ) {
           errores.push(`Fila ${i + 2} sin campo obligatorio: ${campo}`);
         }
       }
