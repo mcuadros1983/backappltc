@@ -16,6 +16,12 @@ const Concepto = sequelize.define("Concepto", {
     allowNull: false,
     comment: "Código del Concepto",
   },
+  cambia_sucursal: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "Indica si el evento produce un cambio temporal de sucursal",
+  },
 }, {
   tableName: "concepto",
   freezeTableName: true,

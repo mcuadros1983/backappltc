@@ -12,6 +12,10 @@ const Evento = sequelize.define("Evento", {
   concepto_id: { type: DataTypes.INTEGER, allowNull: false },
   empleado_id: { type: DataTypes.INTEGER, allowNull: false },
   sucursal_id: { type: DataTypes.INTEGER, allowNull: false },
+  sucursal_destino_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 
   observaciones: { type: DataTypes.STRING(255), allowNull: true },
 }, {

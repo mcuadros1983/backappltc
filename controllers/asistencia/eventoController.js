@@ -1,6 +1,7 @@
 import { sequelize } from "../../config/database.js";
 import { Op } from "sequelize";
 import Evento from "../../models/asistencia/Evento.js";
+import Concepto from "../../models/asistencia/Concepto.js";
 
 const validar = (body) => {
   const { fecha_desde, fecha_hasta, concepto_id, empleado_id, sucursal_id } = body || {};
@@ -13,13 +14,78 @@ const validar = (body) => {
   return null;
 };
 
+const validarCambioSucursal = async (
+  body,
+  transaction
+) => {
+
+  const conceptoId =
+    Number(body?.concepto_id);
+
+  if (!conceptoId) {
+    return null;
+  }
+
+  const concepto =
+    await Concepto.findByPk(
+      conceptoId,
+      {
+        transaction,
+      }
+    );
+
+  if (!concepto) {
+    return "El concepto indicado no existe";
+  }
+
+  if (
+    concepto.cambia_sucursal &&
+    !body?.sucursal_destino_id
+  ) {
+    return "sucursal_destino_id es requerido para un cambio de sucursal";
+  }
+
+  return null;
+};
+
 export const crearEvento = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const err = validar(req.body);
-    if (err) { await t.rollback(); return res.status(400).json({ error: err }); }
 
-    const row = await Evento.create(req.body, { transaction: t });
+    if (err) {
+      await t.rollback();
+
+      return res
+        .status(400)
+        .json({
+          error: err
+        });
+    }
+
+    const errCambioSucursal =
+      await validarCambioSucursal(
+        req.body,
+        t
+      );
+
+    if (errCambioSucursal) {
+      await t.rollback();
+
+      return res
+        .status(400)
+        .json({
+          error: errCambioSucursal
+        });
+    }
+
+    const row =
+      await Evento.create(
+        req.body,
+        {
+          transaction: t
+        }
+      );
     await t.commit();
     return res.status(201).json(row);
   } catch (e) {
@@ -88,32 +154,130 @@ export const obtenerEventoPorId = async (req, res) => {
   }
 };
 
-export const actualizarEvento = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    // Validamos con merge mínimo para no exigir todos los campos si no los envían
-    const err = validar({
-      fecha_desde: req.body?.fecha_desde ?? "1900-01-01",
-      fecha_hasta: req.body?.fecha_hasta ?? "2900-01-01",
-      concepto_id: req.body?.concepto_id ?? 1,
-      empleado_id: req.body?.empleado_id ?? 1,
-      sucursal_id: req.body?.sucursal_id ?? 1,
-    });
-    if (err) { await t.rollback(); return res.status(400).json({ error: err }); }
+// export const actualizarEvento = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     // Validamos con merge mínimo para no exigir todos los campos si no los envían
+//     const err = validar({
+//       fecha_desde: req.body?.fecha_desde ?? "1900-01-01",
+//       fecha_hasta: req.body?.fecha_hasta ?? "2900-01-01",
+//       concepto_id: req.body?.concepto_id ?? 1,
+//       empleado_id: req.body?.empleado_id ?? 1,
+//       sucursal_id: req.body?.sucursal_id ?? 1,
+//     });
+//     if (err) { await t.rollback(); return res.status(400).json({ error: err }); }
 
-    const row = await Evento.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
-    if (!row) { await t.rollback(); return res.status(404).json({ error: "Evento no encontrado" }); }
+//     const row = await Evento.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+//     if (!row) { await t.rollback(); return res.status(404).json({ error: "Evento no encontrado" }); }
 
-    await row.update(req.body, { transaction: t });
-    await t.commit();
-    return res.status(200).json(row);
-  } catch (e) {
-    await t.rollback();
-    console.error("❌ actualizarEvento:", e);
-    return res.status(500).json({ error: "Error al actualizar evento", detalle: e.message });
-  }
-};
+//     await row.update(req.body, { transaction: t });
+//     await t.commit();
+//     return res.status(200).json(row);
+//   } catch (e) {
+//     await t.rollback();
+//     console.error("❌ actualizarEvento:", e);
+//     return res.status(500).json({ error: "Error al actualizar evento", detalle: e.message });
+//   }
+// };
 
+export const actualizarEvento =
+  async (req, res) => {
+
+    const t =
+      await sequelize.transaction();
+
+    try {
+
+      const row =
+        await Evento.findByPk(
+          req.params.id,
+          {
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          }
+        );
+
+      if (!row) {
+        await t.rollback();
+
+        return res
+          .status(404)
+          .json({
+            error:
+              "Evento no encontrado",
+          });
+      }
+
+      // Construimos cómo quedaría
+      // finalmente el evento después
+      // de aplicar los cambios.
+      const datosFinales = {
+        ...row.toJSON(),
+        ...req.body,
+      };
+
+      const err =
+        validar(datosFinales);
+
+      if (err) {
+        await t.rollback();
+
+        return res
+          .status(400)
+          .json({
+            error: err,
+          });
+      }
+
+      const errCambioSucursal =
+        await validarCambioSucursal(
+          datosFinales,
+          t
+        );
+
+      if (errCambioSucursal) {
+        await t.rollback();
+
+        return res
+          .status(400)
+          .json({
+            error:
+              errCambioSucursal,
+          });
+      }
+
+      await row.update(
+        req.body,
+        {
+          transaction: t,
+        }
+      );
+
+      await t.commit();
+
+      return res
+        .status(200)
+        .json(row);
+
+    } catch (e) {
+
+      await t.rollback();
+
+      console.error(
+        "❌ actualizarEvento:",
+        e
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            "Error al actualizar evento",
+          detalle: e.message,
+        });
+    }
+  };
+  
 export const eliminarEvento = async (req, res) => {
   const t = await sequelize.transaction();
   try {
