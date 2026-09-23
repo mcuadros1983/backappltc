@@ -7,6 +7,15 @@ const empleadoAdicionalFijoRouter = Router();
 empleadoAdicionalFijoRouter.get("/empleadoadicionalfijo", controller.listarFijosEmpleado);
 empleadoAdicionalFijoRouter.get("/empleadoadicionalfijo/vigentes", controller.fijosVigentesEmpleado);
 empleadoAdicionalFijoRouter.post("/empleadoadicionalfijo", controller.asignarFijoEmpleado);
+empleadoAdicionalFijoRouter.put(
+  "/empleadoadicionalfijo/:id",
+  controller.actualizarFijoEmpleado
+);
+
+empleadoAdicionalFijoRouter.delete(
+  "/empleadoadicionalfijo/:id",
+  controller.eliminarFijoEmpleado
+);
 empleadoAdicionalFijoRouter.put("/empleadoadicionalfijo/:id/cerrar", controller.cerrarFijoEmpleado);
 
 export default empleadoAdicionalFijoRouter;

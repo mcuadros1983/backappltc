@@ -28,6 +28,99 @@ export const asignarFijoEmpleado = async (req, res) => {
   res.status(201).json(row);
 };
 
+export const actualizarFijoEmpleado = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      empleado_id,
+      adicionalfijotipo_id,
+      vigencia_desde,
+      vigencia_hasta,
+      monto_override,
+    } = req.body || {};
+
+    const row =
+      await EmpleadoAdicionalFijo.findByPk(id);
+
+    if (!row) {
+      return res.status(404).json({
+        error: "No encontrado",
+      });
+    }
+
+    await row.update({
+      empleado_id:
+        empleado_id ?? row.empleado_id,
+
+      adicionalfijotipo_id:
+        adicionalfijotipo_id ??
+        row.adicionalfijotipo_id,
+
+      vigencia_desde:
+        vigencia_desde ??
+        row.vigencia_desde,
+
+      vigencia_hasta:
+        vigencia_hasta !== undefined
+          ? vigencia_hasta || null
+          : row.vigencia_hasta,
+
+      monto_override:
+        monto_override !== undefined
+          ? monto_override
+          : row.monto_override,
+    });
+
+    return res.json(row);
+
+  } catch (e) {
+    console.error(
+      "Error actualizarFijoEmpleado:",
+      e
+    );
+
+    return res.status(500).json({
+      error:
+        "No se pudo actualizar la asignación.",
+    });
+  }
+};
+
+export const eliminarFijoEmpleado = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const row =
+      await EmpleadoAdicionalFijo.findByPk(id);
+
+    if (!row) {
+      return res.status(404).json({
+        error: "No encontrado",
+      });
+    }
+
+    await row.destroy();
+
+    return res.json({
+      mensaje:
+        "Asignación eliminada correctamente.",
+      id: Number(id),
+    });
+
+  } catch (e) {
+    console.error(
+      "Error eliminarFijoEmpleado:",
+      e
+    );
+
+    return res.status(500).json({
+      error:
+        "No se pudo eliminar la asignación.",
+    });
+  }
+};
+
 export const cerrarFijoEmpleado = async (req, res) => {
   const { id } = req.params;
   const { vigencia_hasta } = req.body || {};
