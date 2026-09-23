@@ -1599,6 +1599,7 @@ export const acreditarPagoProgramado = async (req, res) => {
 
             comprobanteegreso_id:
               pago.comprobanteegreso_id || null,
+            fecha_recepcion: fecha,
           },
 
           {

@@ -217,6 +217,7 @@ export const registrarAdelantoEmpleado = async (req, res) => {
           categoriaegreso_id,
           imputacioncontable_id,
           idempotency_key: null,
+          fecha_recepcion:fecha,
         },
         { transaction: t }
       );

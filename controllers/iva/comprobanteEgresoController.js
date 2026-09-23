@@ -2041,6 +2041,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
             ordenpago_id: orden.id,
             comprobanteegreso_id: comp.id || null,
             proveedor_id: comprobante.proveedor_id || null,
+            fecha_recepcion:fechaPago,
           },
           { transaction: t }
         );

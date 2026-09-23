@@ -92,6 +92,7 @@ export const registrarAnticipoProveedor = async (req, res) => {
           categoriaegreso_id: p.categoriaegreso_id || null,
           imputacioncontable_id: imputacion || null,
           idempotency_key: p.idempotency_key || null,
+          fecha_recepcion: fechaPago,
         }, { transaction: t });
         continue;
       }
@@ -617,8 +618,8 @@ export const emitirOrdenPago = async (req, res) => {
       const compLabel = uniques.length === 0
         ? null
         : (uniques.length === 1
-            ? `Comp. ${(byId[uniques[0]]?.nrocomprobante || uniques[0])}`
-            : `Varios comprobantes (${uniques.length})`);
+          ? `Comp. ${(byId[uniques[0]]?.nrocomprobante || uniques[0])}`
+          : `Varios comprobantes (${uniques.length})`);
       const withComp = (base) => compLabel ? `${base} (${compLabel})` : base;
 
       // 1) Crear movimientos NUEVOS
@@ -640,6 +641,7 @@ export const emitirOrdenPago = async (req, res) => {
             categoriaegreso_id: p.categoriaegreso_id || null,
             imputacioncontable_id: p.imputacioncontable_id || null,
             ordenpago_id: orden.id,
+            fecha_recepcion: fechaPago,
           }, { transaction: t });
           continue;
         }
@@ -745,7 +747,7 @@ export const emitirOrdenPago = async (req, res) => {
       let totalAplicadoEfectivo = 0;
       for (const it of items) {
         const compId = Number(it.comprobanteegreso_id);
-        const monto  = Number(it.monto_aplicado || 0);
+        const monto = Number(it.monto_aplicado || 0);
         if (monto <= 0) continue;
 
         const comp = byId[compId];
@@ -828,6 +830,7 @@ export const emitirOrdenPago = async (req, res) => {
           imputacioncontable_id: p.imputacioncontable_id || null,
           ordenpago_id: null, // 👈 explícitamente null
           proveedor_id,
+          fecha_recepcion: fechaPago,
         }, { transaction: t });
         creados.caja.push(mov);
         continue;
@@ -940,14 +943,14 @@ export const emitirOrdenPago = async (req, res) => {
       const compLabel = uniques.length === 0
         ? null
         : (uniques.length === 1
-            ? `Comp. ${(byId[uniques[0]]?.nrocomprobante || uniques[0])}`
-            : `Varios comprobantes (${uniques.length})`);
+          ? `Comp. ${(byId[uniques[0]]?.nrocomprobante || uniques[0])}`
+          : `Varios comprobantes (${uniques.length})`);
 
       // Aplicar abonos (con nro de comprobante en descripción) y actualizar saldos
       let totalAplicadoEfectivo = 0;
       for (const it of items) {
         const compId = Number(it.comprobanteegreso_id);
-        const monto  = Number(it.monto_aplicado || 0);
+        const monto = Number(it.monto_aplicado || 0);
         if (monto <= 0) continue;
 
         const comp = byId[compId];

@@ -1721,6 +1721,8 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
 
                 comprobanteegreso_id:
                   compIdUnico,
+                fecha_recepcion:
+                  fechaPago,
               },
               {
                 transaction: t,

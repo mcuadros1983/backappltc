@@ -223,8 +223,8 @@ export const pagarSueldoEmpleado = async (req, res) => {
 
     // ✅ Descripción con nombre de empleado
     const nombreEmp = await getNombreEmpleado(Number(pago.empleado_id), t);
-     // const desc = `${nombreEmp} - PAGO DE SUELDO`;
-     const desc = nombreEmp;
+    // const desc = `${nombreEmp} - PAGO DE SUELDO`;
+    const desc = nombreEmp;
 
     const baseMovimiento = {
       empresa_id,
@@ -248,7 +248,11 @@ export const pagarSueldoEmpleado = async (req, res) => {
     // 1) Registrar el movimiento (CAJA o BANCO)
     if (medio === "caja") {
       movimiento = await MovimientoCajaTesoreria.create(
-        { ...baseMovimiento, caja_id: Number(caja_id) },
+        {
+          ...baseMovimiento,
+          fecha_recepcion: baseMovimiento.fecha,
+          caja_id: Number(caja_id),
+        },
         { transaction: t }
       );
     } else {
@@ -257,7 +261,6 @@ export const pagarSueldoEmpleado = async (req, res) => {
         { transaction: t }
       );
     }
-
     // 2) Registrar el PagoSueldoEmpleado
     const pagoRow = await PagoSueldoEmpleado.create(
       {

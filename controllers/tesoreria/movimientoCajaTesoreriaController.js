@@ -146,6 +146,7 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
         idempotency_key: idempotencyKey || null,
         proyecto_id: proyecto_id || null,
         ordenpago_id: null,
+        fecha_recepcion: fecha || sequelize.literal("CURRENT_DATE"),
       },
       { transaction: t }
     );
@@ -288,15 +289,32 @@ export const registrarIngresoCobranzaClientes = async (req, res, next) => {
 
 // Crear movimiento de caja
 export const crearMovimientoCajaTesoreria = async (req, res) => {
+
   try {
-    const movimiento = await MovimientoCajaTesoreria.create(req.body);
+
+    const datosMovimiento = {
+      ...req.body,
+      fecha_recepcion: req.body.fecha,
+    };
+
+    const movimiento = await MovimientoCajaTesoreria.create(
+      datosMovimiento
+    );
+
     res.status(201).json(movimiento);
+
   } catch (error) {
+
     res.status(500).json({
+
       error: "Error al crear el movimiento de caja de tesorería",
+
       detalle: error.message,
+
     });
+
   }
+
 };
 
 export const listarMovimientosCajaTesoreria = async (req, res) => {
@@ -2366,6 +2384,7 @@ export const registrarEgresoCajaIndependiente = async (req, res) => {
           imputacion || null,
         idempotency_key: idempotencyKey || null,
         proveedor_id: egreso.proveedor_id || null,
+        fecha_recepcion: fecha,
       },
       { transaction: t }
     );
@@ -2610,6 +2629,7 @@ export const registrarAnticipoProveedor = async (req, res) => {
             p.imputacioncontable_id || null,
           idempotency_key: p.idempotency_key || (idempotencyKey ? `${idempotencyKey}#${i}` : null),
           proveedor_id,
+          fecha_recepcion: fechaPago,
         },
         { transaction: t }
       );
@@ -2727,6 +2747,7 @@ export const registrarDepositoBancario = async (req, res) => {
         categoriaegreso_id: deposito.categoriaegreso_id || null,
         imputacioncontable_id: imputacion || null,
         idempotency_key: idempotencyKey || null,
+        fecha_recepcion: fecha,
       },
       { transaction: t }
     );
@@ -2832,6 +2853,7 @@ export const registrarIngresoVarios = async (req, res, next) => {
         idempotency_key: idempotencyKey || null,
         proyecto_id: proyecto_id || null,
         ordenpago_id: null,
+        fecha_recepcion: fecha || sequelize.literal("CURRENT_DATE"),
       },
       { transaction: t }
     );
