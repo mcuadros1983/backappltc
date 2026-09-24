@@ -2209,6 +2209,611 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
   }
 };
 
+// const crearMovimientosOtrosPegados = async (req, res) => {
+//   try {
+//     const {
+//       tipo,
+//       sucursal_codigo,
+//       movimientos = [],
+//     } = req.body;
+
+//     // ==========================================
+//     // VALIDACIONES GENERALES
+//     // ==========================================
+
+//     if (!tipo || !sucursal_codigo) {
+//       return res.status(400).json({
+//         mensaje:
+//           "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+//       });
+//     }
+
+//     if (!["FABRICA", "ACHURA"].includes(tipo)) {
+//       return res.status(400).json({
+//         mensaje:
+//           `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
+//       });
+//     }
+
+//     if (
+//       !Array.isArray(movimientos) ||
+//       movimientos.length === 0
+//     ) {
+//       return res.status(400).json({
+//         mensaje:
+//           "Debe enviar al menos un movimiento.",
+//       });
+//     }
+
+//     // ==========================================
+//     // SUCURSAL ORIGEN
+//     // ==========================================
+
+//     const sucursalOrigen =
+//       await Sucursal.findOne({
+//         where: {
+//           codigo:
+//             String(sucursal_codigo).trim(),
+//         },
+//       });
+
+//     if (!sucursalOrigen) {
+//       throw new Error(
+//         `Sucursal origen inexistente (código: ${sucursal_codigo})`
+//       );
+//     }
+
+//     // ==========================================
+//     // NORMALIZAR FECHA
+//     // ==========================================
+
+//     const parseFecha = (fechaValor) => {
+//       if (!fechaValor) {
+//         return null;
+//       }
+
+//       const valor =
+//         String(fechaValor).trim();
+
+//       // dd/mm/yyyy
+//       if (valor.includes("/")) {
+//         const partes = valor.split("/");
+
+//         if (partes.length !== 3) {
+//           return null;
+//         }
+
+//         const [dia, mes, anio] = partes;
+
+//         const fechaISO =
+//           `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+
+//         const date = new Date(
+//           `${fechaISO}T00:00:00`
+//         );
+
+//         if (isNaN(date.getTime())) {
+//           return null;
+//         }
+
+//         return fechaISO;
+//       }
+
+//       // yyyy-mm-dd
+//       const partesISO =
+//         valor.split("-");
+
+//       if (partesISO.length === 3) {
+//         const [
+//           anio,
+//           mes,
+//           dia,
+//         ] = partesISO;
+
+//         const fechaISO =
+//           `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+
+//         const date = new Date(
+//           `${fechaISO}T00:00:00`
+//         );
+
+//         if (!isNaN(date.getTime())) {
+//           return fechaISO;
+//         }
+//       }
+
+//       return null;
+//     };
+
+//     // ==========================================
+//     // PROCESAR FILAS
+//     // ==========================================
+
+//     const movimientosAInsertar = [];
+
+//     for (
+//       let index = 0;
+//       index < movimientos.length;
+//       index++
+//     ) {
+//       const row = movimientos[index];
+
+//       const fila = index + 1;
+
+//       const {
+//         fecha,
+//         articulocodigo,
+//         cantidad,
+//         remito,
+//         sucursaldestino_codigo,
+//       } = row;
+
+//       // ------------------------------------------
+//       // CAMPOS OBLIGATORIOS
+//       // ------------------------------------------
+
+//       if (
+//         !fecha ||
+//         !articulocodigo ||
+//         cantidad === undefined ||
+//         cantidad === null ||
+//         String(cantidad).trim() === "" ||
+//         !sucursaldestino_codigo
+//       ) {
+//         throw new Error(
+//           `Faltan campos obligatorios en la fila ${fila}.`
+//         );
+//       }
+
+//       // ------------------------------------------
+//       // FECHA
+//       // ------------------------------------------
+
+//       const fechaNormalizada =
+//         parseFecha(fecha);
+
+//       if (!fechaNormalizada) {
+//         throw new Error(
+//           `Fecha inválida en la fila ${fila}: ${fecha}`
+//         );
+//       }
+
+//       // ------------------------------------------
+//       // SUCURSAL DESTINO
+//       // ------------------------------------------
+
+//       const sucursalDestino =
+//         await Sucursal.findOne({
+//           where: {
+//             codigo:
+//               String(
+//                 sucursaldestino_codigo
+//               ).trim(),
+//           },
+//         });
+
+//       if (!sucursalDestino) {
+//         throw new Error(
+//           `Sucursal destino inexistente en fila ${fila} ` +
+//           `(código: ${sucursaldestino_codigo})`
+//         );
+//       }
+
+//       // ------------------------------------------
+//       // ARTÍCULO
+//       // ------------------------------------------
+
+//       const codigoArticulo =
+//         String(
+//           articulocodigo
+//         ).trim();
+
+//       const articulo =
+//         await ArticuloTabla.findOne({
+//           where: {
+//             codigobarra:
+//               codigoArticulo,
+//           },
+//         });
+
+//       if (!articulo) {
+//         throw new Error(
+//           `Artículo inexistente en fila ${fila} ` +
+//           `(código: ${articulocodigo})`
+//         );
+//       }
+
+//       // ------------------------------------------
+//       // CANTIDAD
+//       // ------------------------------------------
+
+//       const cantidadNormalizada =
+//         Number(
+//           String(cantidad)
+//             .trim()
+//             .replace(",", ".")
+//         );
+
+//       if (
+//         !Number.isFinite(
+//           cantidadNormalizada
+//         ) ||
+//         cantidadNormalizada <= 0
+//       ) {
+//         throw new Error(
+//           `Cantidad inválida en la fila ${fila}: ${cantidad}`
+//         );
+//       }
+
+//       // ------------------------------------------
+//       // MOVIMIENTO
+//       // ------------------------------------------
+
+//       movimientosAInsertar.push({
+//         fecha:
+//           fechaNormalizada,
+
+//         sucursal_id:
+//           sucursalOrigen.id,
+
+//         articulocodigo:
+//           codigoArticulo,
+
+//         articulodescripcion:
+//           articulo.descripcion,
+
+//         cantidad:
+//           cantidadNormalizada,
+
+//         tipo:
+//           tipo === "FABRICA"
+//             ? "FABRICA"
+//             : "ACHURA",
+
+//         numerolote:
+//           remito
+//             ? String(remito).trim()
+//             : null,
+
+//         sucursaldestino_id:
+//           sucursalDestino.id,
+//       });
+//     }
+
+//     // ==========================================
+//     // INSERTAR
+//     // ==========================================
+
+//     const movimientosCreados =
+//       await InventarioMovimientoOtro.bulkCreate(
+//         movimientosAInsertar
+//       );
+
+//     return res.status(200).json({
+//       mensaje:
+//         `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
+
+//       movimientos:
+//         movimientosCreados,
+//     });
+
+//   } catch (error) {
+//     console.error(
+//       "Error al procesar movimientos pegados:",
+//       error.message
+//     );
+
+//     return res.status(400).json({
+//       mensaje:
+//         `Error al procesar movimientos: ${error.message}`,
+//     });
+//   }
+// };
+
+const crearMovimientosOtrosPegados = async (req, res) => {
+  try {
+    const {
+      tipo,
+      sucursal_codigo,
+      movimientos = [],
+    } = req.body;
+
+    // ==========================================
+    // VALIDACIONES GENERALES
+    // ==========================================
+
+    if (!tipo || !sucursal_codigo) {
+      return res.status(400).json({
+        mensaje:
+          "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+      });
+    }
+
+    if (!["FABRICA", "ACHURA"].includes(tipo)) {
+      return res.status(400).json({
+        mensaje:
+          `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
+      });
+    }
+
+    if (
+      !Array.isArray(movimientos) ||
+      movimientos.length === 0
+    ) {
+      return res.status(400).json({
+        mensaje:
+          "Debe enviar al menos un movimiento.",
+      });
+    }
+
+    // ==========================================
+    // SUCURSAL ORIGEN
+    // ==========================================
+
+    const sucursalOrigen =
+      await Sucursal.findOne({
+        where: {
+          codigo: String(sucursal_codigo).trim(),
+        },
+      });
+
+    if (!sucursalOrigen) {
+      throw new Error(
+        `Sucursal origen inexistente (código: ${sucursal_codigo})`
+      );
+    }
+
+    // ==========================================
+    // FUNCIÓN PARA NORMALIZAR FECHA
+    // ==========================================
+
+    const parseFecha = (fechaValor) => {
+      if (!fechaValor) {
+        return null;
+      }
+
+      const valor =
+        String(fechaValor).trim();
+
+      // Formato DD/MM/YYYY
+      if (valor.includes("/")) {
+        const partes =
+          valor.split("/");
+
+        if (partes.length !== 3) {
+          return null;
+        }
+
+        const [dia, mes, anio] =
+          partes;
+
+        const fechaISO =
+          `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+
+        const date =
+          new Date(
+            `${fechaISO}T00:00:00`
+          );
+
+        if (isNaN(date.getTime())) {
+          return null;
+        }
+
+        return fechaISO;
+      }
+
+      // Formato YYYY-MM-DD
+      const match =
+        valor.match(
+          /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+        );
+
+      if (match) {
+        const [, anio, mes, dia] =
+          match;
+
+        const fechaISO =
+          `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+
+        const date =
+          new Date(
+            `${fechaISO}T00:00:00`
+          );
+
+        if (isNaN(date.getTime())) {
+          return null;
+        }
+
+        return fechaISO;
+      }
+
+      return null;
+    };
+
+    // ==========================================
+    // PROCESAR MOVIMIENTOS
+    // ==========================================
+
+    const movimientosAInsertar = [];
+
+    for (
+      let index = 0;
+      index < movimientos.length;
+      index++
+    ) {
+      const row =
+        movimientos[index];
+
+      const fila =
+        index + 1;
+
+      const {
+        fecha,
+        articulocodigo,
+        cantidad,
+        remito,
+        sucursaldestino_codigo,
+      } = row;
+
+      // ========================================
+      // CAMPOS OBLIGATORIOS
+      // ========================================
+
+      if (
+        !fecha ||
+        !articulocodigo ||
+        cantidad === undefined ||
+        cantidad === null ||
+        String(cantidad).trim() === "" ||
+        !sucursaldestino_codigo
+      ) {
+        throw new Error(
+          `Faltan campos obligatorios en la fila ${fila}.`
+        );
+      }
+
+      // ========================================
+      // FECHA
+      // ========================================
+
+      const fechaNormalizada =
+        parseFecha(fecha);
+
+      if (!fechaNormalizada) {
+        throw new Error(
+          `Fecha inválida en la fila ${fila}: ${fecha}`
+        );
+      }
+
+      // ========================================
+      // SUCURSAL DESTINO
+      // ========================================
+
+      const sucursalDestino =
+        await Sucursal.findOne({
+          where: {
+            codigo:
+              String(
+                sucursaldestino_codigo
+              ).trim(),
+          },
+        });
+
+      if (!sucursalDestino) {
+        throw new Error(
+          `Sucursal destino inexistente en fila ${fila} ` +
+          `(código: ${sucursaldestino_codigo})`
+        );
+      }
+
+      // ========================================
+      // ARTÍCULO
+      // ========================================
+
+      const codigoArticulo =
+        String(
+          articulocodigo
+        ).trim();
+
+      const articulo =
+        await ArticuloTabla.findOne({
+          where: {
+            codigobarra:
+              codigoArticulo,
+          },
+        });
+
+      if (!articulo) {
+        throw new Error(
+          `Artículo inexistente en fila ${fila} ` +
+          `(código: ${articulocodigo})`
+        );
+      }
+
+      // ========================================
+      // CANTIDAD
+      // ========================================
+
+      const cantidadNormalizada =
+        Number(
+          String(cantidad)
+            .trim()
+            .replace(",", ".")
+        );
+
+      if (
+        !Number.isFinite(
+          cantidadNormalizada
+        ) ||
+        cantidadNormalizada <= 0
+      ) {
+        throw new Error(
+          `Cantidad inválida en la fila ${fila}: ${cantidad}`
+        );
+      }
+
+      // ========================================
+      // PREPARAR MOVIMIENTO
+      // ========================================
+
+      movimientosAInsertar.push({
+        fecha:
+          fechaNormalizada,
+
+        sucursal_id:
+          sucursalOrigen.id,
+
+        articulocodigo:
+          codigoArticulo,
+
+        articulodescripcion:
+          articulo.descripcion,
+
+        cantidad:
+          cantidadNormalizada,
+
+        tipo,
+
+        numerolote:
+          remito
+            ? String(remito).trim()
+            : null,
+
+        sucursaldestino_id:
+          sucursalDestino.id,
+      });
+    }
+
+    // ==========================================
+    // GUARDAR
+    // ==========================================
+
+    const movimientosCreados =
+      await InventarioMovimientoOtro.bulkCreate(
+        movimientosAInsertar
+      );
+
+    return res.status(200).json({
+      mensaje:
+        `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
+
+      movimientos:
+        movimientosCreados,
+    });
+
+  } catch (error) {
+    console.error(
+      "Error al procesar movimientos pegados:",
+      error
+    );
+
+    return res.status(400).json({
+      mensaje:
+        `Error al procesar movimientos: ${error.message}`,
+    });
+  }
+};
+
 const obtenerFechasUnicasMovimientosOtros = async (req, res, next) => {
   try {
     const fechas = await InventarioMovimientoOtro.findAll({
@@ -2537,4 +3142,5 @@ export {
   guardarRindeGeneral,
   eliminarRindeGeneral,
   obtenerSubcategoriasMedias,
+  crearMovimientosOtrosPegados
 };
