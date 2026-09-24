@@ -16,6 +16,11 @@ pagoProgramadoTesoreriaRouter.post(
   controller.registrarPagoProgramado
 );
 
+pagoProgramadoTesoreriaRouter.get(
+  "/pagos-programados/verificar-duplicado",
+  controller.verificarDuplicadoPagoProgramado
+);
+
 pagoProgramadoTesoreriaRouter.put(
   "/pagos-programados/:id",
   controller.actualizarPagoProgramado

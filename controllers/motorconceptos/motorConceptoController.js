@@ -3,11 +3,34 @@ import motorConceptoService from "../../services/motorconceptos/motorConceptoSer
 const ok = (res, data, message = null, status = 200) =>
   res.status(status).json({ success: true, message, data });
 
-const fail = (res, error, status = 400) =>
-  res.status(error.status || status).json({
-    success: false,
-    message: error.message || "Error en Motor de Conceptos",
-  });
+const fail = (
+  res,
+  error,
+  status = 400
+) =>
+  res
+    .status(
+      error.status ||
+      status
+    )
+    .json({
+      success: false,
+
+      message:
+        error.message ||
+        "Error en Motor de Conceptos",
+
+      ...(
+        Array.isArray(
+          error.errors
+        )
+          ? {
+              errors:
+                error.errors,
+            }
+          : {}
+      ),
+    });
 
 export const seedEntidadTipos = async (req, res) => {
   try { return ok(res, await motorConceptoService.seedEntidadTipos(req.user), "Catálogo inicializado"); }
@@ -140,3 +163,115 @@ export const getVencimientos = async (req, res) => {
     return fail(res, e);
   }
 };
+
+export const downloadImportTemplate =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const buffer =
+        await motorConceptoService
+          .getImportTemplate(
+            req.user
+          );
+
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+
+
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="Plantilla_Motor_Conceptos.xlsx"'
+      );
+
+
+      return res.send(
+        Buffer.from(
+          buffer
+        )
+      );
+
+    } catch (e) {
+
+      return fail(
+        res,
+        e
+      );
+
+    }
+
+  };
+
+
+export const validateImport =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const data =
+        await motorConceptoService
+          .validateImport(
+            req.user,
+            req.file
+          );
+
+
+      return ok(
+        res,
+        data
+      );
+
+    } catch (e) {
+
+      return fail(
+        res,
+        e
+      );
+
+    }
+
+  };
+
+
+export const importConceptos =
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const data =
+        await motorConceptoService
+          .importExcel(
+            req.user,
+            req.file,
+            req.body
+          );
+
+
+      return ok(
+        res,
+        data,
+        "Importación realizada correctamente"
+      );
+
+    } catch (e) {
+
+      return fail(
+        res,
+        e
+      );
+
+    }
+
+  };

@@ -3,25 +3,32 @@ import express from "express";
 import { authorize } from "../../middleware/authorize.js";
 
 import {
-//   seedEntidadTipos,
-  getEntidadTipos,
-  getAll,
-  getById,
-  create,
-  update,
-  remove,
-  createField,
-  updateField,
-  removeField,
-  createFileType,
-  updateFileType,
-  removeFileType,
-  createRule,
-  updateRule,
-  removeRule,
-  getCumplimiento,
-  getVencimientos,
+    //   seedEntidadTipos,
+    getEntidadTipos,
+    getAll,
+    getById,
+    create,
+    update,
+    remove,
+    createField,
+    updateField,
+    removeField,
+    createFileType,
+    updateFileType,
+    removeFileType,
+    createRule,
+    updateRule,
+    removeRule,
+    getCumplimiento,
+    getVencimientos,
+    downloadImportTemplate,
+    validateImport,
+    importConceptos,
 } from "../../controllers/motorconceptos/motorConceptoController.js";
+
+import {
+    motorConceptoExcelUpload,
+} from "../../middleware/motorConceptoExcelUpload.js";
 
 const router = express.Router();
 // router.use(JWTAuth);
@@ -54,6 +61,34 @@ router.get(
     "/",
     authorize("motorconceptos:view"),
     getAll
+);
+
+router.get(
+    "/importacion/plantilla",
+    authorize(
+        "motorconceptos:view"
+    ),
+    downloadImportTemplate
+);
+
+
+router.post(
+    "/importacion/validar",
+    authorize(
+        "motorconceptos:config"
+    ),
+    motorConceptoExcelUpload,
+    validateImport
+);
+
+
+router.post(
+    "/importacion",
+    authorize(
+        "motorconceptos:config"
+    ),
+    motorConceptoExcelUpload,
+    importConceptos
 );
 
 router.get(

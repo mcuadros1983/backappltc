@@ -12,10 +12,15 @@ import {
   MotorConceptoRegistro,
 
 } from "../../models/motorconceptos/index.js";
-
+import ExcelJS from "exceljs";
 // import {
 //   MotorConceptoRegistro,
 // } from "../../models/motorconceptos/index.js";
+
+import motorConceptoImportService
+  from "./motorConceptoImportService.js";
+
+
 
 const MODOS_CAPTURA = ["SOLO_DATOS", "SOLO_ARCHIVOS", "DATOS_Y_ARCHIVOS"];
 const TIPOS_CAMPO = [
@@ -81,6 +86,8 @@ const detailIncludes = [
     order: [["prioridad", "ASC"], ["id", "ASC"]],
   },
 ];
+
+
 
 const getConcept = async (id, options = {}) => {
   const row = await MotorConcepto.findByPk(id, options);
@@ -345,6 +352,53 @@ const motorConceptoService = {
     });
   },
 
+  async getImportTemplate(
+    user
+  ) {
+
+    assertUser(user);
+
+    return motorConceptoImportService
+      .getTemplate(
+        user
+      );
+
+  },
+
+
+  async validateImport(
+    user,
+    file
+  ) {
+
+    assertUser(user);
+
+    return motorConceptoImportService
+      .validate(
+        user,
+        file
+      );
+
+  },
+
+
+  async importExcel(
+    user,
+    file,
+    payload = {}
+  ) {
+
+    assertUser(user);
+
+    return motorConceptoImportService
+      .importExcel(
+        user,
+        file,
+        payload.acciones
+      );
+
+  },
+
 
 
   async remove(user, id) {
@@ -508,8 +562,14 @@ const motorConceptoService = {
         permite_multiples: bool(payload.permite_multiples),
         extensiones_permitidas: Array.isArray(payload.extensiones_permitidas) ? payload.extensiones_permitidas : [],
         mime_types_permitidos: Array.isArray(payload.mime_types_permitidos) ? payload.mime_types_permitidos : [],
-        tamanio_maximo_mb: payload.tamanio_maximo_mb ?? null,
-        orden: Number(payload.orden || 0),
+        tamanio_maximo_mb:
+          payload.tamanio_maximo_mb ?? null,
+
+        maximo_archivos:
+          payload.maximo_archivos ?? null,
+
+        orden:
+          Number(payload.orden || 0),
         activo: payload.activo === undefined ? true : bool(payload.activo),
         creado_por: user.id,
         modificado_por: user.id,
@@ -525,10 +585,18 @@ const motorConceptoService = {
     if (!row) throw error("Tipo de archivo no encontrado", 404);
 
     const changes = { modificado_por: user.id };
-    ["codigo", "nombre", "descripcion", "extensiones_permitidas", "mime_types_permitidos",
-      "tamanio_maximo_mb", "orden"].forEach((field) => {
-        if (payload[field] !== undefined) changes[field] = field === "codigo" ? code(payload[field]) : payload[field];
-      });
+    [
+      "codigo",
+      "nombre",
+      "descripcion",
+      "extensiones_permitidas",
+      "mime_types_permitidos",
+      "tamanio_maximo_mb",
+      "maximo_archivos",
+      "orden",
+    ].forEach((field) => {
+      if (payload[field] !== undefined) changes[field] = field === "codigo" ? code(payload[field]) : payload[field];
+    });
     ["obligatorio", "permite_multiples", "activo"].forEach((field) => {
       if (payload[field] !== undefined) changes[field] = bool(payload[field]);
     });

@@ -427,6 +427,578 @@ export const registrarPagoProgramado = async (req, res) => {
   }
 };
 
+export const verificarDuplicadoPagoProgramado = async (req, res) => {
+  try {
+    const proveedor_id =
+      Number(req.query.proveedor_id);
+
+    const monto =
+      Number(req.query.monto);
+
+    if (!proveedor_id) {
+      return res.status(400).json({
+        error: "proveedor_id requerido",
+      });
+    }
+
+    if (!(monto > 0)) {
+      return res.status(400).json({
+        error: "monto inválido",
+      });
+    }
+
+    /*
+     * ==================================================
+     * REGLA DE COINCIDENCIA
+     * ==================================================
+     *
+     * ÚNICAMENTE:
+     *
+     * proveedor_id + monto
+     *
+     * NO se considera:
+     * - empresa
+     * - fecha
+     * - medio
+     * - banco
+     * - caja
+     * - forma de pago
+     * ==================================================
+     */
+
+    // ==================================================
+    // 1. PAGOS PROGRAMADOS
+    //    pendientes o acreditados
+    // ==================================================
+
+    const programados =
+      await PagoProgramadoTesoreria.findAll({
+        where: {
+          proveedor_id,
+          monto,
+
+          estado: {
+            [Op.in]: [
+              "pendiente",
+              "acreditado",
+            ],
+          },
+        },
+
+        order: [
+          ["fecha_programada", "DESC"],
+          ["id", "DESC"],
+        ],
+      });
+
+
+    // ==================================================
+    // 2. SEPARAR PENDIENTES Y ACREDITADOS
+    // ==================================================
+
+    const pagosProgramados = [];
+
+    const pagosAcreditadosProgramados = [];
+
+    for (const pago of programados) {
+      const p = pago.toJSON();
+
+      const detalle = {
+        origen:
+          "pago_programado",
+
+        id:
+          p.id,
+
+        proveedor_id:
+          p.proveedor_id,
+
+        empresa_id:
+          p.empresa_id,
+
+        tipo:
+          p.tipo,
+
+        medio:
+          p.medio,
+
+        estado:
+          p.estado,
+
+        fecha:
+          p.estado === "acreditado"
+            ? p.fecha_acreditacion
+            : p.fecha_programada,
+
+        fecha_programada:
+          p.fecha_programada,
+
+        fecha_acreditacion:
+          p.fecha_acreditacion,
+
+        monto:
+          Number(p.monto || 0),
+
+        descripcion:
+          p.descripcion,
+
+        observaciones:
+          p.observaciones,
+
+        banco_id:
+          p.banco_id,
+
+        caja_id:
+          p.caja_id,
+
+        formapago_id:
+          p.formapago_id,
+
+        echeq_fecha_vencimiento:
+          p.echeq_fecha_vencimiento,
+
+        ordenpago_id:
+          p.ordenpago_id,
+
+        comprobanteegreso_id:
+          p.comprobanteegreso_id,
+
+        movimiento_tipo:
+          p.movimiento_tipo,
+
+        movimiento_id:
+          p.movimiento_id,
+      };
+
+      if (p.estado === "pendiente") {
+        pagosProgramados.push(
+          detalle
+        );
+      }
+
+      if (p.estado === "acreditado") {
+        pagosAcreditadosProgramados.push(
+          detalle
+        );
+      }
+    }
+
+
+    // ==================================================
+    // 3. MOVIMIENTOS REALES DIRECTOS
+    // ==================================================
+
+    const [
+      movimientosCaja,
+      movimientosBanco,
+      echeqs,
+    ] = await Promise.all([
+
+      MovimientoCajaTesoreria.findAll({
+        where: {
+          proveedor_id,
+          monto,
+          tipo: "egreso",
+
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+
+        order: [
+          ["fecha", "DESC"],
+          ["id", "DESC"],
+        ],
+      }),
+
+      MovimientoBancoTesoreria.findAll({
+        where: {
+          proveedor_id,
+          monto,
+          tipo: "egreso",
+
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+
+        order: [
+          ["fecha", "DESC"],
+          ["id", "DESC"],
+        ],
+      }),
+
+      EcheqEmitido.findAll({
+        where: {
+          proveedor_id,
+
+          importe:
+            monto,
+
+          anulado: {
+            [Op.not]: true,
+          },
+        },
+
+        order: [
+          ["fecha_emision", "DESC"],
+          ["id", "DESC"],
+        ],
+      }),
+    ]);
+
+
+    // ==================================================
+    // 4. IDENTIFICAR MOVIMIENTOS QUE YA ESTÁN
+    //    REPRESENTADOS POR UN PROGRAMADO ACREDITADO
+    // ==================================================
+
+    const movimientosProgramados =
+      new Set();
+
+    for (
+      const pago
+      of pagosAcreditadosProgramados
+    ) {
+      if (
+        pago.movimiento_tipo &&
+        pago.movimiento_id
+      ) {
+        movimientosProgramados.add(
+          `${pago.movimiento_tipo}:${Number(
+            pago.movimiento_id
+          )}`
+        );
+      }
+    }
+
+
+    // ==================================================
+    // 5. AGREGAR PAGOS ACREDITADOS
+    // ==================================================
+
+    const pagosAcreditados = [
+      ...pagosAcreditadosProgramados,
+    ];
+
+
+    // ------------------------------
+    // CAJA
+    // ------------------------------
+
+    for (const movimiento of movimientosCaja) {
+      const m =
+        movimiento.toJSON();
+
+      const clave =
+        `MovimientoCajaTesoreria:${Number(
+          m.id
+        )}`;
+
+      /*
+       * Si este movimiento fue generado por un
+       * PagoProgramado acreditado, ya está incluido.
+       */
+      if (
+        movimientosProgramados.has(
+          clave
+        )
+      ) {
+        continue;
+      }
+
+      pagosAcreditados.push({
+        origen:
+          "caja",
+
+        id:
+          m.id,
+
+        proveedor_id:
+          m.proveedor_id,
+
+        empresa_id:
+          m.empresa_id || null,
+
+        medio:
+          "caja",
+
+        estado:
+          "acreditado",
+
+        fecha:
+          m.fecha,
+
+        monto:
+          Number(m.monto || 0),
+
+        descripcion:
+          m.descripcion,
+
+        observaciones:
+          m.observaciones,
+
+        caja_id:
+          m.caja_id,
+
+        banco_id:
+          null,
+
+        formapago_id:
+          m.formapago_id,
+
+        ordenpago_id:
+          m.ordenpago_id,
+
+        comprobanteegreso_id:
+          m.comprobanteegreso_id,
+
+        movimiento_tipo:
+          "MovimientoCajaTesoreria",
+
+        movimiento_id:
+          m.id,
+      });
+    }
+
+
+    // ------------------------------
+    // BANCO
+    // ------------------------------
+
+    for (
+      const movimiento
+      of movimientosBanco
+    ) {
+      const m =
+        movimiento.toJSON();
+
+      const clave =
+        `MovimientoBancoTesoreria:${Number(
+          m.id
+        )}`;
+
+      if (
+        movimientosProgramados.has(
+          clave
+        )
+      ) {
+        continue;
+      }
+
+      pagosAcreditados.push({
+        origen:
+          "banco",
+
+        id:
+          m.id,
+
+        proveedor_id:
+          m.proveedor_id,
+
+        empresa_id:
+          m.empresa_id || null,
+
+        medio:
+          "banco",
+
+        estado:
+          "acreditado",
+
+        fecha:
+          m.fecha,
+
+        monto:
+          Number(m.monto || 0),
+
+        descripcion:
+          m.descripcion,
+
+        observaciones:
+          m.observaciones,
+
+        banco_id:
+          m.banco_id,
+
+        caja_id:
+          null,
+
+        formapago_id:
+          m.formapago_id,
+
+        ordenpago_id:
+          m.ordenpago_id,
+
+        comprobanteegreso_id:
+          m.comprobanteegreso_id,
+
+        movimiento_tipo:
+          "MovimientoBancoTesoreria",
+
+        movimiento_id:
+          m.id,
+      });
+    }
+
+
+    // ------------------------------
+    // ECHEQ
+    // ------------------------------
+
+    for (const echeq of echeqs) {
+      const e =
+        echeq.toJSON();
+
+      const clave =
+        `EcheqEmitido:${Number(
+          e.id
+        )}`;
+
+      if (
+        movimientosProgramados.has(
+          clave
+        )
+      ) {
+        continue;
+      }
+
+      pagosAcreditados.push({
+        origen:
+          "echeq",
+
+        id:
+          e.id,
+
+        proveedor_id:
+          e.proveedor_id,
+
+        empresa_id:
+          e.empresa_id || null,
+
+        medio:
+          "echeq",
+
+        /*
+         * Conservamos también el estado real
+         * del eCheq para mostrarlo en detalle.
+         */
+        estado:
+          e.estado || "emitido",
+
+        fecha:
+          e.fecha_emision,
+
+        fecha_vencimiento:
+          e.fecha_vencimiento,
+
+        monto:
+          Number(e.importe || 0),
+
+        descripcion:
+          e.numero_echeq
+            ? `eCheq ${e.numero_echeq}`
+            : "eCheq",
+
+        observaciones:
+          e.observaciones,
+
+        banco_id:
+          e.banco_id,
+
+        caja_id:
+          null,
+
+        formapago_id:
+          e.formapago_id || null,
+
+        numero_echeq:
+          e.numero_echeq,
+
+        ordenpago_id:
+          e.ordenpago_id,
+
+        comprobanteegreso_id:
+          e.comprobanteegreso_id,
+
+        movimiento_tipo:
+          "EcheqEmitido",
+
+        movimiento_id:
+          e.id,
+      });
+    }
+
+
+    // ==================================================
+    // 6. ORDENAR ACREDITADOS POR FECHA
+    // ==================================================
+
+    pagosAcreditados.sort(
+      (a, b) => {
+        const fechaA =
+          a.fecha || "";
+
+        const fechaB =
+          b.fecha || "";
+
+        if (fechaA === fechaB) {
+          return (
+            Number(b.id || 0) -
+            Number(a.id || 0)
+          );
+        }
+
+        return fechaB.localeCompare(
+          fechaA
+        );
+      }
+    );
+
+
+    // ==================================================
+    // 7. RESPUESTA
+    // ==================================================
+
+    return res.json({
+      hay_coincidencias:
+        pagosProgramados.length > 0 ||
+        pagosAcreditados.length > 0,
+
+      hay_programados:
+        pagosProgramados.length > 0,
+
+      hay_acreditados:
+        pagosAcreditados.length > 0,
+
+      cantidad_programados:
+        pagosProgramados.length,
+
+      cantidad_acreditados:
+        pagosAcreditados.length,
+
+      pagos_programados:
+        pagosProgramados,
+
+      pagos_acreditados:
+        pagosAcreditados,
+    });
+
+  } catch (error) {
+    console.error(
+      "verificarDuplicadoPagoProgramado:",
+      error
+    );
+
+    return res.status(500).json({
+      error:
+        "No se pudo verificar si existen pagos coincidentes",
+
+      detalle:
+        error.message,
+    });
+  }
+};
+
 export const listarPagosProgramados = async (req, res) => {
 
   try {
