@@ -34,24 +34,24 @@ const DRIVE_PARENT_FOLDER_ID =
 // VALIDACIONES
 // ======================================================
 
-//if (!GOOGLE_DRIVE_PROJECT_ID) {
-  //throw new Error(
-   // "GOOGLE_DRIVE_PROJECT_ID no está configurado"
-  //);
-//}
+if (!GOOGLE_DRIVE_PROJECT_ID) {
+  throw new Error(
+   "GOOGLE_DRIVE_PROJECT_ID no está configurado"
+  );
+}
 
 
-//if (!GOOGLE_DRIVE_CLIENT_EMAIL) {
-  //throw new Error(
-    //"GOOGLE_DRIVE_CLIENT_EMAIL no está configurado"
-  //);
-//}
+if (!GOOGLE_DRIVE_CLIENT_EMAIL) {
+  throw new Error(
+    "GOOGLE_DRIVE_CLIENT_EMAIL no está configurado"
+  );
+}
 
-//if (!GOOGLE_DRIVE_PRIVATE_KEY) {
- // throw new Error(
-  //  "GOOGLE_DRIVE_PRIVATE_KEY no está configurado"
-  //);
-//}
+if (!GOOGLE_DRIVE_PRIVATE_KEY) {
+ throw new Error(
+   "GOOGLE_DRIVE_PRIVATE_KEY no está configurado"
+  );
+}
 
 
 // ======================================================
@@ -112,7 +112,7 @@ const testDriveAuth = async () => {
   );
 };
 
-//testDriveAuth();
+testDriveAuth();
 
 
 
@@ -162,27 +162,6 @@ export async function uploadToDrive({ originalName, mimeType, localPath = null, 
       Boolean(
         GOOGLE_DRIVE_PRIVATE_KEY
       )
-    );
-
-    console.log(
-      "private_key formato PEM:",
-      serviceAccount.private_key
-        ?.startsWith(
-          "-----BEGIN PRIVATE KEY-----"
-        )
-    );
-
-    console.log(
-      "private_key termina correctamente:",
-      serviceAccount.private_key
-        ?.trim()
-        .endsWith(
-          "-----END PRIVATE KEY-----"
-        )
-    );
-
-    console.log(
-      "============================================"
     );
 
     // metadata del archivo en Drive

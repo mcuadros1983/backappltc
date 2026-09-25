@@ -35,6 +35,63 @@ import motorConceptoService
 async function main() {
   try {
 
+    console.log(
+      "========== GOOGLE DRIVE ENV CHECK =========="
+    );
+
+    const googlePrivateKey =
+      process.env.GOOGLE_DRIVE_PRIVATE_KEY
+        ?.replace(/\\n/g, "\n")
+        .trim();
+
+    console.log(
+      "GOOGLE_DRIVE_PROJECT_ID:",
+      Boolean(
+        process.env.GOOGLE_DRIVE_PROJECT_ID
+      )
+    );
+
+    console.log(
+      "GOOGLE_DRIVE_CLIENT_EMAIL:",
+      Boolean(
+        process.env.GOOGLE_DRIVE_CLIENT_EMAIL
+      )
+    );
+
+    console.log(
+      "GOOGLE_DRIVE_PRIVATE_KEY:",
+      Boolean(
+        googlePrivateKey
+      )
+    );
+
+    console.log(
+      "PRIVATE_KEY inicio PEM:",
+      googlePrivateKey
+        ?.startsWith(
+          "-----BEGIN PRIVATE KEY-----"
+        ) || false
+    );
+
+    console.log(
+      "PRIVATE_KEY fin PEM:",
+      googlePrivateKey
+        ?.endsWith(
+          "-----END PRIVATE KEY-----"
+        ) || false
+    );
+
+    console.log(
+      "DRIVE_PARENT_FOLDER_ID:",
+      Boolean(
+        process.env.DRIVE_PARENT_FOLDER_ID
+      )
+    );
+
+    console.log(
+      "============================================"
+    );
+
     /*
     |--------------------------------------------------------------------------
     | 1. CONEXIÓN BASE DE DATOS

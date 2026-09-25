@@ -3280,7 +3280,13 @@ export const aplicarAnticipoExistenteCtaCte = async (req, res) => {
       throw new Error("Debe enviar aplicaciones [{ cargo_id, importe? }]");
 
     const EPS = 0.0001;
-    const toMoney = (x) => Math.round((Number(x) || 0) * 100) / 100;
+    const toMoney = (x) =>
+      Number(x || 0).toLocaleString("es-AR", {
+        style: "currency",
+        currency: "ARS",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
     // 1) Traer el ABONO (anticipo) y validar
     const abono = await MovimientoCtaCteProveedor.findByPk(abono_id, {
@@ -3628,6 +3634,14 @@ export const anularAplicacionAnticipoExistenteCtaCte = async (req, res) => {
 
     const EPS = 0.0001;
     const toMoney = (x) => Math.round((Number(x) || 0) * 100) / 100;
+
+    const formatMoney = (x) =>
+      Number(x || 0).toLocaleString("es-AR", {
+        style: "currency",
+        currency: "ARS",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
     // 1) Traer y validar ABONO
     const abono = await MovimientoCtaCteProveedor.findByPk(abono_id, {
