@@ -4521,42 +4521,150 @@ export const obtenerMovimientoBancoPorId = async (req, res, next) => {
  * Edición básica (descripcion, observaciones, categoriaingreso_id, proyecto_id, anulado)
  * *No* permite cambiar empresa_id/banco_id/tipo/monto en este endpoint (puede hacerse otro específico).
  */
+// export const actualizarMovimientoBanco = async (req, res, next) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const row = await MovimientoBancoTesoreria.findByPk(req.params.id, {
+//       transaction: t,
+//       lock: t.LOCK.UPDATE,
+//     });
+//     if (!row) {
+//       await t.rollback();
+//       return res.status(404).json({ error: "Movimiento no encontrado" });
+//     }
+
+//     const {
+//       descripcion,
+//       observaciones,
+//       categoriaingreso_id = null,
+//       proyecto_id = null,
+//       anulado = undefined,
+//     } = req.body || {};
+
+//     const updates = {};
+//     if (descripcion !== undefined) updates.descripcion = String(descripcion || "").trim();
+//     if (observaciones !== undefined) updates.observaciones = observaciones || null;
+//     if (categoriaingreso_id !== undefined) updates.categoriaingreso_id = categoriaingreso_id || null;
+//     if (proyecto_id !== undefined) updates.proyecto_id = proyecto_id || null;
+//     if (anulado !== undefined) updates.anulado = !!anulado;
+
+//     await row.update(updates, { transaction: t });
+//     await t.commit();
+//     return res.json({ ok: true, movimiento: row });
+//   } catch (err) {
+//     await t.rollback();
+//     next(err);
+//   }
+// };
+
 export const actualizarMovimientoBanco = async (req, res, next) => {
   const t = await sequelize.transaction();
+
   try {
-    const row = await MovimientoBancoTesoreria.findByPk(req.params.id, {
-      transaction: t,
-      lock: t.LOCK.UPDATE,
-    });
+    const row = await MovimientoBancoTesoreria.findByPk(
+      req.params.id,
+      {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      }
+    );
+
     if (!row) {
       await t.rollback();
-      return res.status(404).json({ error: "Movimiento no encontrado" });
+
+      return res.status(404).json({
+        error: "Movimiento no encontrado",
+      });
     }
+
+    // ============================================================
+    // SOLO SE PUEDEN EDITAR MOVIMIENTOS BANCARIOS INDEPENDIENTES
+    // ============================================================
+
+    const tieneVinculacion =
+      row.referencia_id != null ||
+      row.referencia_tipo != null ||
+      row.ordenpago_id != null ||
+      row.comprobanteegreso_id != null ||
+      row.comprobanteingreso_id != null;
+
+    if (tieneVinculacion) {
+      await t.rollback();
+
+      return res.status(409).json({
+        error:
+          "El movimiento no puede editarse porque está vinculado a otra operación.",
+      });
+    }
+
+    // ============================================================
+    // CAMPOS EDITABLES
+    // ============================================================
 
     const {
       descripcion,
       observaciones,
-      categoriaingreso_id = null,
-      proyecto_id = null,
-      anulado = undefined,
+      categoriaingreso_id,
+      categoriaegreso_id,
+      proyecto_id,
+      anulado,
     } = req.body || {};
 
     const updates = {};
-    if (descripcion !== undefined) updates.descripcion = String(descripcion || "").trim();
-    if (observaciones !== undefined) updates.observaciones = observaciones || null;
-    if (categoriaingreso_id !== undefined) updates.categoriaingreso_id = categoriaingreso_id || null;
-    if (proyecto_id !== undefined) updates.proyecto_id = proyecto_id || null;
-    if (anulado !== undefined) updates.anulado = !!anulado;
 
-    await row.update(updates, { transaction: t });
+    if (descripcion !== undefined) {
+      updates.descripcion =
+        String(descripcion || "").trim();
+    }
+
+    if (observaciones !== undefined) {
+      updates.observaciones =
+        observaciones || null;
+    }
+
+    if (categoriaingreso_id !== undefined) {
+      updates.categoriaingreso_id =
+        categoriaingreso_id || null;
+    }
+
+    if (categoriaegreso_id !== undefined) {
+      updates.categoriaegreso_id =
+        categoriaegreso_id || null;
+    }
+
+    if (proyecto_id !== undefined) {
+      updates.proyecto_id =
+        proyecto_id || null;
+    }
+
+    if (anulado !== undefined) {
+      updates.anulado =
+        !!anulado;
+    }
+
+    await row.update(
+      updates,
+      {
+        transaction: t,
+      }
+    );
+
     await t.commit();
-    return res.json({ ok: true, movimiento: row });
+
+    return res.json({
+      ok: true,
+      movimiento: row,
+    });
+
   } catch (err) {
-    await t.rollback();
+
+    if (!t.finished) {
+      await t.rollback();
+    }
+
     next(err);
   }
 };
-
 /**
  * DELETE /movimientos-banco-tesoreria/:id
  * Anula (soft delete) el movimiento. Si necesitás hard delete, cambiá a destroy().
