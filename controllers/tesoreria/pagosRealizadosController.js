@@ -130,13 +130,7 @@ export const listarPagosRealizados = async (req, res) => {
     };
 
 
-    if (empresa_id) {
-      whereCaja.empresa_id =
-        Number(empresa_id);
-    }
-
-
-    if (proveedor_id) {
+  if (proveedor_id) {
       whereCaja.proveedor_id =
         Number(proveedor_id);
     }
@@ -250,12 +244,6 @@ export const listarPagosRealizados = async (req, res) => {
       ],
 
     };
-
-
-    if (empresa_id) {
-      whereBanco.empresa_id =
-        Number(empresa_id);
-    }
 
 
     if (proveedor_id) {
@@ -386,12 +374,6 @@ export const listarPagosRealizados = async (req, res) => {
       ],
 
     };
-
-
-    if (empresa_id) {
-      whereEcheq.empresa_id =
-        Number(empresa_id);
-    }
 
 
     if (proveedor_id) {
