@@ -69,213 +69,1034 @@ async function ensureImputacionFromCategoria(categoriaegreso_id, imputacionconta
 /* =========================
    EGRESOS VARIOS (eCheq)
    ========================= */
-export async function registrarEgresoEcheqIndependiente(req, res) {
-  const t = await sequelize.transaction();
+// export async function registrarEgresoEcheqIndependiente(req, res) {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { empresa_id, egreso = {} } = req.body || {};
+//     const {
+//       fecha_emision,
+//       fecha_vencimiento,
+//       banco_id,
+//       proveedor_id,
+//       importe,
+//       numero_echeq,
+//       categoriaegreso_id,
+//       imputacioncontable_id,
+//       proyecto_id,
+//     } = egreso;
+
+//     if (!empresa_id) throw new Error("empresa_id requerido");
+//     if (!fecha_emision) throw new Error("fecha_emision requerida");
+//     if (!fecha_vencimiento) throw new Error("fecha_vencimiento requerida");
+//     if (!banco_id) throw new Error("banco_id requerido");
+//     if (!(N(importe) > 0)) throw new Error("importe > 0 requerido");
+
+//     if (new Date(fecha_vencimiento) < new Date(fecha_emision)) {
+//       throw new Error("fecha_vencimiento no puede ser anterior a fecha_emision");
+//     }
+
+//     const imputacion = await ensureImputacionFromCategoria(
+//       categoriaegreso_id,
+//       imputacioncontable_id,
+//       t
+//     );
+
+//     const ech = await EcheqEmitido.create(
+//       {
+//         empresa_id: toNum(empresa_id),
+//         proveedor_id: toNum(proveedor_id) || null,
+//         banco_id: toNum(banco_id),
+//         fecha_emision,
+//         fecha_vencimiento,
+//         importe: N(importe),
+//         numero_echeq: numero_echeq || null,
+//         estado: "emitido",
+//         anulado: false,
+//         ordenpago_id: null,
+//         categoriaegreso_id: toNum(categoriaegreso_id) || null,
+//         imputacioncontable_id: toNum(imputacion) || null,
+//         proyecto_id: toNum(proyecto_id) || null,
+//         comprobanteegreso_id: null,
+//       },
+//       { transaction: t }
+//     );
+
+//     await t.commit();
+//     return res.status(201).json({ ok: true, echeq: ech });
+//   } catch (e) {
+//     await t.rollback();
+//     console.error("registrarEgresoEcheqIndependiente", e);
+//     return res.status(400).json({ error: e.message || "No se pudo registrar el eCheq" });
+//   }
+// }
+export async function registrarEgresoEcheqIndependiente(
+  req,
+  res
+) {
+
+  const t =
+    await sequelize.transaction();
+
   try {
-    const { empresa_id, egreso = {} } = req.body || {};
+
     const {
-      fecha_emision,
-      fecha_vencimiento,
-      banco_id,
-      proveedor_id,
-      importe,
-      numero_echeq,
-      categoriaegreso_id,
-      imputacioncontable_id,
-      proyecto_id,
-    } = egreso;
+      empresa_id,
 
-    if (!empresa_id) throw new Error("empresa_id requerido");
-    if (!fecha_emision) throw new Error("fecha_emision requerida");
-    if (!fecha_vencimiento) throw new Error("fecha_vencimiento requerida");
-    if (!banco_id) throw new Error("banco_id requerido");
-    if (!(N(importe) > 0)) throw new Error("importe > 0 requerido");
+      // Formato original
+      egreso,
 
-    if (new Date(fecha_vencimiento) < new Date(fecha_emision)) {
-      throw new Error("fecha_vencimiento no puede ser anterior a fecha_emision");
+      // Nuevo formato múltiple
+      egresos,
+
+    } = req.body || {};
+
+
+    if (!empresa_id) {
+      throw new Error(
+        "empresa_id requerido"
+      );
     }
 
-    const imputacion = await ensureImputacionFromCategoria(
-      categoriaegreso_id,
-      imputacioncontable_id,
-      t
-    );
 
-    const ech = await EcheqEmitido.create(
-      {
-        empresa_id: toNum(empresa_id),
-        proveedor_id: toNum(proveedor_id) || null,
-        banco_id: toNum(banco_id),
-        fecha_emision,
-        fecha_vencimiento,
-        importe: N(importe),
-        numero_echeq: numero_echeq || null,
-        estado: "emitido",
-        anulado: false,
-        ordenpago_id: null,
-        categoriaegreso_id: toNum(categoriaegreso_id) || null,
-        imputacioncontable_id: toNum(imputacion) || null,
-        proyecto_id: toNum(proyecto_id) || null,
-        comprobanteegreso_id: null,
-      },
-      { transaction: t }
-    );
+    // ============================================================
+    // NORMALIZAR
+    // ============================================================
+
+    let listaEgresos = [];
+
+
+    if (Array.isArray(egresos)) {
+
+      if (egresos.length === 0) {
+        throw new Error(
+          "El array egresos no puede estar vacío"
+        );
+      }
+
+      listaEgresos =
+        egresos;
+
+    } else if (egreso) {
+
+      listaEgresos = [
+        egreso,
+      ];
+
+    } else {
+
+      throw new Error(
+        "Debe enviarse egreso o egresos"
+      );
+    }
+
+
+    // ============================================================
+    // VALIDAR TODO ANTES DE INSERTAR
+    // ============================================================
+
+    const numerosLote =
+      new Set();
+
+
+    for (
+      let i = 0;
+      i < listaEgresos.length;
+      i++
+    ) {
+
+      const item =
+        listaEgresos[i];
+
+
+      if (!item.fecha_emision) {
+        throw new Error(
+          `eCheq ${i + 1}: fecha_emision requerida`
+        );
+      }
+
+
+      if (!item.fecha_vencimiento) {
+        throw new Error(
+          `eCheq ${i + 1}: fecha_vencimiento requerida`
+        );
+      }
+
+
+      if (!item.banco_id) {
+        throw new Error(
+          `eCheq ${i + 1}: banco_id requerido`
+        );
+      }
+
+
+      if (!(N(item.importe) > 0)) {
+        throw new Error(
+          `eCheq ${i + 1}: importe > 0 requerido`
+        );
+      }
+
+
+      if (
+        item.fecha_vencimiento <
+        item.fecha_emision
+      ) {
+        throw new Error(
+          `eCheq ${i + 1}: fecha_vencimiento no puede ser anterior a fecha_emision`
+        );
+      }
+
+
+      const numero =
+        String(
+          item.numero_echeq || ""
+        ).trim();
+
+
+      if (numero) {
+
+        const clave =
+          `${item.banco_id}-${numero}`
+            .toLowerCase();
+
+
+        if (
+          numerosLote.has(clave)
+        ) {
+          throw new Error(
+            `Número de eCheq repetido en la carga: ${numero}`
+          );
+        }
+
+
+        numerosLote.add(
+          clave
+        );
+      }
+    }
+
+
+    // ============================================================
+    // CREAR CADA ECHEQ
+    // ============================================================
+
+    const echeqsCreados = [];
+
+
+    for (
+      const item of listaEgresos
+    ) {
+
+      const imputacion =
+        await ensureImputacionFromCategoria(
+          item.categoriaegreso_id,
+          item.imputacioncontable_id,
+          t
+        );
+
+
+      const ech =
+        await EcheqEmitido.create(
+          {
+            empresa_id:
+              toNum(empresa_id),
+
+            proveedor_id:
+              toNum(
+                item.proveedor_id
+              ) || null,
+
+            banco_id:
+              toNum(
+                item.banco_id
+              ),
+
+            fecha_emision:
+              item.fecha_emision,
+
+            fecha_vencimiento:
+              item.fecha_vencimiento,
+
+            importe:
+              N(item.importe),
+
+            numero_echeq:
+              item.numero_echeq ||
+              null,
+
+            estado:
+              "emitido",
+
+            anulado:
+              false,
+
+            ordenpago_id:
+              null,
+
+            categoriaegreso_id:
+              toNum(
+                item.categoriaegreso_id
+              ) || null,
+
+            imputacioncontable_id:
+              toNum(imputacion) ||
+              null,
+
+            proyecto_id:
+              toNum(
+                item.proyecto_id
+              ) || null,
+
+            comprobanteegreso_id:
+              null,
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+      echeqsCreados.push(
+        ech
+      );
+    }
+
 
     await t.commit();
-    return res.status(201).json({ ok: true, echeq: ech });
+
+
+    // Mantener respuesta anterior para un único eCheq
+    if (
+      echeqsCreados.length === 1
+    ) {
+
+      return res.status(201).json({
+        ok: true,
+        echeq:
+          echeqsCreados[0],
+      });
+    }
+
+
+    return res.status(201).json({
+      ok: true,
+
+      mensaje:
+        `${echeqsCreados.length} eCheqs registrados correctamente.`,
+
+      cantidad:
+        echeqsCreados.length,
+
+      echeqs:
+        echeqsCreados,
+    });
+
+
   } catch (e) {
-    await t.rollback();
-    console.error("registrarEgresoEcheqIndependiente", e);
-    return res.status(400).json({ error: e.message || "No se pudo registrar el eCheq" });
+
+    if (!t.finished) {
+      await t.rollback();
+    }
+
+
+    console.error(
+      "registrarEgresoEcheqIndependiente",
+      e
+    );
+
+
+    return res.status(400).json({
+      error:
+        e.message ||
+        "No se pudo registrar el eCheq",
+    });
   }
 }
-
 /* =========================================
    ANTICIPO a Proveedores con eCheq
    Crea OP + abono CtaCte + eCheq emitido
    (el mov. banco se genera al 'acreditar')
    ========================================= */
+// export async function registrarAnticipoProveedorEcheq(req, res) {
+//   const t = await sequelize.transaction();
+//   try {
+//     const {
+//       empresa_id,
+//       proveedor_id,
+//       fecha,
+//       observaciones,
+//       pago = {}, // { banco_id, importe, fecha_emision?, fecha_vencimiento?, categoriaegreso_id, imputacioncontable_id?, proyecto_id?, numero_echeq?, formapago_id? }
+//       idempotencyKey,
+//     } = req.body || {};
+
+//     if (!empresa_id) throw new Error("empresa_id requerido");
+//     if (!proveedor_id) throw new Error("proveedor_id requerido");
+//     if (!N(pago.importe)) throw new Error("importe de pago requerido");
+//     if (!pago.banco_id) throw new Error("banco_id requerido");
+
+//     const fechaOP = fecha || pago.fecha_emision || new Date().toISOString().slice(0, 10);
+//     const fechaEmision = pago.fecha_emision || fechaOP;
+//     const fechaVto = pago.fecha_vencimiento || fechaEmision;
+//     if (new Date(fechaVto) < new Date(fechaEmision)) {
+//       throw new Error("fecha_vencimiento no puede ser anterior a fecha_emision");
+//     }
+
+//     // Idempotencia por OP
+//     if (idempotencyKey) {
+//       const opExistente = await OrdenPago.findOne({
+//         where: { idempotency_key: idempotencyKey },
+//         transaction: t,
+//       });
+//       if (opExistente) {
+//         const echeqs = await EcheqEmitido.findAll({
+//           where: { ordenpago_id: opExistente.id },
+//           transaction: t,
+//         });
+//         const ctaCte = await MovimientoCtaCteProveedor.findOne({
+//           where: { ordenpago_id: opExistente.id, tipo: "abono", anulado: { [Op.not]: true } },
+//           transaction: t,
+//         });
+//         await t.commit();
+//         return res.status(200).json({
+//           ok: true,
+//           reutilizado: true,
+//           ordenpago: opExistente,
+//           echeqs,
+//           movCtaCte: ctaCte || null,
+//         });
+//       }
+//     }
+
+//     const imputacion = await ensureImputacionFromCategoria(
+//       pago.categoriaegreso_id,
+//       pago.imputacioncontable_id,
+//       t
+//     );
+
+
+//     // 🔎 Resolver formapago_id para eCheq
+//     const formaPagoIdECheq = await resolveFormaPagoIdECheq(t);
+
+//     // 1) OP pendiente
+//     const orden = await OrdenPago.create(
+//       {
+//         empresa_id: toNum(empresa_id),
+//         proveedor_id: toNum(proveedor_id),
+//         comprobanteegreso_id: null,
+//         fecha: fechaOP,
+//         total: N(pago.importe),
+//         estado: "pendiente_aplicacion",
+//         numero: null,
+//         observaciones: observaciones || null,
+//         origen: "anticipo_echeq",
+//         idempotency_key: idempotencyKey || null,
+//       },
+//       { transaction: t }
+//     );
+
+//     // 2) eCheq
+//     const ech = await EcheqEmitido.create(
+//       {
+//         empresa_id: toNum(empresa_id),
+//         proveedor_id: toNum(proveedor_id),
+//         banco_id: toNum(pago.banco_id),
+//         fecha_emision: fechaEmision,
+//         fecha_vencimiento: fechaVto,
+//         importe: N(pago.importe),
+//         numero_echeq: pago.numero_echeq || null,
+//         estado: "emitido",
+//         anulado: false,
+//         ordenpago_id: orden.id,
+//         categoriaegreso_id: toNum(pago.categoriaegreso_id) || null,
+//         imputacioncontable_id: toNum(imputacion) || null,
+//         proyecto_id: toNum(pago.proyecto_id) || null,
+//         comprobanteegreso_id: null,
+//         referencia_id: orden.id,
+//         referencia_tipo: "OrdenPago",
+//         // NOTA: no guardamos formapago_id en EcheqEmitido (no es necesario para el requerimiento actual)
+//       },
+//       { transaction: t }
+//     );
+
+//     // 3) ABONO en CtaCte (referencia al eCheq — única forma de pago)
+//     const movCtaCte = await MovimientoCtaCteProveedor.create(
+//       {
+//         proveedor_id: toNum(proveedor_id),
+//         empresa_id: toNum(empresa_id),
+//         fecha: fechaOP,
+//         fecha_pago: fechaVto,
+//         descripcion: `Anticipo proveedor por Echeq - OP #${orden.id}`,
+//         tipo: "abono",
+//         importe: N(pago.importe),
+//         origen_tipo: "OrdenPago",
+//         origen_id: orden.id,
+//         comprobanteegreso_id: null,
+//         anulado: false,
+//         ordenpago_id: orden.id,
+//         // ✅ seteamos la forma de pago (eCheq) si la encontramos
+//         formapago_id: formaPagoIdECheq || null,
+//         // (opcional) referencia directa al eCheq — útil para trazabilidad
+//         referencia_tipo: "EcheqEmitido",
+//         referencia_id: ech.id,
+//       },
+//       { transaction: t }
+//     );
+
+//     await t.commit();
+//     return res.status(201).json({
+//       ok: true,
+//       mensaje: "Anticipo por eCheq registrado. OP creada y aplicado a Cta Cte.",
+//       ordenpago: orden,
+//       echeq: ech,
+//       movCtaCte,
+//     });
+//   } catch (e) {
+//     await t.rollback();
+//     console.error("registrarAnticipoProveedorEcheq", e);
+//     return res.status(400).json({ error: e.message || "No se pudo registrar el anticipo por eCheq" });
+//   }
+// }
+
 export async function registrarAnticipoProveedorEcheq(req, res) {
+
   const t = await sequelize.transaction();
+
   try {
+
     const {
       empresa_id,
       proveedor_id,
       fecha,
       observaciones,
-      pago = {}, // { banco_id, importe, fecha_emision?, fecha_vencimiento?, categoriaegreso_id, imputacioncontable_id?, proyecto_id?, numero_echeq?, formapago_id? }
+
+      // Formato original
+      pago,
+
+      // Nuevo formato múltiple
+      pagos,
+
       idempotencyKey,
     } = req.body || {};
 
-    if (!empresa_id) throw new Error("empresa_id requerido");
-    if (!proveedor_id) throw new Error("proveedor_id requerido");
-    if (!N(pago.importe)) throw new Error("importe de pago requerido");
-    if (!pago.banco_id) throw new Error("banco_id requerido");
 
-    const fechaOP = fecha || pago.fecha_emision || new Date().toISOString().slice(0, 10);
-    const fechaEmision = pago.fecha_emision || fechaOP;
-    const fechaVto = pago.fecha_vencimiento || fechaEmision;
-    if (new Date(fechaVto) < new Date(fechaEmision)) {
-      throw new Error("fecha_vencimiento no puede ser anterior a fecha_emision");
+    // ============================================================
+    // VALIDACIONES GENERALES
+    // ============================================================
+
+    if (!empresa_id) {
+      throw new Error("empresa_id requerido");
     }
 
-    // Idempotencia por OP
-    if (idempotencyKey) {
-      const opExistente = await OrdenPago.findOne({
-        where: { idempotency_key: idempotencyKey },
-        transaction: t,
-      });
+    if (!proveedor_id) {
+      throw new Error("proveedor_id requerido");
+    }
+
+
+    // ============================================================
+    // NORMALIZAR A ARRAY
+    // ============================================================
+
+    let listaPagos = [];
+
+
+    if (Array.isArray(pagos)) {
+
+      if (pagos.length === 0) {
+        throw new Error(
+          "El array pagos no puede estar vacío"
+        );
+      }
+
+      listaPagos = pagos;
+
+    } else if (pago) {
+
+      // Compatibilidad con funcionamiento anterior
+      listaPagos = [pago];
+
+    } else {
+
+      throw new Error(
+        "Debe enviarse pago o pagos"
+      );
+    }
+
+
+    // ============================================================
+    // VALIDAR TODO EL LOTE ANTES DE CREAR NADA
+    // ============================================================
+
+    const numerosLote = new Set();
+
+
+    for (
+      let i = 0;
+      i < listaPagos.length;
+      i++
+    ) {
+
+      const item = listaPagos[i];
+
+
+      if (!N(item.importe)) {
+        throw new Error(
+          `eCheq ${i + 1}: importe de pago requerido`
+        );
+      }
+
+
+      if (!(N(item.importe) > 0)) {
+        throw new Error(
+          `eCheq ${i + 1}: importe debe ser mayor a 0`
+        );
+      }
+
+
+      if (!item.banco_id) {
+        throw new Error(
+          `eCheq ${i + 1}: banco_id requerido`
+        );
+      }
+
+
+      const fechaOP =
+        fecha ||
+        item.fecha_emision ||
+        new Date()
+          .toISOString()
+          .slice(0, 10);
+
+
+      const fechaEmision =
+        item.fecha_emision ||
+        fechaOP;
+
+
+      const fechaVto =
+        item.fecha_vencimiento ||
+        fechaEmision;
+
+
+      if (
+        fechaVto <
+        fechaEmision
+      ) {
+        throw new Error(
+          `eCheq ${i + 1}: fecha_vencimiento no puede ser anterior a fecha_emision`
+        );
+      }
+
+
+      // Si tiene número, evitamos duplicados
+      // dentro del mismo lote.
+      const numero =
+        String(
+          item.numero_echeq || ""
+        ).trim();
+
+
+      if (numero) {
+
+        const clave =
+          `${item.banco_id}-${numero}`
+            .toLowerCase();
+
+
+        if (
+          numerosLote.has(clave)
+        ) {
+          throw new Error(
+            `Número de eCheq repetido en la carga: ${numero}`
+          );
+        }
+
+
+        numerosLote.add(clave);
+      }
+    }
+
+
+    // ============================================================
+    // IDEMPOTENCIA
+    //
+    // Conservamos exactamente el comportamiento anterior cuando
+    // se envía UN solo pago.
+    // ============================================================
+
+    if (
+      idempotencyKey &&
+      listaPagos.length === 1
+    ) {
+
+      const opExistente =
+        await OrdenPago.findOne({
+          where: {
+            idempotency_key:
+              idempotencyKey,
+          },
+          transaction: t,
+        });
+
+
       if (opExistente) {
-        const echeqs = await EcheqEmitido.findAll({
-          where: { ordenpago_id: opExistente.id },
-          transaction: t,
-        });
-        const ctaCte = await MovimientoCtaCteProveedor.findOne({
-          where: { ordenpago_id: opExistente.id, tipo: "abono", anulado: { [Op.not]: true } },
-          transaction: t,
-        });
+
+        const echeqs =
+          await EcheqEmitido.findAll({
+            where: {
+              ordenpago_id:
+                opExistente.id,
+            },
+            transaction: t,
+          });
+
+
+        const ctaCte =
+          await MovimientoCtaCteProveedor.findOne({
+            where: {
+              ordenpago_id:
+                opExistente.id,
+
+              tipo: "abono",
+
+              anulado: {
+                [Op.not]: true,
+              },
+            },
+            transaction: t,
+          });
+
+
         await t.commit();
+
+
         return res.status(200).json({
           ok: true,
           reutilizado: true,
-          ordenpago: opExistente,
+          ordenpago:
+            opExistente,
           echeqs,
-          movCtaCte: ctaCte || null,
+          movCtaCte:
+            ctaCte || null,
         });
       }
     }
 
-    const imputacion = await ensureImputacionFromCategoria(
-      pago.categoriaegreso_id,
-      pago.imputacioncontable_id,
-      t
-    );
+
+    // ============================================================
+    // FORMA DE PAGO ECHEQ
+    // ============================================================
+
+    const formaPagoIdECheq =
+      await resolveFormaPagoIdECheq(t);
 
 
-    // 🔎 Resolver formapago_id para eCheq
-    const formaPagoIdECheq = await resolveFormaPagoIdECheq(t);
+    // ============================================================
+    // CREAR CADA OPERACIÓN DE FORMA INDEPENDIENTE
+    // PERO DENTRO DE LA MISMA TRANSACCIÓN
+    // ============================================================
 
-    // 1) OP pendiente
-    const orden = await OrdenPago.create(
-      {
-        empresa_id: toNum(empresa_id),
-        proveedor_id: toNum(proveedor_id),
-        comprobanteegreso_id: null,
-        fecha: fechaOP,
-        total: N(pago.importe),
-        estado: "pendiente_aplicacion",
-        numero: null,
-        observaciones: observaciones || null,
-        origen: "anticipo_echeq",
-        idempotency_key: idempotencyKey || null,
-      },
-      { transaction: t }
-    );
+    const resultados = [];
 
-    // 2) eCheq
-    const ech = await EcheqEmitido.create(
-      {
-        empresa_id: toNum(empresa_id),
-        proveedor_id: toNum(proveedor_id),
-        banco_id: toNum(pago.banco_id),
-        fecha_emision: fechaEmision,
-        fecha_vencimiento: fechaVto,
-        importe: N(pago.importe),
-        numero_echeq: pago.numero_echeq || null,
-        estado: "emitido",
-        anulado: false,
-        ordenpago_id: orden.id,
-        categoriaegreso_id: toNum(pago.categoriaegreso_id) || null,
-        imputacioncontable_id: toNum(imputacion) || null,
-        proyecto_id: toNum(pago.proyecto_id) || null,
-        comprobanteegreso_id: null,
-        referencia_id: orden.id,
-        referencia_tipo: "OrdenPago",
-        // NOTA: no guardamos formapago_id en EcheqEmitido (no es necesario para el requerimiento actual)
-      },
-      { transaction: t }
-    );
 
-    // 3) ABONO en CtaCte (referencia al eCheq — única forma de pago)
-    const movCtaCte = await MovimientoCtaCteProveedor.create(
-      {
-        proveedor_id: toNum(proveedor_id),
-        empresa_id: toNum(empresa_id),
-        fecha: fechaOP,
-        fecha_pago: fechaVto,
-        descripcion: `Anticipo proveedor por Echeq - OP #${orden.id}`,
-        tipo: "abono",
-        importe: N(pago.importe),
-        origen_tipo: "OrdenPago",
-        origen_id: orden.id,
-        comprobanteegreso_id: null,
-        anulado: false,
-        ordenpago_id: orden.id,
-        // ✅ seteamos la forma de pago (eCheq) si la encontramos
-        formapago_id: formaPagoIdECheq || null,
-        // (opcional) referencia directa al eCheq — útil para trazabilidad
-        referencia_tipo: "EcheqEmitido",
-        referencia_id: ech.id,
-      },
-      { transaction: t }
-    );
+    for (
+      let i = 0;
+      i < listaPagos.length;
+      i++
+    ) {
+
+      const item =
+        listaPagos[i];
+
+
+      const fechaOP =
+        fecha ||
+        item.fecha_emision ||
+        new Date()
+          .toISOString()
+          .slice(0, 10);
+
+
+      const fechaEmision =
+        item.fecha_emision ||
+        fechaOP;
+
+
+      const fechaVto =
+        item.fecha_vencimiento ||
+        fechaEmision;
+
+
+      // Cada pago puede resolver su imputación.
+      // Esto mantiene el controller flexible.
+      const imputacion =
+        await ensureImputacionFromCategoria(
+          item.categoriaegreso_id,
+          item.imputacioncontable_id,
+          t
+        );
+
+
+      // ==========================================================
+      // 1. SU PROPIA ORDEN DE PAGO
+      // ==========================================================
+
+      const orden =
+        await OrdenPago.create(
+          {
+            empresa_id:
+              toNum(empresa_id),
+
+            proveedor_id:
+              toNum(proveedor_id),
+
+            comprobanteegreso_id:
+              null,
+
+            fecha:
+              fechaOP,
+
+            total:
+              N(item.importe),
+
+            estado:
+              "pendiente_aplicacion",
+
+            numero:
+              null,
+
+            observaciones:
+              observaciones || null,
+
+            origen:
+              "anticipo_echeq",
+
+            /*
+             * Para un único eCheq mantenemos exactamente
+             * la idempotencia anterior.
+             *
+             * Para lote derivamos una clave distinta
+             * para cada operación.
+             */
+            idempotency_key:
+              idempotencyKey
+                ? listaPagos.length === 1
+                  ? idempotencyKey
+                  : `${idempotencyKey}-${i + 1}`
+                : null,
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+      // ==========================================================
+      // 2. SU PROPIO ECHEQ
+      // ==========================================================
+
+      const ech =
+        await EcheqEmitido.create(
+          {
+            empresa_id:
+              toNum(empresa_id),
+
+            proveedor_id:
+              toNum(proveedor_id),
+
+            banco_id:
+              toNum(item.banco_id),
+
+            fecha_emision:
+              fechaEmision,
+
+            fecha_vencimiento:
+              fechaVto,
+
+            importe:
+              N(item.importe),
+
+            numero_echeq:
+              item.numero_echeq ||
+              null,
+
+            estado:
+              "emitido",
+
+            anulado:
+              false,
+
+            ordenpago_id:
+              orden.id,
+
+            categoriaegreso_id:
+              toNum(
+                item.categoriaegreso_id
+              ) || null,
+
+            imputacioncontable_id:
+              toNum(imputacion) ||
+              null,
+
+            proyecto_id:
+              toNum(
+                item.proyecto_id
+              ) || null,
+
+            comprobanteegreso_id:
+              null,
+
+            referencia_id:
+              orden.id,
+
+            referencia_tipo:
+              "OrdenPago",
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+      // ==========================================================
+      // 3. SU PROPIO ABONO CTA CTE
+      // ==========================================================
+
+      const movCtaCte =
+        await MovimientoCtaCteProveedor.create(
+          {
+            proveedor_id:
+              toNum(proveedor_id),
+
+            empresa_id:
+              toNum(empresa_id),
+
+            fecha:
+              fechaOP,
+
+            fecha_pago:
+              fechaVto,
+
+            descripcion:
+              `Anticipo proveedor por Echeq - OP #${orden.id}`,
+
+            tipo:
+              "abono",
+
+            importe:
+              N(item.importe),
+
+            origen_tipo:
+              "OrdenPago",
+
+            origen_id:
+              orden.id,
+
+            comprobanteegreso_id:
+              null,
+
+            anulado:
+              false,
+
+            ordenpago_id:
+              orden.id,
+
+            formapago_id:
+              formaPagoIdECheq ||
+              null,
+
+            referencia_tipo:
+              "EcheqEmitido",
+
+            referencia_id:
+              ech.id,
+          },
+          {
+            transaction: t,
+          }
+        );
+
+
+      resultados.push({
+        ordenpago:
+          orden,
+
+        echeq:
+          ech,
+
+        movCtaCte:
+          movCtaCte,
+      });
+    }
+
+
+    // ============================================================
+    // TODO EL LOTE TERMINÓ CORRECTAMENTE
+    // ============================================================
 
     await t.commit();
+
+
+    // ============================================================
+    // COMPATIBILIDAD DE RESPUESTA
+    // ============================================================
+
+    if (resultados.length === 1) {
+
+      const resultado =
+        resultados[0];
+
+
+      return res.status(201).json({
+        ok: true,
+
+        mensaje:
+          "Anticipo por eCheq registrado. OP creada y aplicado a Cta Cte.",
+
+        ordenpago:
+          resultado.ordenpago,
+
+        echeq:
+          resultado.echeq,
+
+        movCtaCte:
+          resultado.movCtaCte,
+      });
+    }
+
+
     return res.status(201).json({
       ok: true,
-      mensaje: "Anticipo por eCheq registrado. OP creada y aplicado a Cta Cte.",
-      ordenpago: orden,
-      echeq: ech,
-      movCtaCte,
+
+      mensaje:
+        `${resultados.length} anticipos por eCheq registrados correctamente.`,
+
+      cantidad:
+        resultados.length,
+
+      operaciones:
+        resultados,
     });
+
+
   } catch (e) {
-    await t.rollback();
-    console.error("registrarAnticipoProveedorEcheq", e);
-    return res.status(400).json({ error: e.message || "No se pudo registrar el anticipo por eCheq" });
+
+    if (!t.finished) {
+      await t.rollback();
+    }
+
+
+    console.error(
+      "registrarAnticipoProveedorEcheq",
+      e
+    );
+
+
+    return res.status(400).json({
+      error:
+        e.message ||
+        "No se pudo registrar el anticipo por eCheq",
+    });
   }
 }
-
-
 /* =========================
    ACREDITAR eCheq
    - Crea MovimientoBancoTesoreria (egreso)

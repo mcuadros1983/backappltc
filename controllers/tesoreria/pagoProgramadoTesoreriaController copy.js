@@ -1550,10 +1550,6 @@ export const acreditarPagoProgramado = async (req, res) => {
 
       generar_abono_ctacte = false,
 
-      // Si la acreditación es parcial,
-      // genera otro Pago Programado por la diferencia.
-      generar_saldo_pendiente = false,
-
     } = req.body || {};
 
 
@@ -1613,21 +1609,6 @@ export const acreditarPagoProgramado = async (req, res) => {
       );
     }
 
-    const montoProgramadoOriginal =
-      N(pago.monto);
-
-    if (montoFinal > montoProgramadoOriginal) {
-      throw new Error(
-        "El monto a acreditar no puede superar el monto del Pago Programado"
-      );
-    }
-
-    const diferenciaPendiente =
-      montoProgramadoOriginal - montoFinal;
-
-    const debeGenerarSaldoPendiente =
-      generar_saldo_pendiente === true &&
-      diferenciaPendiente > 0;
 
     const descripcionFinal =
       descripcion !== undefined
@@ -2900,72 +2881,6 @@ export const acreditarPagoProgramado = async (req, res) => {
         resultadosComprobantes[0];
 
     }
-
-    // ==================================================
-    // ACREDITACIÓN PARCIAL:
-    // GENERAR NUEVO PAGO PROGRAMADO POR LA DIFERENCIA
-    // ==================================================
-
-    let nuevoPagoProgramadoSaldo = null;
-
-    if (debeGenerarSaldoPendiente) {
-
-      nuevoPagoProgramadoSaldo =
-        await PagoProgramadoTesoreria.create(
-          {
-            empresa_id:
-              pago.empresa_id,
-
-            proveedor_id:
-              pago.proveedor_id,
-
-            tipo:
-              pago.tipo,
-
-            medio:
-              pago.medio,
-
-            fecha_programada:
-              pago.fecha_programada,
-
-            monto:
-              diferenciaPendiente,
-
-            descripcion:
-              pago.descripcion,
-
-            observaciones:
-              pago.observaciones || null,
-
-            formapago_id:
-              pago.formapago_id || null,
-
-            banco_id:
-              pago.banco_id || null,
-
-            caja_id:
-              pago.caja_id || null,
-
-            echeq_fecha_vencimiento:
-              pago.echeq_fecha_vencimiento || null,
-
-            categoriaegreso_id:
-              pago.categoriaegreso_id || null,
-
-            imputacioncontable_id:
-              pago.imputacioncontable_id || null,
-
-            proyecto_id:
-              pago.proyecto_id || null,
-
-            estado:
-              "pendiente",
-          },
-          {
-            transaction: t,
-          }
-        );
-    }
     await t.commit();
 
 
@@ -2973,9 +2888,7 @@ export const acreditarPagoProgramado = async (req, res) => {
       ok: true,
 
       mensaje:
-        nuevoPagoProgramadoSaldo
-          ? "Pago programado acreditado parcialmente y saldo reprogramado correctamente."
-          : "Pago programado acreditado correctamente.",
+        "Pago programado acreditado correctamente.",
 
       pagoProgramado:
         pago,
@@ -2987,8 +2900,6 @@ export const acreditarPagoProgramado = async (req, res) => {
 
       abonoCtaCte:
         nuevoAbonoCtaCte,
-
-      nuevoPagoProgramadoSaldo,
     });
 
   } catch (error) {
