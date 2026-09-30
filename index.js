@@ -14,7 +14,8 @@ import "./models/index.js"; // Este define las relaciones
 // import "./models/gmedias/cobranzaModel.js";
 // import "./models/gmedias/detalleCobranzaModel.js";
 // import "./models/gmedias/sucursalModel.js";
-import "./libs/configuracionInicial.js";
+// import "./libs/configuracionInicial.js";
+import { crearRoles } from "./libs/configuracionInicial.js";
 import notificationSeeder from "./libs/notificationSeeder.js";
 import schedulerSeeder from "./libs/schedulerSeeder.js";
 
@@ -156,6 +157,8 @@ async function main() {
         throw error;
       }
     }
+
+    await crearRoles();
 
     console.log(
       "[SYNC] ✅ Todos los modelos sincronizados."

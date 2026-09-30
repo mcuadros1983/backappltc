@@ -8,7 +8,7 @@ export const crearRoles = async () => {
   try {
     // Sincronizar los modelos con la base de datos
     // await sequelize.sync({ alter: true });
-    await sequelize.sync();
+    // await sequelize.sync();
 
     // Verificar si existen los roles
     const rolesExistentes = await Rol.findAll({ where: { nombre: ['admin', 'gestion', 'ventas', 'sucursales','mantenimiento'] } });
@@ -24,7 +24,8 @@ export const crearRoles = async () => {
     }
 
     // Crear el usuario admin
-    crearAdmin();
+    // crearAdmin();
+    await crearAdmin();
   } catch (error) {
     console.error(error);
   }
@@ -61,4 +62,4 @@ export const crearAdmin = async () => {
 };
 
 // Llama a las funciones para crear roles y el usuario admin
-crearRoles();
+// crearRoles();

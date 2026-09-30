@@ -62,18 +62,17 @@ export const registrarPagoProgramado = async (req, res) => {
       banco_id,
       caja_id,
 
-      // Sólo para la PROMESA de pago mediante eCheq.
-      // Todavía NO se crea EcheqEmitido.
       echeq_fecha_vencimiento,
 
       categoriaegreso_id,
       imputacioncontable_id,
       proyecto_id,
 
+      // Comprobante al que pertenece el pago programado
+      comprobanteegreso_id,
+
       idempotencyKey,
 
-      // Si es true, el movimiento quedará disponible
-      // como abono para aplicar a varias facturas.
       generar_abono_ctacte = false,
     } = req.body || {};
 
@@ -276,7 +275,9 @@ export const registrarPagoProgramado = async (req, res) => {
               : null,
 
           comprobanteegreso_id:
-            null,
+            comprobanteegreso_id
+              ? Number(comprobanteegreso_id)
+              : null,
 
           ordenpago_id:
             null,
@@ -2957,6 +2958,9 @@ export const acreditarPagoProgramado = async (req, res) => {
 
             proyecto_id:
               pago.proyecto_id || null,
+
+            comprobanteegreso_id:
+              pago.comprobanteegreso_id || null, 
 
             estado:
               "pendiente",
