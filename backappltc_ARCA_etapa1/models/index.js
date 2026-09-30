@@ -1,0 +1,1214 @@
+// models/index.js
+
+// Core
+import { sequelize } from "../config/database.js";
+
+// Módulo: cajatesoreria
+import CajaTesoreria from "./tesoreria/cajatesoreria.js";
+import MovimientoCajaTesoreria from "./tesoreria/movimientocajatesoreria.js";
+import IngresoCaja from "./tesoreria/ingresocaja.js";
+import EgresoCaja from "./tesoreria/egresocaja.js";
+
+// Módulo: tesoreria
+import CategoriaEgreso from "./tesoreria/categoriaEgreso.js";
+import CategoriaIngreso from "./tesoreria/categoriaIngreso.js";
+
+// Módulo: comun
+import Banco from "./comun/banco.js";
+import TarjetaComun from "./comun/tarjetacomun.js";
+import Proyecto from "./comun/proyecto.js";
+import Proveedor from "./comun/proveedor.js";
+
+// Módulo: conciliacion
+import ConciliacionRegistroBanco from "./conciliacion/registrobanco.js";
+
+// Módulo: sueldoempleado
+import SueldoEmpleado from "./sueldoempleado/sueldoempleado.js";
+import AdelantoEmpleado from "./sueldoempleado/adelantoempleado.js";
+
+// Módulo: iva
+import ComprobanteEgreso from "./iva/comprobanteegreso.js";
+import ComprobanteIngreso from "./iva/comprobanteingreso.js";
+
+// Módulo: sistfinanciero
+import PagoProveedor from "./sistfinanciero/pagoproveedor.js";
+
+// Módulo: tablas
+import EmpleadoTabla from "./tablas/empleadoModel.js";
+import ClientePersonaTabla from "./tablas/clientePersonaModel.js";
+
+// Módulo: gmedias
+import Sucursal from "./gmedias/sucursalModel.js";
+import PagoTarjetaCredito from "./tesoreria/pagotarjetacredito.js";
+
+// asociaciones.js (ejemplo)
+import OrdenPago from "../models/tesoreria/ordendepago.js";
+
+// models/index.js o donde definas asociaciones
+import Hacienda from "../models/gmedia/hacienda.js";
+import RegistroHacienda from "../models/gmedia/registrohacienda.js";
+
+import RetiroTesoreria from "../models/tesoreria/retirotesoreria.js";
+
+// associations.js
+
+import AdicionalFijoTipo from "../models/sueldoempleado/adicionalfijotipo.js";
+import AdicionalFijoValor from "../models/sueldoempleado/adicionalfijovalor.js";
+import EmpleadoAdicionalFijo from "../models/sueldoempleado/empleadoadicionalfijo.js";
+import AdicionalVariable from "../models/sueldoempleado/adicionalvariable.js";
+import PeriodoLiquidacion from "../models/sueldoempleado/periodoliquidacion.js";
+import Recibo from "../models/sueldoempleado/recibo.js";
+import ReciboItem from "../models/sueldoempleado/reciboitem.js";
+import AdicionalVariableTipo from "./sueldoempleado/adicionalvariabletipo.js";
+
+import PrestamoEmpleado from "../models/sueldoempleado/prestamoEmpleadoModel.js";
+
+import GastoEstimado from "./tesoreria/gastoestimado.js";
+import GastoEstimadoInstancia from "./tesoreria/gastoestimadoinstancia.js";
+import GastoEstimadoPago from "./tesoreria/gastoestimadopago.js";
+import { registerAuditHooks } from "../boot/auditHooks.js";
+import EmpresaArca from "./comun/empresa.js";
+import ArcaConfiguracion from "./arca/arcaConfiguracion.js";
+import ArcaTicket from "./arca/arcaTicket.js";
+import RegistroPrecio from "./statics/registroPrecioModel.js"
+
+import DatosEmpleado from "./tablas/datosEmpleadoModel.js"; // 👈 nuevo
+
+import { Dispositivo } from './asistencia/Dispositivo.js';
+import { Turno } from './asistencia/Turno.js';
+import { Parametro } from './asistencia/Parametro.js';
+import { EmpleadoEmbedding } from './asistencia/EmpleadoEmbedding.js';
+import { Asistencia } from './asistencia/Asistencia.js';
+
+import HuellaNavegador from "./asistencia/huellaNavegador.js";
+import AsignacionVacaciones from "./asistencia/asignacionVacaciones.js";
+import HorarioTurno from "./asistencia/HorarioTurno.js";
+
+import Jornada from './asistencia/jornadaModel.js';
+import JornadaTurno from './asistencia/jornadaTurnoModel.js';
+
+import Documento from "./documentacion/Documento.js";
+import DocumentoPaso from "./documentacion/DocumentoPaso.js";
+import DocumentoArchivo from "./documentacion/DocumentoArchivo.js"
+import DocumentoSubcategoria from "./documentacion/DocumentoSubcategoria.js"
+
+import { AudioSegment } from "./audio/AudioSegment.js";
+import { AudioSegmentAnalysis } from "./audio/AudioSegmentAnalysis.js";
+
+import PromocionTabla from "./tablas/promocionModel.js";
+import PromocionArticuloTabla from "./tablas/promocionArticuloModel.js";
+import PromocionDiaTabla from "./tablas/promocionDiaModel.js";
+
+import ArticuloTabla from "../models/tablas/articuloModel.js";
+import Usuario from "../models/auth/usuarioModel.js";
+
+import BotSetting from "../models/bot/botSettingModel.js";
+import BotProductMeta from "../models/bot/botProductMetaModel.js";
+import BotConversation from "../models/bot/botConversationModel.js";
+import BotMessage from "../models/bot/botMessageModel.js";
+import BotHandoffRequest from "../models/bot/botHandoffRequestModel.js";
+
+import ProduccionLote from "./fabrica/produccionLoteModel.js";
+import ProduccionLoteDetalle from "./fabrica/produccionLoteDetalleModel.js";
+// import ArticuloTabla from "./tablas/articuloModel.js";
+
+import {
+  ComercioAsociado,
+  ComercioQr,
+  CampaniaFidelizacion,
+  PremioCliente,
+  ClienteFidelizacion,
+  ParticipacionCliente,
+  CuponCliente,
+  CanjeCuponCliente,
+  PuntoComercioMovimiento,
+  PremioComercio,
+  CanjePremioComercio,
+  AlertaFraude,
+  initFidelizacionAssociations,
+} from "./fidelizacion/index.js";
+
+import InspeccionPlantilla from "./inspecciones/inspeccionPlantillaModel.js";
+import InspeccionCategoria from "./inspecciones/inspeccionCategoriaModel.js";
+import InspeccionItem from "./inspecciones/inspeccionItemModel.js";
+
+import Inspeccion from "./inspecciones/inspeccionModel.js";
+import InspeccionRespuesta from "./inspecciones/inspeccionRespuestaModel.js";
+import InspeccionEvidencia from "./inspecciones/inspeccionEvidenciaModel.js";
+import InspeccionHistorial from "./inspecciones/inspeccionHistorialModel.js";
+import InspeccionNotificacion from "./inspecciones/inspeccionNotificacionModel.js";
+
+import GestionProyecto from "./gestion/gestionProyectoModel.js";
+import GestionProyectoMiembro from "./gestion/gestionProyectoMiembroModel.js";
+import GestionProyectoActividad from "./gestion/GestionProyectoActividadModel.js";
+import GestionProyectoDocumento from "./gestion/gestionProyectoDocumentoModel.js";
+import GestionTarea from "./gestion/gestionTareaModel.js";
+import GestionTareaParticipante from "./gestion/gestionTareaParticipanteModel.js";
+import GestionTareaActividad from "./gestion/gestionTareaActividadModel.js";
+import GestionTareaArchivo from "./gestion/gestionTareaArchivo.js";
+import GestionTareaChecklist from "./gestion/gestionTareaChecklistModel.js";
+
+import EvaluacionMeta from "./evaluacion/evaluacionMetaModel.js";
+import EvaluacionMetaAsignacion from "./evaluacion/evaluacionMetaAsignacionModel.js";
+import EvaluacionMetaAvance from "./evaluacion/evaluacionMetaAvanceModel.js";
+
+// import EmpleadoTabla from "./rrhh/empleadoModel.js";
+import EvaluacionPeriodo from "./evaluacion/evaluacionPeriodoModel.js";
+// import Usuario from "./seguridad/usuarioModel.js";
+
+import EvaluacionSistema from "./evaluacion/evaluacionSistemaModel.js";
+import EvaluacionEscala from "./evaluacion/evaluacionEscalaModel.js";
+
+import Evaluacion from "./evaluacion/evaluacionModel.js";
+import EvaluacionTipo from "./evaluacion/evaluacionTipoModel.js";
+import EvaluacionCriterio from "./evaluacion/evaluacionCriterioModel.js";
+import EvaluacionPlantilla from "./evaluacion/evaluacionPlantillaModel.js";
+import EvaluacionPlantillaDetalle from "./evaluacion/evaluacionPlantillaDetalleModel.js";
+import EvaluacionRespuesta from "./evaluacion/evaluacionRespuestaModel.js";
+import EvaluacionRespuestaDetalle from "./evaluacion/evaluacionRespuestaDetalleModel.js";
+import EvaluacionComunicacion from "./evaluacion/evaluacionComunicacionModel.js";
+
+
+import {
+  initMotorConceptosAssociations,
+  MotorConcepto,
+  MotorConceptoEntidadTipo,
+  MotorConceptoEntidad,
+  MotorConceptoCampo,
+  MotorConceptoLista,
+  MotorConceptoListaItem,
+  MotorConceptoArchivoTipo,
+  MotorConceptoRegla,
+} from "./motorconceptos/index.js";
+
+import {
+  initMotorConceptosOperacionAssociations,
+  MotorConceptoRegistro,
+  MotorConceptoRegistroVersion,
+  MotorConceptoRegistroValor,
+  MotorConceptoRegistroArchivo,
+} from "./motorconceptos/operacionAssociations.js";
+
+
+import InteligenciaSnapshot
+  from "./inteligencia/inteligenciaSnapshotModel.js";
+
+import InteligenciaPrecioHistorico
+  from "./inteligencia/inteligenciaPrecioHistoricoModel.js";
+
+import InteligenciaPromocionHistorico
+  from "./inteligencia/inteligenciaPromocionHistoricoModel.js";
+
+import InteligenciaEvento
+  from "./inteligencia/inteligenciaEventoModel.js";
+
+import InteligenciaClima
+  from "./inteligencia/inteligenciaClimaModel.js";
+
+import InteligenciaEventoSucursal
+  from "./inteligencia/inteligenciaEventoSucursalModel.js";
+
+import InteligenciaEventoArticulo
+  from "./inteligencia/inteligenciaEventoArticuloModel.js";
+
+import PagoProgramadoTesoreria from "../models/tesoreria/PagoProgramadoTesoreria.js";
+
+initMotorConceptosAssociations();
+initMotorConceptosOperacionAssociations();
+
+// import EvaluacionRespuesta from "./evaluacion/evaluacionRespuestaModel.js";
+
+/*=========================================================
+  CONFIGURACIÓN DEL MÓDULO
+=========================================================*/
+
+// EvaluacionSistema.hasMany(
+//   EvaluacionEscala,
+//   {
+//     foreignKey: "empresa_id",
+//     sourceKey: "empresa_id",
+//     as: "escalas"
+//   }
+// );
+
+// EvaluacionEscala.belongsTo(
+//   EvaluacionSistema,
+//   {
+//     foreignKey: "empresa_id",
+//     targetKey: "empresa_id",
+//     as: "configuracion"
+//   }
+// );
+/**
+ * BotProductMeta <-> ArticuloTabla
+ */
+
+BotProductMeta.belongsTo(ArticuloTabla, {
+  foreignKey: "articulo_id",
+  as: "articulo",
+});
+
+ArticuloTabla.hasOne(BotProductMeta, {
+  foreignKey: "articulo_id",
+  as: "bot_meta",
+});
+
+/**
+ * BotConversation <-> BotMessage
+ */
+BotConversation.hasMany(BotMessage, {
+  foreignKey: "conversation_id",
+  as: "messages",
+});
+
+BotMessage.belongsTo(BotConversation, {
+  foreignKey: "conversation_id",
+  as: "conversation",
+});
+
+/**
+ * BotConversation <-> BotHandoffRequest
+ */
+BotConversation.hasMany(BotHandoffRequest, {
+  foreignKey: "conversation_id",
+  as: "handoffs",
+});
+
+BotHandoffRequest.belongsTo(BotConversation, {
+  foreignKey: "conversation_id",
+  as: "conversation",
+});
+
+/**
+ * Usuario <-> BotHandoffRequest
+ */
+BotHandoffRequest.belongsTo(Usuario, {
+  foreignKey: "assigned_user_id",
+  as: "assigned_user",
+});
+
+Usuario.hasMany(BotHandoffRequest, {
+  foreignKey: "assigned_user_id",
+  as: "bot_handoffs",
+});
+
+AudioSegment.hasOne(AudioSegmentAnalysis, {
+  foreignKey: "audio_segment_id",
+  as: "analysis",
+});
+
+AudioSegmentAnalysis.belongsTo(AudioSegment, {
+  foreignKey: "audio_segment_id",
+  as: "segment",
+});
+ArcaConfiguracion.belongsTo(EmpresaArca, { foreignKey: "empresa_id", as: "empresa", onDelete: "RESTRICT" });
+registerAuditHooks(sequelize);
+
+EmpleadoTabla.hasMany(PrestamoEmpleado, {
+  foreignKey: "empleado_id",
+  as: "Prestamos",
+});
+
+PrestamoEmpleado.belongsTo(EmpleadoTabla, {
+  foreignKey: "empleado_id",
+  as: "Empleado",
+});
+
+PrestamoEmpleado.hasMany(AdicionalVariable, {
+  foreignKey: "prestamo_id",
+  as: "Cuotas",
+});
+
+AdicionalVariable.belongsTo(PrestamoEmpleado, {
+  foreignKey: "prestamo_id",
+  as: "Prestamo",
+});
+
+// Relaciones para MovimientoCajaTesoreria
+MovimientoCajaTesoreria.belongsTo(CajaTesoreria, { foreignKey: "caja_id" });
+MovimientoCajaTesoreria.belongsTo(CategoriaEgreso, { foreignKey: "categoriaegreso_id" });
+MovimientoCajaTesoreria.belongsTo(CategoriaIngreso, { foreignKey: "categoriaingreso_id" });
+MovimientoCajaTesoreria.belongsTo(Banco, { foreignKey: "banco_id" });
+MovimientoCajaTesoreria.belongsTo(ConciliacionRegistroBanco, { foreignKey: "registrobanco_id" });
+MovimientoCajaTesoreria.belongsTo(EmpleadoTabla, { foreignKey: "empleado_id" });
+MovimientoCajaTesoreria.belongsTo(Proveedor, { foreignKey: "proveedor_id" });
+MovimientoCajaTesoreria.belongsTo(ClientePersonaTabla, { foreignKey: "cliente_id" });
+MovimientoCajaTesoreria.belongsTo(Proyecto, { foreignKey: "proyecto_id" });
+MovimientoCajaTesoreria.belongsTo(Sucursal, { foreignKey: "sucursal_id" });
+MovimientoCajaTesoreria.belongsTo(TarjetaComun, { foreignKey: "tarjeta_id" });
+MovimientoCajaTesoreria.belongsTo(ComprobanteEgreso, { foreignKey: "comprobanteegreso_id" });
+MovimientoCajaTesoreria.belongsTo(ComprobanteIngreso, { foreignKey: "comprobanteingreso_id" });
+MovimientoCajaTesoreria.belongsTo(PagoProveedor, { foreignKey: "pagoproveedor_id" });
+MovimientoCajaTesoreria.belongsTo(SueldoEmpleado, { foreignKey: "sueldo_id" });
+MovimientoCajaTesoreria.belongsTo(AdelantoEmpleado, { foreignKey: "adelanto_id" });
+
+// Relación CajaTesoreria con MovimientoCajaTesoreria
+CajaTesoreria.hasMany(MovimientoCajaTesoreria, { foreignKey: "caja_id" });
+
+CajaTesoreria.hasMany(IngresoCaja, { foreignKey: "caja_id" });
+IngresoCaja.belongsTo(CajaTesoreria, { foreignKey: "caja_id" });
+
+CajaTesoreria.hasMany(EgresoCaja, { foreignKey: "caja_id" });
+EgresoCaja.belongsTo(CajaTesoreria, { foreignKey: "caja_id" });
+
+ComprobanteEgreso.hasMany(PagoTarjetaCredito, {
+  as: "pagosTarjeta",
+  foreignKey: "comprobanteegreso_id",
+});
+PagoTarjetaCredito.belongsTo(ComprobanteEgreso, {
+  as: "comprobante",
+  foreignKey: "comprobanteegreso_id",
+});
+
+// OrdenPago ↔ MovimientoCajaTesoreria (1–N)
+OrdenPago.hasMany(MovimientoCajaTesoreria, {
+  foreignKey: "ordenpago_id",
+  as: "movimientosCaja",
+});
+MovimientoCajaTesoreria.belongsTo(OrdenPago, {
+  foreignKey: "ordenpago_id",
+  as: "ordenPago",
+});
+
+// OrdenPago ↔ ComprobanteEgreso (N–1, una orden puede aplicarse a 1 comp)
+ComprobanteEgreso.hasMany(OrdenPago, {
+  foreignKey: "comprobanteegreso_id",
+  as: "ordenesPago",
+});
+OrdenPago.belongsTo(ComprobanteEgreso, {
+  foreignKey: "comprobanteegreso_id",
+  as: "comprobante",
+});
+
+// CategoriaEgreso ↔ MovimientoCajaTesoreria (1–N)
+CategoriaEgreso.hasMany(MovimientoCajaTesoreria, {
+  foreignKey: "categoriaegreso_id",
+  as: "movimientosCaja",
+});
+MovimientoCajaTesoreria.belongsTo(CategoriaEgreso, {
+  foreignKey: "categoriaegreso_id",
+  as: "categoriaEgreso",
+});
+
+TarjetaComun.hasMany(PagoTarjetaCredito, { foreignKey: "tarjetacomun_id" });
+PagoTarjetaCredito.belongsTo(TarjetaComun, { foreignKey: "tarjetacomun_id", as: "tarjeta" });
+
+Hacienda.hasMany(RegistroHacienda, { foreignKey: "hacienda_id", as: "items" });
+RegistroHacienda.belongsTo(Hacienda, { foreignKey: "hacienda_id", as: "hacienda" });
+
+// RetiroTesoreria ↔ Sucursal
+RetiroTesoreria.belongsTo(Sucursal, {
+  foreignKey: "sucursal_id",
+  as: "sucursal",
+});
+Sucursal.hasMany(RetiroTesoreria, {
+  foreignKey: "sucursal_id",
+  as: "retirosTesoreria",
+});
+
+// RetiroTesoreria ↔ MovimientoCajaTesoreria (opcional pero recomendado)
+RetiroTesoreria.belongsTo(MovimientoCajaTesoreria, {
+  foreignKey: "movimiento_id",
+  as: "movimiento",
+});
+MovimientoCajaTesoreria.hasMany(RetiroTesoreria, {
+  foreignKey: "movimiento_id",
+  as: "retiros",
+});
+
+// Fijos
+EmpleadoTabla.hasMany(EmpleadoAdicionalFijo, { foreignKey: "empleado_id" });
+EmpleadoAdicionalFijo.belongsTo(EmpleadoTabla, { foreignKey: "empleado_id" });
+
+AdicionalFijoTipo.hasMany(EmpleadoAdicionalFijo, { foreignKey: "adicionalfijotipo_id" });
+EmpleadoAdicionalFijo.belongsTo(AdicionalFijoTipo, { foreignKey: "adicionalfijotipo_id" });
+
+AdicionalFijoTipo.hasMany(AdicionalFijoValor, { foreignKey: "adicionalfijotipo_id" });
+AdicionalFijoValor.belongsTo(AdicionalFijoTipo, { foreignKey: "adicionalfijotipo_id" });
+
+Recibo.belongsTo(EmpleadoTabla, { as: "Empleado", foreignKey: "empleado_id" });
+EmpleadoTabla.hasMany(Recibo, { as: "Recibos", foreignKey: "empleado_id" });
+
+Recibo.belongsTo(PeriodoLiquidacion, { as: "Periodo", foreignKey: "periodo_id" });
+PeriodoLiquidacion.hasMany(Recibo, { as: "Recibos", foreignKey: "periodo_id" });
+
+Recibo.hasMany(ReciboItem, {
+  foreignKey: "recibo_id", as: "Items"
+},);
+ReciboItem.belongsTo(Recibo, { foreignKey: "recibo_id", as: "Recibo" });
+
+// belongsTo hacia Empleado (alias único para AdicionalVariable)
+AdicionalVariable.belongsTo(EmpleadoTabla, {
+  foreignKey: "empleado_id",
+  as: "EmpleadoAV",
+});
+
+// hasMany desde Empleado -> AdicionalVariable (alias único)
+EmpleadoTabla.hasMany(AdicionalVariable, {
+  foreignKey: "empleado_id",
+  as: "AdicionalesVariablesPorEmpleado",
+});
+
+// belongsTo hacia PeriodoLiquidacion (alias único)
+AdicionalVariable.belongsTo(PeriodoLiquidacion, {
+  foreignKey: "periodo_id",
+  as: "PeriodoAV",
+});
+
+// hasMany desde Periodo -> AdicionalVariable (alias distinto al anterior)
+PeriodoLiquidacion.hasMany(AdicionalVariable, {
+  foreignKey: "periodo_id",
+  as: "AdicionalesVariablesPorPeriodo",
+});
+
+// belongsTo hacia AdicionalVariableTipo (NUEVA asociación + alias)
+AdicionalVariable.belongsTo(AdicionalVariableTipo, {
+  foreignKey: "adicionalvariabletipo_id",
+  as: "TipoAV",
+});
+
+// hasMany desde Tipo -> AdicionalVariable (alias único)
+AdicionalVariableTipo.hasMany(AdicionalVariable, {
+  foreignKey: "adicionalvariabletipo_id",
+  as: "AdicionalesVariablesPorTipo",
+});
+
+
+
+GastoEstimado.hasMany(GastoEstimadoInstancia, { foreignKey: "gastoestimado_id", as: "instancias" });
+GastoEstimadoInstancia.belongsTo(GastoEstimado, { foreignKey: "gastoestimado_id", as: "gastoestimado" });
+
+GastoEstimadoInstancia.hasMany(GastoEstimadoPago, { foreignKey: "gastoestimado_instancia_id", as: "pagos" });
+GastoEstimadoPago.belongsTo(GastoEstimadoInstancia, { foreignKey: "gastoestimado_instancia_id", as: "instancia" });
+
+// --- GastoEstimado → Proveedor / Categoria / (Sucursal opcional) ---
+GastoEstimado.belongsTo(Proveedor, {
+  foreignKey: "proveedor_id",
+  // as: "Proveedor"   // NO pongas 'as' si no lo vas a usar en los include
+});
+Proveedor.hasMany(GastoEstimado, { foreignKey: "proveedor_id" });
+
+GastoEstimado.belongsTo(CategoriaEgreso, {
+  foreignKey: "categoriaegreso_id",
+  // as: "CategoriaEgreso"
+});
+CategoriaEgreso.hasMany(GastoEstimado, { foreignKey: "categoriaegreso_id" });
+
+// --- Pagos de gasto estimado ---
+// Asegurate que el modelo GastoEstimadoPago tenga la FK 'gastoestimado_id'
+GastoEstimado.hasMany(GastoEstimadoPago, {
+  as: "pagos",
+  foreignKey: "gastoestimado_id",
+});
+GastoEstimadoPago.belongsTo(GastoEstimado, {
+  as: "gasto",
+  foreignKey: "gastoestimado_id",
+});
+
+GastoEstimado.hasMany(GastoEstimadoInstancia, { foreignKey: "gastoestimado_id" });
+GastoEstimadoInstancia.belongsTo(GastoEstimado, { foreignKey: "gastoestimado_id" });
+
+GastoEstimadoInstancia.hasMany(GastoEstimadoPago, { foreignKey: "gastoestimado_instancia_id" });
+GastoEstimadoPago.belongsTo(GastoEstimadoInstancia, { foreignKey: "gastoestimado_instancia_id" });
+
+GastoEstimadoInstancia.belongsTo(Proveedor, { foreignKey: "proveedor_id" });
+GastoEstimadoInstancia.belongsTo(CategoriaEgreso, { foreignKey: "categoriaegreso_id" });
+// si tenés Sucursal/Empresa, podés agregar los belongsTo equivalentes
+
+// ---- Relaciones de DatosEmpleado ----
+EmpleadoTabla.hasOne(DatosEmpleado, {
+  foreignKey: "empleado_id",
+  as: "datos",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+DatosEmpleado.belongsTo(EmpleadoTabla, {
+  foreignKey: "empleado_id",
+  as: "empleado",
+});
+
+Sucursal.hasMany(DatosEmpleado, {
+  foreignKey: "sucursal_id",
+  as: "datosEmpleados",
+});
+DatosEmpleado.belongsTo(Sucursal, {
+  foreignKey: "sucursal_id",
+  as: "sucursal",
+});
+
+
+// Relaciones
+Sucursal.hasMany(EmpleadoTabla, { foreignKey: 'sucursal_id' });
+EmpleadoTabla.belongsTo(Sucursal, { foreignKey: 'sucursal_id' });
+
+Turno.hasMany(EmpleadoTabla, { foreignKey: 'turno_id' });
+EmpleadoTabla.belongsTo(Turno, { foreignKey: 'turno_id' });
+
+Sucursal.hasMany(Dispositivo, { foreignKey: 'sucursal_id' });
+Dispositivo.belongsTo(Sucursal, { foreignKey: 'sucursal_id' });
+
+EmpleadoTabla.hasMany(EmpleadoEmbedding, { foreignKey: 'empleado_id' });
+EmpleadoEmbedding.belongsTo(EmpleadoTabla, { foreignKey: 'empleado_id' });
+
+EmpleadoTabla.hasMany(Asistencia, { foreignKey: 'empleado_id' });
+Asistencia.belongsTo(EmpleadoTabla, { foreignKey: 'empleado_id' });
+
+Sucursal.hasMany(Asistencia, { foreignKey: 'sucursal_id' });
+Asistencia.belongsTo(Sucursal, { foreignKey: 'sucursal_id' });
+
+// Un empleado (a través de DatosEmpleado) pertenece a una Jornada
+DatosEmpleado.belongsTo(Jornada, {
+  foreignKey: "jornada_id",
+  as: "jornada",
+});
+// Una Jornada puede tener muchos DatosEmpleado (empleados asignados a esa jornada)
+Jornada.hasMany(DatosEmpleado, {
+  foreignKey: "jornada_id",
+  as: "empleados", // alias para listar empleados de la jornada
+});
+
+Jornada.belongsToMany(Turno, {
+  through: JornadaTurno,
+  foreignKey: 'jornada_id',
+  otherKey: 'turno_id',
+  as: 'turnos',
+});
+
+Turno.belongsToMany(Jornada, {
+  through: JornadaTurno,
+  foreignKey: 'turno_id',
+  otherKey: 'jornada_id',
+  as: 'jornadas',
+});
+
+// (Opcional) facilitar includes desde la pivote:
+JornadaTurno.belongsTo(Jornada, { foreignKey: 'jornada_id', as: 'jornada' });
+JornadaTurno.belongsTo(Turno, { foreignKey: 'turno_id', as: 'turno' });
+
+// Documento tiene muchos pasos
+Documento.hasMany(DocumentoPaso, {
+  foreignKey: "documento_id",
+  as: "pasos",
+  onDelete: "CASCADE",
+});
+DocumentoPaso.belongsTo(Documento, {
+  foreignKey: "documento_id",
+  as: "documento",
+});
+
+// Documento tiene muchos archivos
+Documento.hasMany(DocumentoArchivo, {
+  foreignKey: "documento_id",
+  as: "archivos",
+  onDelete: "CASCADE",
+});
+DocumentoArchivo.belongsTo(Documento, {
+  foreignKey: "documento_id",
+  as: "documento",
+});
+
+// NUEVA asociación con subcategoría
+Documento.belongsTo(DocumentoSubcategoria, {
+  foreignKey: "subcategoria_id",
+  as: "subcategoria",
+});
+DocumentoSubcategoria.hasMany(Documento, {
+  foreignKey: "subcategoria_id",
+  as: "documentos",
+});
+
+ProduccionLote.hasMany(ProduccionLoteDetalle, {
+  foreignKey: "produccion_lote_id",
+  as: "detalles",
+});
+
+ProduccionLoteDetalle.belongsTo(ProduccionLote, {
+  foreignKey: "produccion_lote_id",
+  as: "lote",
+});
+
+ProduccionLoteDetalle.belongsTo(ArticuloTabla, {
+  foreignKey: "articulo_id",
+  as: "articulo",
+});
+
+InspeccionPlantilla.hasMany(InspeccionCategoria, {
+  foreignKey: "plantilla_id",
+  as: "categorias",
+});
+
+InspeccionCategoria.belongsTo(InspeccionPlantilla, {
+  foreignKey: "plantilla_id",
+  as: "plantilla",
+});
+
+InspeccionCategoria.hasMany(InspeccionItem, {
+  foreignKey: "categoria_id",
+  as: "items",
+});
+
+InspeccionItem.belongsTo(InspeccionCategoria, {
+  foreignKey: "categoria_id",
+  as: "categoria",
+});
+
+InspeccionPlantilla.hasMany(Inspeccion, {
+  foreignKey: "plantilla_id",
+  as: "inspecciones",
+});
+
+Inspeccion.belongsTo(InspeccionPlantilla, {
+  foreignKey: "plantilla_id",
+  as: "plantilla",
+});
+
+Sucursal.hasMany(Inspeccion, {
+  foreignKey: "sucursal_id",
+  as: "inspecciones",
+});
+
+Inspeccion.belongsTo(Sucursal, {
+  foreignKey: "sucursal_id",
+  as: "sucursal",
+});
+
+Usuario.hasMany(Inspeccion, {
+  foreignKey: "usuario_inspector_id",
+  as: "inspeccionesRealizadas",
+});
+
+Inspeccion.belongsTo(Usuario, {
+  foreignKey: "usuario_inspector_id",
+  as: "inspector",
+});
+
+Inspeccion.hasMany(InspeccionRespuesta, {
+  foreignKey: "inspeccion_id",
+  as: "respuestas",
+});
+
+InspeccionRespuesta.belongsTo(Inspeccion, {
+  foreignKey: "inspeccion_id",
+  as: "inspeccion",
+});
+
+InspeccionRespuesta.hasMany(InspeccionEvidencia, {
+  foreignKey: "respuesta_id",
+  as: "evidencias",
+});
+
+InspeccionEvidencia.belongsTo(InspeccionRespuesta, {
+  foreignKey: "respuesta_id",
+  as: "respuesta",
+});
+
+InspeccionRespuesta.hasMany(InspeccionHistorial, {
+  foreignKey: "respuesta_id",
+  as: "historial",
+});
+
+InspeccionHistorial.belongsTo(InspeccionRespuesta, {
+  foreignKey: "respuesta_id",
+  as: "respuesta",
+});
+
+InspeccionHistorial.belongsTo(
+  Usuario,
+  {
+    foreignKey: "usuario_id",
+    as: "usuario",
+  }
+);
+
+Usuario.hasMany(
+  InspeccionHistorial,
+  {
+    foreignKey: "usuario_id",
+    as: "historialInspecciones",
+  }
+);
+
+Inspeccion.hasMany(
+  InspeccionNotificacion,
+  {
+    foreignKey: "inspeccion_id",
+    as: "notificaciones",
+  }
+);
+
+InspeccionNotificacion.belongsTo(
+  Inspeccion,
+  {
+    foreignKey: "inspeccion_id",
+    as: "inspeccion",
+  }
+);
+
+InspeccionRespuesta.belongsTo(
+  Usuario,
+  {
+    foreignKey:
+      "usuario_inspector_id",
+    as:
+      "usuario_inspector",
+  }
+);
+
+InspeccionRespuesta.belongsTo(
+  Usuario,
+  {
+    foreignKey:
+      "usuario_corrector_id",
+    as:
+      "usuario_corrector",
+  }
+);
+
+InspeccionRespuesta.belongsTo(
+  Usuario,
+  {
+    foreignKey:
+      "usuario_revisor_id",
+    as:
+      "usuario_revisor",
+  }
+);
+
+// =============================
+// Módulo Gestión
+// =============================
+
+GestionProyecto.belongsTo(Usuario, { foreignKey: "responsable_id", as: "responsable" });
+GestionProyecto.belongsTo(Usuario, { foreignKey: "supervisor_id", as: "supervisor" });
+GestionProyecto.belongsTo(Sucursal, { foreignKey: "sucursal_id", as: "sucursal" });
+GestionProyecto.hasMany(GestionProyectoMiembro, { foreignKey: "proyecto_id", as: "miembros" });
+GestionProyecto.hasMany(GestionTarea, { foreignKey: "proyecto_id", as: "tareas" });
+
+GestionProyectoMiembro.belongsTo(GestionProyecto, { foreignKey: "proyecto_id", as: "proyecto" });
+GestionProyectoMiembro.belongsTo(Usuario, { foreignKey: "usuario_id", as: "usuario" });
+
+GestionTarea.belongsTo(GestionProyecto, { foreignKey: "proyecto_id", as: "proyecto" });
+GestionTarea.belongsTo(Usuario, { foreignKey: "responsable_id", as: "responsable" });
+GestionTarea.belongsTo(Usuario, { foreignKey: "supervisor_id", as: "supervisor" });
+GestionTarea.belongsTo(Sucursal, { foreignKey: "sucursal_id", as: "sucursal" });
+
+GestionTarea.hasMany(GestionTareaParticipante, { foreignKey: "tarea_id", as: "participantes" });
+GestionTareaParticipante.belongsTo(GestionTarea, { foreignKey: "tarea_id", as: "tarea" });
+GestionTareaParticipante.belongsTo(Usuario, { foreignKey: "usuario_id", as: "usuario" });
+
+GestionTarea.hasMany(GestionTareaActividad, { foreignKey: "tarea_id", as: "actividades" });
+GestionTareaActividad.belongsTo(GestionTarea, { foreignKey: "tarea_id", as: "tarea" });
+GestionTareaActividad.belongsTo(Usuario, { foreignKey: "usuario_id", as: "usuario" });
+
+GestionTarea.hasMany(
+  GestionTareaArchivo,
+  {
+    foreignKey: "tarea_id",
+    as: "archivos",
+  }
+);
+
+console.log("ASOCIANDO GestionTareaArchivo -> usuario");
+
+GestionTareaArchivo.belongsTo(
+  Usuario,
+  {
+    foreignKey: "usuario_id",
+    as: "usuario",
+  }
+);
+
+GestionTarea.hasMany(GestionTareaChecklist, { foreignKey: "tarea_id", as: "checklist" });
+GestionTareaChecklist.belongsTo(GestionTarea, { foreignKey: "tarea_id", as: "tarea" });
+GestionTareaChecklist.belongsTo(Usuario, { foreignKey: "completado_por_id", as: "completadoPor" });
+
+GestionProyecto.hasMany(
+  GestionProyectoActividad,
+  {
+    foreignKey: "proyecto_id",
+    as: "actividades",
+  }
+);
+
+console.log("ASOCIANDO GestionProyectoActividad -> usuario");
+
+GestionProyectoActividad.belongsTo(
+  Usuario,
+  {
+    foreignKey: "usuario_id",
+    as: "usuario",
+  }
+);
+
+GestionProyecto.hasMany(
+  GestionProyectoDocumento,
+  {
+    foreignKey: "proyecto_id",
+    as: "documentos",
+  }
+);
+
+GestionProyectoDocumento.belongsTo(
+  GestionProyecto,
+  {
+    foreignKey: "proyecto_id",
+    as: "proyecto",
+  }
+);
+
+GestionProyectoActividad.belongsTo(
+  GestionProyecto,
+  {
+    foreignKey: "proyecto_id",
+    as: "proyecto",
+  }
+);
+
+EvaluacionMeta.hasMany(
+
+  EvaluacionMetaAsignacion,
+
+  {
+
+    foreignKey: "meta_id",
+
+    as: "asignaciones"
+
+  }
+
+);
+
+EvaluacionMetaAsignacion.belongsTo(
+
+  EvaluacionMeta,
+
+  {
+
+    foreignKey: "meta_id",
+
+    as: "meta"
+
+  }
+
+);
+
+EvaluacionMetaAsignacion.belongsTo(
+
+  EmpleadoTabla,
+
+  {
+
+    foreignKey: "empleado_id",
+
+    as: "empleado"
+
+  }
+
+);
+
+EvaluacionMetaAsignacion.belongsTo(
+
+  Usuario,
+
+  {
+
+    foreignKey: "supervisor_id",
+
+    as: "supervisor"
+
+  }
+
+);
+
+EvaluacionMetaAsignacion.belongsTo(
+
+  EvaluacionPeriodo,
+
+  {
+
+    foreignKey: "periodo_id",
+
+    as: "periodo"
+
+  }
+
+);
+
+EvaluacionMetaAsignacion.hasMany(
+
+  EvaluacionMetaAvance,
+
+  {
+
+    foreignKey: "asignacion_id",
+
+    as: "avances"
+
+  }
+
+);
+
+EvaluacionMetaAvance.belongsTo(
+
+  EvaluacionMetaAsignacion,
+
+  {
+
+    foreignKey: "asignacion_id",
+
+    as: "asignacion"
+
+  }
+
+);
+
+Evaluacion.belongsTo(EvaluacionTipo, {
+  foreignKey: "tipo_id",
+  as: "tipo"
+});
+
+EvaluacionTipo.hasMany(Evaluacion, {
+  foreignKey: "tipo_id",
+  as: "evaluaciones"
+});
+
+Evaluacion.belongsTo(EvaluacionPeriodo, {
+  foreignKey: "periodo_id",
+  as: "periodo"
+});
+
+EvaluacionPeriodo.hasMany(Evaluacion, {
+  foreignKey: "periodo_id",
+  as: "evaluaciones"
+});
+
+Evaluacion.belongsTo(EmpleadoTabla, {
+  foreignKey: "empleado_id",
+  as: "empleado"
+});
+
+EmpleadoTabla.hasMany(Evaluacion, {
+  foreignKey: "empleado_id",
+  as: "evaluaciones"
+});
+Evaluacion.belongsTo(Usuario, {
+  foreignKey: "evaluador_usuario_id",
+  as: "evaluador"
+});
+Usuario.hasMany(Evaluacion, {
+  foreignKey: "evaluador_usuario_id",
+  as: "evaluacionesRealizadas"
+});
+
+EvaluacionPlantilla.hasMany(EvaluacionPlantillaDetalle, {
+  foreignKey: "plantilla_id",
+  as: "detalles"
+});
+
+EvaluacionPlantillaDetalle.belongsTo(EvaluacionPlantilla, {
+  foreignKey: "plantilla_id",
+  as: "plantilla"
+});
+
+EvaluacionCriterio.hasMany(EvaluacionPlantillaDetalle, {
+  foreignKey: "criterio_id",
+  as: "plantillas"
+});
+
+EvaluacionPlantillaDetalle.belongsTo(EvaluacionCriterio, {
+  foreignKey: "criterio_id",
+  as: "criterio"
+});
+
+EvaluacionTipo.hasMany(EvaluacionPlantilla, {
+  foreignKey: "tipo_id",
+  as: "plantillas",
+});
+
+EvaluacionPlantilla.belongsTo(EvaluacionTipo, {
+  foreignKey: "tipo_id",
+  as: "tipo",
+});
+
+Evaluacion.belongsTo(EvaluacionPlantilla, {
+  foreignKey: "plantilla_id",
+  as: "plantilla"
+});
+
+EvaluacionPlantilla.hasMany(Evaluacion, {
+  foreignKey: "plantilla_id",
+  as: "evaluaciones"
+});
+
+EvaluacionRespuesta.hasMany(
+  EvaluacionRespuestaDetalle,
+  {
+    foreignKey: "respuesta_id",
+    as: "detalles"
+  }
+);
+
+// EvaluacionRespuestaDetalle.belongsTo(
+//   EvaluacionRespuesta,
+//   {
+//     foreignKey: "respuesta_id",
+//     as: "respuesta"
+//   }
+// );
+
+Evaluacion.hasMany(EvaluacionRespuesta, {
+  foreignKey: "evaluacion_id",
+  as: "respuestas"
+});
+
+EvaluacionRespuesta.belongsTo(Evaluacion, {
+  foreignKey: "evaluacion_id",
+  as: "evaluacion"
+});
+
+EvaluacionCriterio.hasMany(
+  EvaluacionRespuestaDetalle,
+  {
+    foreignKey: "criterio_id",
+    as: "respuestas"
+  }
+);
+
+EvaluacionRespuestaDetalle.belongsTo(
+  EvaluacionCriterio,
+  {
+    foreignKey: "criterio_id",
+    as: "criterio"
+  }
+);
+
+// EvaluacionRespuesta.hasMany(
+//   EvaluacionRespuestaDetalle,
+//   {
+//     foreignKey: "respuesta_id",
+//     as: "detalles"
+//   }
+// );
+
+EvaluacionRespuestaDetalle.belongsTo(
+  EvaluacionRespuesta,
+  {
+    foreignKey: "respuesta_id",
+    as: "respuesta"
+  }
+);
+
+initFidelizacionAssociations();
+
+// Exportar todos los modelos por si se necesita en otros módulos
+export {
+  ArcaConfiguracion,
+  ArcaTicket,
+  sequelize,
+  CajaTesoreria,
+  MovimientoCajaTesoreria,
+  CategoriaEgreso,
+  CategoriaIngreso,
+  Banco,
+  ConciliacionRegistroBanco,
+  EmpleadoTabla,
+  ClientePersonaTabla,
+  Proyecto,
+  Proveedor,
+  Sucursal,
+  TarjetaComun,
+  PagoTarjetaCredito,
+  ComprobanteEgreso,
+  ComprobanteIngreso,
+  PagoProveedor,
+  SueldoEmpleado,
+  AdelantoEmpleado,
+  Hacienda,
+  RegistroHacienda,
+  RetiroTesoreria,
+  EmpleadoAdicionalFijo,
+  AdicionalFijoTipo,
+  AdicionalFijoValor,
+  AdicionalVariable,
+  PeriodoLiquidacion,
+  Recibo,
+  ReciboItem,
+  AdicionalVariableTipo,
+  GastoEstimado,
+  GastoEstimadoPago,
+  GastoEstimadoInstancia,
+  RegistroPrecio,
+  DatosEmpleado,
+  Dispositivo, Turno, Parametro, EmpleadoEmbedding, Asistencia,
+  HuellaNavegador,
+  HorarioTurno,
+  AsignacionVacaciones,
+  Jornada,
+  JornadaTurno, Documento, DocumentoPaso, DocumentoArchivo,
+  ComercioAsociado,
+  ComercioQr,
+  CampaniaFidelizacion,
+  PremioCliente,
+  ClienteFidelizacion,
+  ParticipacionCliente,
+  CuponCliente,
+  CanjeCuponCliente,
+  PuntoComercioMovimiento,
+  PremioComercio,
+  CanjePremioComercio,
+  AlertaFraude,
+  InspeccionPlantilla,
+  InspeccionCategoria,
+  InspeccionItem,
+  Inspeccion,
+  InspeccionRespuesta,
+  InspeccionHistorial,
+  InspeccionEvidencia,
+  InspeccionNotificacion,
+  GestionProyecto,
+  GestionProyectoMiembro,
+  GestionProyectoActividad,
+  GestionProyectoDocumento,
+  GestionTarea,
+  GestionTareaParticipante,
+  GestionTareaActividad,
+  GestionTareaArchivo,
+  GestionTareaChecklist,
+  Usuario,
+  BotSetting,
+  BotProductMeta,
+  EvaluacionMeta,
+  EvaluacionMetaAsignacion,
+  EvaluacionMetaAvance,
+  EvaluacionPeriodo,
+  EvaluacionEscala,
+  EvaluacionSistema,
+  Evaluacion,
+  EvaluacionTipo,
+  EvaluacionCriterio,
+  EvaluacionPlantilla,
+  EvaluacionPlantillaDetalle,
+  EvaluacionRespuesta,
+  EvaluacionRespuestaDetalle,
+  EvaluacionComunicacion,
+  MotorConcepto,
+  MotorConceptoEntidadTipo,
+  MotorConceptoEntidad,
+  MotorConceptoCampo,
+  MotorConceptoLista,
+  MotorConceptoListaItem,
+  MotorConceptoArchivoTipo,
+  MotorConceptoRegla,
+  MotorConceptoRegistro,
+  MotorConceptoRegistroVersion,
+  MotorConceptoRegistroValor,
+  MotorConceptoRegistroArchivo,
+  InteligenciaSnapshot,
+  InteligenciaPrecioHistorico,
+  InteligenciaPromocionHistorico,
+  InteligenciaEvento,
+  InteligenciaClima,
+  InteligenciaEventoSucursal,
+  InteligenciaEventoArticulo,
+  PagoProgramadoTesoreria,
+};
