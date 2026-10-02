@@ -8,6 +8,57 @@ const includeResumen = [
   { model: Usuario, as: "supervisor", attributes: ["id", "usuario"], required: false },
 ];
 
+// const includeDetalle = [
+//   ...includeResumen,
+
+//   {
+//     model: GestionProyectoMiembro,
+//     as: "miembros",
+//     required: false,
+
+//     where: {
+//       activo: true,
+//     },
+
+//     include: [
+//       {
+//         model: Usuario,
+//         as: "usuario",
+//         attributes: ["id", "usuario"],
+//         required: false,
+//       },
+//     ],
+//   },
+
+//   {
+//     model: GestionTarea,
+//     as: "tareas",
+//     required: false,
+//     include: [
+//       {
+//         model: Usuario,
+//         as: "responsable",
+//         attributes: ["id", "usuario"],
+//         required: false,
+//       },
+//     ],
+//   },
+
+//   {
+//     model: GestionProyectoActividad,
+//     as: "actividades",
+//     required: false,
+//     include: [
+//       {
+//         model: Usuario,
+//         as: "usuario",
+//         attributes: ["id", "usuario"],
+//         required: false,
+//       },
+//     ],
+//   },
+// ];
+
 const includeDetalle = [
   ...includeResumen,
 
@@ -16,9 +67,9 @@ const includeDetalle = [
     as: "miembros",
     required: false,
 
-    where: {
-      activo: true,
-    },
+    // where: {
+    //   activo: true,
+    // },
 
     include: [
       {
@@ -34,6 +85,13 @@ const includeDetalle = [
     model: GestionTarea,
     as: "tareas",
     required: false,
+
+    // Las tareas eliminadas lógicamente
+    // no deben formar parte del proyecto.
+    where: {
+      activo: true,
+    },
+
     include: [
       {
         model: Usuario,
@@ -58,7 +116,6 @@ const includeDetalle = [
     ],
   },
 ];
-
 
 const validarPermisoProyecto = async (
   user,

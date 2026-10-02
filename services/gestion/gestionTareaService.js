@@ -189,6 +189,45 @@ const getAll = async (
       ),
     });
 
+  console.log(
+    "================================"
+  );
+
+  console.log(
+    "GESTION getAll USER:",
+    {
+      id: user?.id,
+      rol_id: user?.rol_id,
+    }
+  );
+
+  console.log(
+    "GESTION getAll QUERY:",
+    query
+  );
+
+  console.log(
+    "GESTION getAll WHERE:",
+    buildWhere(user, query)
+  );
+
+  console.log(
+    "GESTION getAll ROWS:",
+    rows.map((t) => ({
+      id: t.id,
+      codigo: t.codigo,
+      proyecto_id: t.proyecto_id,
+      estado: t.estado,
+      activo: t.activo,
+      responsable_id: t.responsable_id,
+      creado_por_id: t.creado_por_id,
+    }))
+  );
+
+  console.log(
+    "================================"
+  );
+
   if (
     Number(user.rol_id) === 1
   ) {
@@ -676,20 +715,10 @@ const remove = async (
     tarea
   );
 
-  await tarea.update({
-    activo: false,
-  });
-
-  await gestionActividadService.crear({
-    tarea_id,
-    usuario_id: user.id,
-    tipo: GESTION_TIPOS_ACTIVIDAD.SISTEMA,
-    comentario: "Tarea eliminada",
-  });
+  await tarea.destroy();
 
   return true;
 };
-
 
 const updateChecklist = async (
   user,
@@ -815,5 +844,5 @@ export default {
   completeChecklist,
   remove,
   updateChecklist,
-removeChecklist,
+  removeChecklist,
 };
