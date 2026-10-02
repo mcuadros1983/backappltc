@@ -106,32 +106,61 @@ export const obtenerComprobanteEgresoPorId = async (req, res) => {
 };
 
 export const actualizarComprobanteEgreso = async (req, res) => {
+
   const t = await sequelize.transaction();
+
   try {
+
     const id = Number(req.params.id);
-    const comp = await ComprobanteEgreso.findByPk(id, { transaction: t });
+
+    const comp =
+      await ComprobanteEgreso.findByPk(
+        id,
+        {
+          transaction: t,
+        }
+      );
+
+
     if (!comp) {
+
       await t.rollback();
-      return res.status(404).json({ error: 'Comprobante de egreso no encontrado' });
+
+      return res.status(404).json({
+        error:
+          "Comprobante de egreso no encontrado",
+      });
     }
 
-    // Separar campos especiales del resto
-    const body = req.body || {};
+
+    // ============================================================
+    // BODY
+    // ============================================================
+
+    const body =
+      req.body || {};
+
 
     const pagosProgramadosDesasociar =
       Array.isArray(
         body.pagos_programados_desasociar
       )
         ? [
-          ...new Set(
-            body.pagos_programados_desasociar
-              .map(Number)
-              .filter(Boolean)
-          ),
-        ]
+            ...new Set(
+              body.pagos_programados_desasociar
+                .map(Number)
+                .filter(Boolean)
+            ),
+          ]
         : [];
 
+
+    // ============================================================
+    // VALIDACIONES FISCALES
+    // ============================================================
+
     validarDatosFiscalesComprobante({
+
       iva_especial:
         Object.prototype.hasOwnProperty.call(
           body,
@@ -149,20 +178,52 @@ export const actualizarComprobanteEgreso = async (req, res) => {
           : comp.iva_especial_porcentaje,
     });
 
-    const hasHaciendaInBody = Object.prototype.hasOwnProperty.call(body, "hacienda_id");
-    const nuevoHaciendaId = hasHaciendaInBody
-      ? (body.hacienda_id ? Number(body.hacienda_id) : null)
-      : (comp.hacienda_id ?? null);
-    const viejoHaciendaId = comp.hacienda_id ? Number(comp.hacienda_id) : null;
 
-    // 1) Actualizar resto de campos del comprobante (sin tocar hacienda_id todavía)
+    // ============================================================
+    // HACIENDA
+    // ============================================================
+
+    const hasHaciendaInBody =
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "hacienda_id"
+      );
+
+
+    const nuevoHaciendaId =
+      hasHaciendaInBody
+        ? (
+            body.hacienda_id
+              ? Number(body.hacienda_id)
+              : null
+          )
+        : (
+            comp.hacienda_id ??
+            null
+          );
+
+
+    const viejoHaciendaId =
+      comp.hacienda_id
+        ? Number(comp.hacienda_id)
+        : null;
+
+
+    // ============================================================
+    // 1. ACTUALIZAR CAMPOS NORMALES
+    // ============================================================
+
     const {
       hacienda_id,
       pagos_programados_desasociar,
       ...rest
     } = body;
 
-    if (Object.keys(rest).length) {
+
+    if (
+      Object.keys(rest).length
+    ) {
+
       await comp.update(
         rest,
         {
@@ -171,48 +232,123 @@ export const actualizarComprobanteEgreso = async (req, res) => {
       );
     }
 
-    // 2) Si el body NO trae hacienda_id,
-    // no hacemos nada con la relación Hacienda.
-    // El controller continúa porque puede haber
-    // otras operaciones especiales, como
-    // desasociar Pagos Programados.
 
-    // 3) Si cambió la hacienda, sincronizar espejo en "Hacienda"
+    // ============================================================
+    // 2. SINCRONIZAR HACIENDA
+    // ============================================================
+
     const cambioHacienda =
       hasHaciendaInBody &&
       (viejoHaciendaId || null) !==
-      (nuevoHaciendaId || null);
+        (nuevoHaciendaId || null);
+
 
     if (cambioHacienda) {
-      // 3.1) Desvincular anterior (si había y estaba efectivamente atada a este comp)
+
+      // ----------------------------------------------------------
+      // Desvincular hacienda anterior
+      // ----------------------------------------------------------
+
       if (viejoHaciendaId) {
-        const hacVieja = await Hacienda.findByPk(viejoHaciendaId, { transaction: t });
-        if (hacVieja && Number(hacVieja.comprobante_id) === comp.id) {
-          await hacVieja.update({ comprobante_id: null }, { transaction: t });
+
+        const hacVieja =
+          await Hacienda.findByPk(
+            viejoHaciendaId,
+            {
+              transaction: t,
+            }
+          );
+
+
+        if (
+          hacVieja &&
+          Number(
+            hacVieja.comprobante_id
+          ) === Number(comp.id)
+        ) {
+
+          await hacVieja.update(
+            {
+              comprobante_id:
+                null,
+            },
+            {
+              transaction: t,
+            }
+          );
         }
       }
 
-      // 3.2) Vincular nueva (si viene)
+
+      // ----------------------------------------------------------
+      // Vincular nueva hacienda
+      // ----------------------------------------------------------
+
       if (nuevoHaciendaId) {
-        const hacNueva = await Hacienda.findByPk(nuevoHaciendaId, { transaction: t });
-        if (!hacNueva) throw new Error('Hacienda nueva no encontrada');
 
-        // Evitar pisar una hacienda tomada por otro comprobante
-        if (hacNueva.comprobante_id && Number(hacNueva.comprobante_id) !== comp.id) {
-          throw new Error('La Hacienda ya está vinculada a otro comprobante');
+        const hacNueva =
+          await Hacienda.findByPk(
+            nuevoHaciendaId,
+            {
+              transaction: t,
+            }
+          );
+
+
+        if (!hacNueva) {
+
+          throw new Error(
+            "Hacienda nueva no encontrada"
+          );
         }
 
-        await hacNueva.update({ comprobante_id: comp.id }, { transaction: t });
+
+        if (
+          hacNueva.comprobante_id &&
+          Number(
+            hacNueva.comprobante_id
+          ) !== Number(comp.id)
+        ) {
+
+          throw new Error(
+            "La Hacienda ya está vinculada a otro comprobante"
+          );
+        }
+
+
+        await hacNueva.update(
+          {
+            comprobante_id:
+              comp.id,
+          },
+          {
+            transaction: t,
+          }
+        );
       }
     }
 
-    // 4) Actualizar el campo hacienda_id del comprobante (refleja lo que quedó en Hacienda)
-    if (hasHaciendaInBody) {
-      await comp.update({ hacienda_id: nuevoHaciendaId }, { transaction: t });
-    }
 
     // ============================================================
-    // 5) DESASOCIAR PAGOS PROGRAMADOS DEL COMPROBANTE
+    // 3. ACTUALIZAR HACIENDA_ID DEL COMPROBANTE
+    // ============================================================
+
+    if (hasHaciendaInBody) {
+
+      await comp.update(
+        {
+          hacienda_id:
+            nuevoHaciendaId,
+        },
+        {
+          transaction: t,
+        }
+      );
+    }
+
+
+    // ============================================================
+    // 4. DESASOCIAR PAGOS PROGRAMADOS
     // ============================================================
 
     if (
@@ -220,12 +356,27 @@ export const actualizarComprobanteEgreso = async (req, res) => {
     ) {
 
       /*
-       * Buscamos TODOS los cargos de Cta.Cte.
-       * pertenecientes a este comprobante.
+       * ----------------------------------------------------------
+       * CARGOS ACTIVOS DEL COMPROBANTE
+       * ----------------------------------------------------------
+       *
+       * Puede no existir ninguno.
+       *
+       * Eso NO es un error.
+       *
+       * Un Pago Programado puede haber sido asociado directamente
+       * al comprobante mediante:
+       *
+       * pagoProgramado.comprobanteegreso_id
+       *
+       * sin haber pasado previamente por Cuenta Corriente.
        */
+
       const cargosComprobante =
         await MovimientoCtaCteProveedor.findAll({
+
           where: {
+
             tipo:
               "cargo",
 
@@ -243,83 +394,106 @@ export const actualizarComprobanteEgreso = async (req, res) => {
           ],
 
           transaction: t,
-          lock: t.LOCK.UPDATE,
+
+          lock:
+            t.LOCK.UPDATE,
         });
 
 
-      const cargoIds =
+      /*
+       * let y no const porque, si creamos cargos durante
+       * esta operación, los incorporamos al array.
+       */
+      let cargoIds =
         cargosComprobante
           .map(
-            (cargo) =>
+            cargo =>
               Number(cargo.id)
           )
           .filter(Boolean);
 
 
-      if (cargoIds.length === 0) {
-        throw new Error(
-          "El comprobante no posee cargos de Cuenta Corriente asociados."
-        );
-      }
-
       /*
-       * Guardamos todos los comprobantes que
-       * deberán recalcularse.
+       * Todos los comprobantes cuya situación financiera
+       * deberá recalcularse al terminar.
        */
       const comprobantesAfectados =
         new Set();
 
 
-      /*
-       * Procesamos cada Pago Programado solicitado.
-       */
+      // ==========================================================
+      // PROCESAR CADA PAGO PROGRAMADO
+      // ==========================================================
+
       for (
         const pagoProgramadoId
         of pagosProgramadosDesasociar
       ) {
+
+        // --------------------------------------------------------
+        // 4.1 OBTENER PAGO PROGRAMADO
+        // --------------------------------------------------------
 
         const pagoProgramado =
           await PagoProgramadoTesoreria.findByPk(
             pagoProgramadoId,
             {
               transaction: t,
-              lock: t.LOCK.UPDATE,
+
+              lock:
+                t.LOCK.UPDATE,
             }
           );
 
 
         if (!pagoProgramado) {
+
           throw new Error(
             `No se encontró el Pago Programado #${pagoProgramadoId}.`
           );
         }
 
 
-        /*
-         * Solamente un Pago Programado pendiente
-         * puede desasociarse.
-         */
+        // --------------------------------------------------------
+        // 4.2 SOLAMENTE PENDIENTES
+        // --------------------------------------------------------
+
         if (
           String(
-            pagoProgramado.estado || ""
+            pagoProgramado.estado ||
+            ""
           )
             .trim()
             .toLowerCase() !==
           "pendiente"
         ) {
+
           throw new Error(
             `El Pago Programado #${pagoProgramadoId} ya no está pendiente y no puede desasociarse.`
           );
         }
 
 
-        /*
-         * Buscamos TODOS los ABONOS activos
-         * correspondientes a este Pago Programado.
-         */
+        // --------------------------------------------------------
+        // 4.3 ¿ESTÁ ASOCIADO DIRECTAMENTE AL COMPROBANTE?
+        // --------------------------------------------------------
+
+        const asociadoDirectamente =
+          Number(
+            pagoProgramado.comprobanteegreso_id ||
+            0
+          ) === Number(comp.id);
+
+
+        // --------------------------------------------------------
+        // 4.4 BUSCAR ABONOS DEL PAGO PROGRAMADO
+        // --------------------------------------------------------
+
         const abonosProgramado =
           await MovimientoCtaCteProveedor.findAll({
+
             where: {
+
               tipo:
                 "abono",
 
@@ -340,101 +514,291 @@ export const actualizarComprobanteEgreso = async (req, res) => {
             ],
 
             transaction: t,
-            lock: t.LOCK.UPDATE,
+
+            lock:
+              t.LOCK.UPDATE,
           });
 
 
         const abonoIds =
           abonosProgramado
             .map(
-              (abono) =>
+              abono =>
                 Number(abono.id)
             )
             .filter(Boolean);
 
 
-        if (abonoIds.length === 0) {
+        /*
+         * IMPORTANTE:
+         *
+         * La ausencia de abonos NO constituye un error
+         * si el PP está asociado directamente al comprobante.
+         */
+
+        if (
+          abonoIds.length === 0 &&
+          !asociadoDirectamente
+        ) {
+
           throw new Error(
-            `El Pago Programado #${pagoProgramadoId} no posee abonos pendientes asociados.`
+            `El Pago Programado #${pagoProgramadoId} no posee abonos asociados ni está asociado directamente a este comprobante.`
           );
         }
 
 
+        // --------------------------------------------------------
+        // 4.5 BUSCAR APLICACIONES DEL PP A ESTE COMPROBANTE
+        // --------------------------------------------------------
+
+        let aplicacionesEsteComprobante =
+          [];
+
+
         /*
-         * Primero verificamos que el Pago Programado
-         * realmente esté relacionado con ESTE
-         * comprobante.
+         * Sólo podemos buscar aplicaciones si existen:
          *
-         * Esto evita que desde este endpoint se mande
-         * arbitrariamente el ID de otro Pago Programado.
+         * - abonos del PP;
+         * - cargos del comprobante.
          */
-        const aplicacionesEsteComprobante =
-          await MovimientoCtaCteProveedorAplic.findAll({
-            where: {
-              abono_id: {
-                [Op.in]:
-                  abonoIds,
-              },
-
-              cargo_id: {
-                [Op.in]:
-                  cargoIds,
-              },
-            },
-
-            attributes: [
-              "id",
-            ],
-
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
-
 
         if (
-          aplicacionesEsteComprobante.length === 0
+          abonoIds.length > 0 &&
+          cargoIds.length > 0
         ) {
+
+          aplicacionesEsteComprobante =
+            await MovimientoCtaCteProveedorAplic.findAll({
+
+              where: {
+
+                abono_id: {
+                  [Op.in]:
+                    abonoIds,
+                },
+
+                cargo_id: {
+                  [Op.in]:
+                    cargoIds,
+                },
+              },
+
+              attributes: [
+                "id",
+                "abono_id",
+                "cargo_id",
+                "importe",
+              ],
+
+              transaction: t,
+
+              lock:
+                t.LOCK.UPDATE,
+            });
+        }
+
+
+        /*
+         * El PP pertenece al comprobante cuando se cumple
+         * al menos UNA de estas dos condiciones:
+         *
+         * A) tiene una aplicación de Cuenta Corriente;
+         *
+         * B) pagoProgramado.comprobanteegreso_id === comp.id
+         */
+
+        if (
+          aplicacionesEsteComprobante.length === 0 &&
+          !asociadoDirectamente
+        ) {
+
           throw new Error(
             `El Pago Programado #${pagoProgramadoId} no está aplicado a este comprobante.`
           );
         }
 
 
+        // --------------------------------------------------------
+        // 4.6 SI ERA ASOCIACIÓN DIRECTA SIN APLICACIÓN DE CTA.CTE.
+        //     CREAR EL CARGO POR EL MONTO DESASOCIADO
+        // --------------------------------------------------------
+
         /*
-         * Una vez validado el origen de la operación,
-         * buscamos TODAS las aplicaciones del PP,
-         * independientemente del comprobante.
+         * Éste es el caso que estabas encontrando:
+         *
+         * Comprobante
+         *      ↓
+         * Pago Programado directo
+         *
+         * sin Cargo
+         * sin Abono
+         * sin Aplicación
+         *
+         * Al quitar el PP, el importe vuelve a ser deuda.
+         *
+         * Por eso creamos un CARGO.
+         *
+         * IMPORTANTE:
+         *
+         * No utilizamos:
+         *
+         * cargoIds.length === 0
+         *
+         * porque podría existir otro cargo del comprobante
+         * que no tenga nada que ver con este PP.
+         *
+         * Lo correcto es determinar si ESTE PP tenía o no
+         * una aplicación a Cuenta Corriente.
          */
-        const aplicacionesTodas =
-          await MovimientoCtaCteProveedorAplic.findAll({
-            where: {
-              abono_id: {
-                [Op.in]:
-                  abonoIds,
+
+        if (
+          asociadoDirectamente &&
+          aplicacionesEsteComprobante.length === 0
+        ) {
+
+          const montoDesasociado =
+            Number(
+              pagoProgramado.monto ||
+              0
+            );
+
+
+          if (
+            !Number.isFinite(
+              montoDesasociado
+            ) ||
+            montoDesasociado <= 0
+          ) {
+
+            throw new Error(
+              `El Pago Programado #${pagoProgramadoId} posee un monto inválido para generar la deuda.`
+            );
+          }
+
+
+          const nuevoCargo =
+            await MovimientoCtaCteProveedor.create(
+              {
+
+                proveedor_id:
+                  comp.proveedor_id ||
+                  pagoProgramado.proveedor_id ||
+                  null,
+
+                empresa_id:
+                  comp.empresa_id ||
+                  pagoProgramado.empresa_id ||
+                  null,
+
+                fecha:
+                  comp.fechacomprobante ||
+                  new Date()
+                    .toISOString()
+                    .slice(0, 10),
+
+                fecha_pago:
+                  null,
+
+                descripcion:
+                  `Desasociación Pago Programado #${pagoProgramado.id} - Comprobante ${comp.nrocomprobante || comp.id}`,
+
+                tipo:
+                  "cargo",
+
+                importe:
+                  montoDesasociado,
+
+                origen_tipo:
+                  "ComprobanteEgreso",
+
+                origen_id:
+                  comp.id,
+
+                comprobanteegreso_id:
+                  comp.id,
+
+                anulado:
+                  false,
+
+                ordenpago_id:
+                  null,
+
+                formapago_id:
+                  null,
               },
-            },
+              {
+                transaction: t,
+              }
+            );
 
-            attributes: [
-              "id",
-              "abono_id",
-              "cargo_id",
-              "importe",
-            ],
 
-            transaction: t,
-            lock: t.LOCK.UPDATE,
-          });
+          /*
+           * Incorporamos el nuevo cargo al conjunto.
+           *
+           * Esto es importante si en esta misma operación
+           * se desasocian varios PP.
+           */
+          cargoIds.push(
+            Number(
+              nuevoCargo.id
+            )
+          );
 
+
+          comprobantesAfectados.add(
+            Number(comp.id)
+          );
+        }
+
+
+        // --------------------------------------------------------
+        // 4.7 BUSCAR TODAS LAS APLICACIONES DEL PP
+        // --------------------------------------------------------
 
         /*
-         * Identificamos todos los CARGOS afectados.
+         * Si no existen abonos, simplemente no existen
+         * aplicaciones de Cuenta Corriente que eliminar.
          */
+
+        const aplicacionesTodas =
+          abonoIds.length > 0
+
+            ? await MovimientoCtaCteProveedorAplic.findAll({
+
+                where: {
+
+                  abono_id: {
+                    [Op.in]:
+                      abonoIds,
+                  },
+                },
+
+                attributes: [
+                  "id",
+                  "abono_id",
+                  "cargo_id",
+                  "importe",
+                ],
+
+                transaction: t,
+
+                lock:
+                  t.LOCK.UPDATE,
+              })
+
+            : [];
+
+
+        // --------------------------------------------------------
+        // 4.8 IDENTIFICAR CARGOS AFECTADOS
+        // --------------------------------------------------------
+
         const todosCargoIds =
           [
             ...new Set(
               aplicacionesTodas
                 .map(
-                  (aplicacion) =>
+                  aplicacion =>
                     Number(
                       aplicacion.cargo_id
                     )
@@ -445,16 +809,22 @@ export const actualizarComprobanteEgreso = async (req, res) => {
 
 
         /*
-         * A partir de esos cargos obtenemos todos
-         * los comprobantes afectados.
+         * Puede haber aplicaciones de este PP sobre otros
+         * comprobantes.
+         *
+         * Como la desasociación es global para el PP,
+         * también debemos recalcular esos comprobantes.
          */
+
         if (
           todosCargoIds.length > 0
         ) {
 
           const cargosAfectados =
             await MovimientoCtaCteProveedor.findAll({
+
               where: {
+
                 id: {
                   [Op.in]:
                     todosCargoIds,
@@ -470,7 +840,9 @@ export const actualizarComprobanteEgreso = async (req, res) => {
               ],
 
               transaction: t,
-              lock: t.LOCK.UPDATE,
+
+              lock:
+                t.LOCK.UPDATE,
             });
 
 
@@ -485,7 +857,9 @@ export const actualizarComprobanteEgreso = async (req, res) => {
                 0
               );
 
+
             if (comprobanteId) {
+
               comprobantesAfectados.add(
                 comprobanteId
               );
@@ -494,12 +868,10 @@ export const actualizarComprobanteEgreso = async (req, res) => {
         }
 
 
-        /*
-         * DESASOCIACIÓN GLOBAL
-         *
-         * Eliminamos TODAS las aplicaciones
-         * correspondientes al Pago Programado.
-         */
+        // --------------------------------------------------------
+        // 4.9 ELIMINAR TODAS LAS APLICACIONES DEL PP
+        // --------------------------------------------------------
+
         for (
           const aplicacion
           of aplicacionesTodas
@@ -511,13 +883,17 @@ export const actualizarComprobanteEgreso = async (req, res) => {
         }
 
 
+        // --------------------------------------------------------
+        // 4.10 ANULAR ABONOS DEL PP
+        // --------------------------------------------------------
+
         /*
-         * Como acabamos de eliminar TODAS las
-         * aplicaciones del Pago Programado,
-         * sus ABONOS quedan sin aplicación.
+         * Al eliminar las aplicaciones, estos abonos dejan
+         * de representar una aplicación válida.
          *
-         * Los anulamos.
+         * Si no había abonos, este for simplemente no hace nada.
          */
+
         for (
           const abono
           of abonosProgramado
@@ -535,13 +911,20 @@ export const actualizarComprobanteEgreso = async (req, res) => {
         }
 
 
+        // --------------------------------------------------------
+        // 4.11 QUITAR ASOCIACIÓN DIRECTA
+        // --------------------------------------------------------
+
         /*
-         * Quitamos también la asociación directa
-         * que pudiera tener el Pago Programado.
-         *
          * NO eliminamos el Pago Programado.
-         * Sigue pendiente y vuelve a quedar disponible.
+         *
+         * Continúa:
+         *
+         * estado = pendiente
+         *
+         * pero queda nuevamente disponible para ser utilizado.
          */
+
         if (
           pagoProgramado.comprobanteegreso_id
         ) {
@@ -559,11 +942,10 @@ export const actualizarComprobanteEgreso = async (req, res) => {
       }
 
 
-      /*
-       * Recalculamos TODOS los comprobantes
-       * que estaban afectados por los PP
-       * desasociados.
-       */
+      // ==========================================================
+      // 5. RECALCULAR COMPROBANTES AFECTADOS
+      // ==========================================================
+
       for (
         const comprobanteId
         of comprobantesAfectados
@@ -576,16 +958,49 @@ export const actualizarComprobanteEgreso = async (req, res) => {
       }
     }
 
+
+    // ============================================================
+    // COMMIT
+    // ============================================================
+
     await t.commit();
-    return res.status(200).json(comp);
+
+
+    return res
+      .status(200)
+      .json(comp);
+
+
   } catch (error) {
-    await t.rollback();
-    console.error('❌ actualizarComprobanteEgreso:', error);
-    return res.status(500).json({ error: error.message || 'Error al actualizar el comprobante de egreso' });
+
+    /*
+     * Evitamos intentar rollback si por alguna razón
+     * la transacción ya hubiera finalizado.
+     */
+    if (
+      t &&
+      !t.finished
+    ) {
+
+      await t.rollback();
+    }
+
+
+    console.error(
+      "❌ actualizarComprobanteEgreso:",
+      error
+    );
+
+
+    return res
+      .status(500)
+      .json({
+        error:
+          error.message ||
+          "Error al actualizar el comprobante de egreso",
+      });
   }
 };
-
-
 
 export const eliminarComprobanteEgreso = async (req, res) => {
   const t = await sequelize.transaction();
@@ -2041,7 +2456,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
             ordenpago_id: orden.id,
             comprobanteegreso_id: comp.id || null,
             proveedor_id: comprobante.proveedor_id || null,
-            fecha_recepcion:fechaPago,
+            fecha_recepcion: fechaPago,
           },
           { transaction: t }
         );
