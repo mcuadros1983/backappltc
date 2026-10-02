@@ -635,7 +635,7 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
       // ordenpago_id: IGNORADO explícitamente según la nueva regla
     } = req.body || {};
 
-    if (!empresa_id) throw new Error("empresa_id requerido");
+    // if (!empresa_id) throw new Error("empresa_id requerido");
     if (!proveedor_id) throw new Error("proveedor_id requerido");
     if (!Array.isArray(aplicaciones) || aplicaciones.length === 0)
       throw new Error("Debe enviar aplicaciones [{ cargo_id, importe }].");
@@ -3273,7 +3273,7 @@ export const aplicarAnticipoExistenteCtaCte = async (req, res) => {
       incluirNumerosComp = true,
     } = req.body || {};
 
-    if (!empresa_id) throw new Error("empresa_id requerido");
+    // if (!empresa_id) throw new Error("empresa_id requerido");
     if (!proveedor_id) throw new Error("proveedor_id requerido");
     if (!abono_id) throw new Error("abono_id requerido");
     if (!Array.isArray(aplicaciones) || aplicaciones.length === 0)
@@ -3628,7 +3628,7 @@ export const anularAplicacionAnticipoExistenteCtaCte = async (req, res) => {
       cargo_ids, // opcional
     } = req.body || {};
 
-    if (!empresa_id) throw new Error("empresa_id requerido");
+    // if (!empresa_id) throw new Error("empresa_id requerido");
     if (!proveedor_id) throw new Error("proveedor_id requerido");
     if (!abono_id) throw new Error("abono_id requerido");
 
