@@ -20,6 +20,9 @@ import AjusteComprobanteEgreso
 import {
   recalcularComprobanteEgreso,
 } from "../tesoreria/helpers/recalcularComprobanteEgreso.js";
+import TipoComprobante from "../../models/comun/tipocomprobante.js";
+
+
 function validarDatosFiscalesComprobante(data = {}) {
 
   const ivaEspecial =
@@ -49,6 +52,23 @@ function validarDatosFiscalesComprobante(data = {}) {
       "Debe indicar el importe correspondiente al IVA especial"
     );
   }
+}
+
+function esTipoNotaCredito(tipoComprobante) {
+
+  const descripcion =
+    String(
+      tipoComprobante?.descripcion || ""
+    )
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+  return (
+    descripcion.includes("NOTA") &&
+    descripcion.includes("CREDITO")
+  );
 }
 
 // Crear nuevo comprobante de egreso
@@ -146,12 +166,12 @@ export const actualizarComprobanteEgreso = async (req, res) => {
         body.pagos_programados_desasociar
       )
         ? [
-            ...new Set(
-              body.pagos_programados_desasociar
-                .map(Number)
-                .filter(Boolean)
-            ),
-          ]
+          ...new Set(
+            body.pagos_programados_desasociar
+              .map(Number)
+              .filter(Boolean)
+          ),
+        ]
         : [];
 
 
@@ -193,14 +213,14 @@ export const actualizarComprobanteEgreso = async (req, res) => {
     const nuevoHaciendaId =
       hasHaciendaInBody
         ? (
-            body.hacienda_id
-              ? Number(body.hacienda_id)
-              : null
-          )
+          body.hacienda_id
+            ? Number(body.hacienda_id)
+            : null
+        )
         : (
-            comp.hacienda_id ??
-            null
-          );
+          comp.hacienda_id ??
+          null
+        );
 
 
     const viejoHaciendaId =
@@ -240,7 +260,7 @@ export const actualizarComprobanteEgreso = async (req, res) => {
     const cambioHacienda =
       hasHaciendaInBody &&
       (viejoHaciendaId || null) !==
-        (nuevoHaciendaId || null);
+      (nuevoHaciendaId || null);
 
 
     if (cambioHacienda) {
@@ -765,26 +785,26 @@ export const actualizarComprobanteEgreso = async (req, res) => {
 
             ? await MovimientoCtaCteProveedorAplic.findAll({
 
-                where: {
+              where: {
 
-                  abono_id: {
-                    [Op.in]:
-                      abonoIds,
-                  },
+                abono_id: {
+                  [Op.in]:
+                    abonoIds,
                 },
+              },
 
-                attributes: [
-                  "id",
-                  "abono_id",
-                  "cargo_id",
-                  "importe",
-                ],
+              attributes: [
+                "id",
+                "abono_id",
+                "cargo_id",
+                "importe",
+              ],
 
-                transaction: t,
+              transaction: t,
 
-                lock:
-                  t.LOCK.UPDATE,
-              })
+              lock:
+                t.LOCK.UPDATE,
+            })
 
             : [];
 
@@ -1484,6 +1504,31 @@ export const emitirComprobanteEgreso = async (req, res) => {
       comprobante
     );
 
+    if (!comprobante.tipocomprobante_id) {
+      throw new Error(
+        "tipocomprobante_id requerido"
+      );
+    }
+
+    const tipoComprobante =
+      await TipoComprobante.findByPk(
+        comprobante.tipocomprobante_id,
+        {
+          transaction: t,
+        }
+      );
+
+    if (!tipoComprobante) {
+      throw new Error(
+        "Tipo de comprobante no encontrado"
+      );
+    }
+
+    const esNotaCredito =
+      esTipoNotaCredito(
+        tipoComprobante
+      );
+
     const ivaEspecial =
       Number(comprobante.iva_especial || 0);
 
@@ -1510,8 +1555,22 @@ export const emitirComprobanteEgreso = async (req, res) => {
       );
     }
 
+    if (
+      !esNotaCredito &&
+      (
+        !Array.isArray(pagos) ||
+        pagos.length === 0
+      )
+    ) {
+      throw new Error(
+        "Debe enviar al menos una forma de pago"
+      );
+    }
 
-    if (!Array.isArray(pagos) || pagos.length === 0) throw new Error("Debe enviar al menos una forma de pago");
+    const pagosNormalizados =
+      Array.isArray(pagos)
+        ? pagos
+        : [];
 
     // const totalComp = Number(comprobante.total || 0);
     // if (totalComp <= 0) throw new Error("Total del comprobante inválido");
@@ -1552,12 +1611,12 @@ export const emitirComprobanteEgreso = async (req, res) => {
      */
 
     const pagosAjuste =
-      pagos.filter(
+      pagosNormalizados.filter(
         p => medioDe(p) === "ajuste"
       );
 
     const pagosFinancieros =
-      pagos.filter(
+      pagosNormalizados.filter(
         p => medioDe(p) !== "ajuste"
       );
 
@@ -1723,6 +1782,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
      */
 
     if (
+      !esNotaCredito &&
       sumaTotalPagos -
       totalFinancieroFinal >
       EPS
@@ -1735,6 +1795,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
 
 
     if (
+      !esNotaCredito &&
       totalFinancieroFinal -
       sumaTotalPagos >
       EPS
@@ -1747,6 +1808,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
 
 
     if (
+      !esNotaCredito &&
       sumaPagosEfectivosDeclarados -
       totalFinancieroFinal >
       EPS
@@ -1869,15 +1931,89 @@ export const emitirComprobanteEgreso = async (req, res) => {
       {
         ...comprobante,
         empresa_id,
-        estadopago: "impaga",
-        // saldo: totalComp,
-        // saldo: totalBase,
-        saldo: totalFinancieroFinal,
-        formapago_id: formapagoHeader,
-        imputacioncontable_id: imputacionHeader,
+
+        estadopago:
+          esNotaCredito
+            ? "pagada"
+            : "impaga",
+
+        saldo:
+          esNotaCredito
+            ? 0
+            : totalFinancieroFinal,
+
+        formapago_id:
+          esNotaCredito
+            ? null
+            : formapagoHeader,
+
+        imputacioncontable_id:
+          imputacionHeader,
       },
-      { transaction: t }
+      {
+        transaction: t,
+      }
     );
+
+    if (esNotaCredito) {
+
+      /*
+       * Una Nota de Crédito no representa
+       * un desembolso financiero.
+       *
+       * Por lo tanto:
+       *
+       * - no crea OrdenPago;
+       * - no crea movimiento de Caja;
+       * - no crea movimiento de Banco;
+       * - no crea eCheq;
+       * - no crea Tarjeta;
+       * - no crea Cargo de Cuenta Corriente.
+       */
+
+      if (comprobante.hacienda_id) {
+
+        const hacId =
+          Number(
+            comprobante.hacienda_id
+          );
+
+        const hac =
+          await Hacienda.findByPk(
+            hacId,
+            {
+              transaction: t,
+            }
+          );
+
+        if (!hac) {
+          throw new Error(
+            "Hacienda no encontrada"
+          );
+        }
+
+        await hac.update(
+          {
+            comprobante_id:
+              comp.id,
+          },
+          {
+            transaction: t,
+          }
+        );
+      }
+
+      await t.commit();
+
+      return res
+        .status(201)
+        .json({
+          ok: true,
+          comprobante: comp,
+          ordenpago: null,
+          ajustes: [],
+        });
+    }
 
     // 2) Crear Orden de Pago inicial
     const fechaOrden = comp.fechapago || comp.fechacomprobante || new Date().toISOString().slice(0, 10);
