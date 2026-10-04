@@ -2927,6 +2927,527 @@ const cargarInventarioDesdeExcel = async (req, res, next) => {
   }
 };
 
+const cargarInventariosMasivosDesdeExcel = async (req, res, next) => {
+  const file = req.file;
+
+  let transaction;
+
+  try {
+    const { anio, mes, fecha, usuario_id } = req.body;
+
+    // =====================================================
+    // 1. VALIDAR DATOS GENERALES
+    // =====================================================
+
+    if (!file || !anio || !mes || !fecha || !usuario_id) {
+      return res.status(400).json({
+        message:
+          "Faltan datos requeridos. Debe indicar archivo, año, mes, fecha y usuario.",
+      });
+    }
+
+    // =====================================================
+    // 2. LEER EXCEL
+    // =====================================================
+
+    const workbook = xlsx.readFile(file.path);
+    const sheetName = workbook.SheetNames[0];
+
+    const data = xlsx.utils.sheet_to_json(
+      workbook.Sheets[sheetName]
+    );
+
+    if (!data || data.length === 0) {
+      return res.status(400).json({
+        message: "El archivo Excel no contiene registros.",
+      });
+    }
+
+    // =====================================================
+    // 3. VALIDAR Y AGRUPAR
+    //
+    // Estructura:
+    //
+    // sucursal_codigo
+    //      └── articulocodigo
+    //              └── cantidadpeso acumulada
+    //
+    // =====================================================
+
+    const inventariosAgrupados = new Map();
+
+    const errores = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+
+      // +2 porque Excel:
+      // fila 1 = encabezados
+      // array comienza en posición 0
+      const numeroFilaExcel = i + 2;
+
+      // -----------------------------------------
+      // Validar sucursal
+      // -----------------------------------------
+
+      if (
+        row.sucursal_codigo === undefined ||
+        row.sucursal_codigo === null ||
+        String(row.sucursal_codigo).trim() === ""
+      ) {
+        errores.push(
+          `Fila ${numeroFilaExcel}: falta sucursal_codigo.`
+        );
+
+        continue;
+      }
+
+      // -----------------------------------------
+      // Validar artículo
+      // -----------------------------------------
+
+      if (
+        row.articulocodigo === undefined ||
+        row.articulocodigo === null ||
+        String(row.articulocodigo).trim() === ""
+      ) {
+        errores.push(
+          `Fila ${numeroFilaExcel}: falta articulocodigo.`
+        );
+
+        continue;
+      }
+
+      // -----------------------------------------
+      // Validar cantidad
+      // -----------------------------------------
+
+      if (
+        row.cantidadpeso === undefined ||
+        row.cantidadpeso === null ||
+        String(row.cantidadpeso).trim() === ""
+      ) {
+        errores.push(
+          `Fila ${numeroFilaExcel}: falta cantidadpeso.`
+        );
+
+        continue;
+      }
+
+      const sucursalCodigo =
+        String(row.sucursal_codigo).trim();
+
+      const articuloCodigo =
+        String(row.articulocodigo).trim();
+
+      const cantidadPeso =
+        Number(row.cantidadpeso);
+
+      if (!Number.isFinite(cantidadPeso)) {
+        errores.push(
+          `Fila ${numeroFilaExcel}: cantidadpeso inválida para el artículo ${articuloCodigo}.`
+        );
+
+        continue;
+      }
+
+      if (cantidadPeso < 0) {
+        errores.push(
+          `Fila ${numeroFilaExcel}: cantidadpeso no puede ser negativa para el artículo ${articuloCodigo}.`
+        );
+
+        continue;
+      }
+
+      // ===================================================
+      // AGRUPAR POR SUCURSAL
+      // ===================================================
+
+      if (!inventariosAgrupados.has(sucursalCodigo)) {
+        inventariosAgrupados.set(
+          sucursalCodigo,
+          new Map()
+        );
+      }
+
+      const articulosSucursal =
+        inventariosAgrupados.get(sucursalCodigo);
+
+      // ===================================================
+      // SUMAR ARTÍCULOS REPETIDOS
+      // ===================================================
+
+      if (articulosSucursal.has(articuloCodigo)) {
+        const articuloExistente =
+          articulosSucursal.get(articuloCodigo);
+
+        articuloExistente.cantidadpeso += cantidadPeso;
+      } else {
+        articulosSucursal.set(
+          articuloCodigo,
+          {
+            articulocodigo: articuloCodigo,
+            cantidadpeso: cantidadPeso,
+          }
+        );
+      }
+    }
+
+    // =====================================================
+    // 4. SI EL EXCEL TIENE ERRORES, NO CONTINUAR
+    // =====================================================
+
+    if (errores.length > 0) {
+      return res.status(400).json({
+        message:
+          "El archivo contiene errores. No se creó ningún inventario.",
+        errores,
+      });
+    }
+
+    if (inventariosAgrupados.size === 0) {
+      return res.status(400).json({
+        message:
+          "No se encontraron registros válidos para importar.",
+      });
+    }
+
+    // =====================================================
+    // 5. OBTENER TODAS LAS SUCURSALES DEL EXCEL
+    // =====================================================
+
+    const codigosSucursales =
+      Array.from(inventariosAgrupados.keys());
+
+    const sucursales = await Sucursal.findAll({
+      where: {
+        codigo: {
+          [Op.in]: codigosSucursales,
+        },
+      },
+    });
+
+    // Mapa:
+    // codigo sucursal -> objeto Sucursal
+
+    const mapaSucursales = new Map();
+
+    sucursales.forEach((sucursal) => {
+      mapaSucursales.set(
+        String(sucursal.codigo).trim(),
+        sucursal
+      );
+    });
+
+    // =====================================================
+    // 6. VALIDAR QUE TODAS LAS SUCURSALES EXISTAN
+    // =====================================================
+
+    const sucursalesInexistentes =
+      codigosSucursales.filter(
+        (codigo) => !mapaSucursales.has(codigo)
+      );
+
+    if (sucursalesInexistentes.length > 0) {
+      return res.status(400).json({
+        message:
+          "Existen códigos de sucursal que no están registrados.",
+        sucursales: sucursalesInexistentes,
+      });
+    }
+
+    // =====================================================
+    // 7. OBTENER TODOS LOS CÓDIGOS DE ARTÍCULOS ÚNICOS
+    // =====================================================
+
+    const codigosArticulosSet = new Set();
+
+    inventariosAgrupados.forEach(
+      (articulosSucursal) => {
+        articulosSucursal.forEach(
+          (articulo, codigo) => {
+            codigosArticulosSet.add(codigo);
+          }
+        );
+      }
+    );
+
+    const codigosArticulos =
+      Array.from(codigosArticulosSet);
+
+    // =====================================================
+    // 8. BUSCAR TODOS LOS ARTÍCULOS DE UNA SOLA VEZ
+    // =====================================================
+
+    const articulosBD = await ArticuloTabla.findAll({
+      where: {
+        codigobarra: {
+          [Op.in]: codigosArticulos,
+        },
+      },
+    });
+
+    const mapaArticulos = new Map();
+
+    articulosBD.forEach((articulo) => {
+      mapaArticulos.set(
+        String(articulo.codigobarra).trim(),
+        articulo
+      );
+    });
+
+    // =====================================================
+    // 9. VALIDAR ARTÍCULOS INEXISTENTES
+    // =====================================================
+
+    const articulosInexistentes =
+      codigosArticulos.filter(
+        (codigo) => !mapaArticulos.has(codigo)
+      );
+
+    if (articulosInexistentes.length > 0) {
+      return res.status(400).json({
+        message:
+          "Existen códigos de artículos que no están registrados.",
+        articulos: articulosInexistentes,
+      });
+    }
+
+    // =====================================================
+    // 10. OBTENER IDs DE SUCURSALES
+    // =====================================================
+
+    const sucursalIds = sucursales.map(
+      (sucursal) => sucursal.id
+    );
+
+    // =====================================================
+    // 11. VERIFICAR INVENTARIOS YA EXISTENTES
+    // =====================================================
+
+    const inventariosExistentes =
+      await Inventario.findAll({
+        where: {
+          anio: Number(anio),
+          mes: Number(mes),
+          sucursal_id: {
+            [Op.in]: sucursalIds,
+          },
+        },
+      });
+
+    if (inventariosExistentes.length > 0) {
+      const sucursalesConInventario =
+        inventariosExistentes.map(
+          (inventario) => {
+            const sucursal = sucursales.find(
+              (s) =>
+                Number(s.id) ===
+                Number(inventario.sucursal_id)
+            );
+
+            return {
+              sucursal_id: inventario.sucursal_id,
+              codigo: sucursal
+                ? sucursal.codigo
+                : null,
+              nombre: sucursal
+                ? sucursal.nombre
+                : null,
+            };
+          }
+        );
+
+      return res.status(400).json({
+        message:
+          `Ya existen inventarios para ${mes}/${anio} en una o más sucursales. No se realizó ninguna carga.`,
+        sucursales: sucursalesConInventario,
+      });
+    }
+
+    // =====================================================
+    // 12. INICIAR TRANSACCIÓN
+    // =====================================================
+
+    transaction =
+      await sequelize.transaction();
+
+    const inventariosCreados = [];
+
+    // =====================================================
+    // 13. CREAR UN INVENTARIO POR SUCURSAL
+    // =====================================================
+
+    for (
+      const [
+        sucursalCodigo,
+        articulosSucursal,
+      ] of inventariosAgrupados
+    ) {
+      const sucursal =
+        mapaSucursales.get(sucursalCodigo);
+
+      // ---------------------------------------------
+      // Crear cabecera Inventario
+      // ---------------------------------------------
+
+      const nuevoInventario =
+        await Inventario.create(
+          {
+            anio: Number(anio),
+            mes: Number(mes),
+            fecha,
+            total: 0,
+            sucursal_id: sucursal.id,
+            usuario_id: Number(usuario_id),
+          },
+          {
+            transaction,
+          }
+        );
+
+      let cantidadArticulos = 0;
+
+      // ---------------------------------------------
+      // Crear artículos consolidados
+      // ---------------------------------------------
+
+      for (
+        const [
+          articuloCodigo,
+          datosArticulo,
+        ] of articulosSucursal
+      ) {
+        const articuloBD =
+          mapaArticulos.get(articuloCodigo);
+
+        const nuevoArticulo =
+          await InventarioArticulo.create(
+            {
+              articulocodigo:
+                articuloCodigo,
+
+              articulodescripcion:
+                articuloBD.descripcion,
+
+              cantidadpeso:
+                datosArticulo.cantidadpeso,
+
+              precio: 0,
+            },
+            {
+              transaction,
+            }
+          );
+
+        // -------------------------------------------
+        // Crear relación Inventario - Artículo
+        // -------------------------------------------
+
+        await InventarioInventarioArticulo.create(
+          {
+            inventario_id:
+              nuevoInventario.id,
+
+            ventasarticulos_id:
+              nuevoArticulo.id,
+          },
+          {
+            transaction,
+          }
+        );
+
+        cantidadArticulos++;
+      }
+
+      inventariosCreados.push({
+        inventario_id:
+          nuevoInventario.id,
+
+        sucursal_id:
+          sucursal.id,
+
+        sucursal_codigo:
+          sucursal.codigo,
+
+        sucursal_nombre:
+          sucursal.nombre,
+
+        articulos:
+          cantidadArticulos,
+      });
+    }
+
+    // =====================================================
+    // 14. CONFIRMAR TRANSACCIÓN
+    // =====================================================
+
+    await transaction.commit();
+
+    transaction = null;
+
+    // =====================================================
+    // 15. RESPUESTA
+    // =====================================================
+
+    return res.status(201).json({
+      mensaje:
+        "Inventarios masivos creados exitosamente.",
+
+      cantidad_inventarios:
+        inventariosCreados.length,
+
+      inventarios:
+        inventariosCreados,
+    });
+
+  } catch (error) {
+
+    // =====================================================
+    // ROLLBACK
+    // =====================================================
+
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error(
+          "Error realizando rollback:",
+          rollbackError
+        );
+      }
+    }
+
+    console.error(
+      "Error al cargar inventarios masivos desde Excel:",
+      error
+    );
+
+    next(error);
+
+  } finally {
+
+    // =====================================================
+    // ELIMINAR ARCHIVO TEMPORAL
+    // =====================================================
+
+    if (
+      file &&
+      file.path &&
+      fs.existsSync(file.path)
+    ) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch (fileError) {
+        console.error(
+          "Error eliminando archivo temporal:",
+          fileError
+        );
+      }
+    }
+  }
+};
+
 const obtenerAchurasTotales = async (req, res, next) => {
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
@@ -3111,6 +3632,7 @@ export {
   crearMovimientoInterno,
   crearInventario,
   cargarInventarioDesdeExcel,
+  cargarInventariosMasivosDesdeExcel,
   listarInventarios,
   obtenerInventarios,
   obtenerInventariosFiltrados,

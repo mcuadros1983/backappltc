@@ -115,48 +115,18 @@ async function main() {
     | 2. SINCRONIZAR MODELOS
     |--------------------------------------------------------------------------
     */
-
     console.log(
-      "[SYNC] Iniciando diagnóstico de modelos..."
+      "[SYNC] Sincronizando modelos..."
     );
 
-    const modelos =
-      Object.values(sequelize.models);
+    const inicioSync =
+      Date.now();
 
-    for (const modelo of modelos) {
+    await sequelize.sync();
 
-      const nombre =
-        modelo.name;
-
-      const tabla =
-        modelo.getTableName();
-
-      console.log(
-        `[SYNC] Iniciando: ${nombre} -> ${tabla}`
-      );
-
-      const inicio =
-        Date.now();
-
-      try {
-
-        await modelo.sync();
-
-        console.log(
-          `[SYNC] OK: ${nombre} (${Date.now() - inicio} ms)`
-        );
-
-      } catch (error) {
-
-        console.error(
-          `[SYNC] ERROR: ${nombre}`
-        );
-
-        console.error(error);
-
-        throw error;
-      }
-    }
+    console.log(
+      `[SYNC] ✅ Modelos sincronizados (${Date.now() - inicioSync} ms)`
+    );
 
     await crearRoles();
 

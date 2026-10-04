@@ -87,6 +87,11 @@ rindeRouter.post(
 );
 rindeRouter.post("/movimientos-otro/eliminar-por-fechas", rindeController.eliminarMovimientosOtrosPorFechas);
 rindeRouter.post("/cargarinventarios-excel", upload.single("file"), rindeController.cargarInventarioDesdeExcel);
+rindeRouter.post(
+  "/cargarinventarios-masivos-excel",
+  upload.single("file"),
+  rindeController.cargarInventariosMasivosDesdeExcel
+);
 rindeRouter.put(
   "/inventario/articulo/:articuloId",
   rindeController.editarArticuloInventario
