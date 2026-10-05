@@ -15,6 +15,8 @@ import PagoProgramadoTesoreria
 import {
   recalcularComprobanteEgreso,
 } from "./helpers/recalcularComprobanteEgreso.js";
+import AjusteComprobanteEgreso
+  from "../../models/tesoreria/ajusteComprobanteEgreso.js";
 
 // Crear movimiento
 export const crearMovimientoCtaCteProveedor = async (req, res) => {
@@ -891,6 +893,24 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
         }
       );
 
+    const pagosQueRequierenOP =
+      (pagos || []).filter(
+        (p) => {
+          const medio =
+            String(
+              p?.medio || ""
+            )
+              .trim()
+              .toLowerCase();
+
+          /*
+           * La compensación / ajuste
+           * NO genera Orden de Pago.
+           */
+          return medio !== "ajuste";
+        }
+      );
+
 
     if (
       todosSonMovimientosFinancierosExistentes
@@ -899,18 +919,36 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
       /*
        * No creamos una nueva OP.
        *
-       * La OP se resolverá desde el movimiento
-       * financiero existente cuando lo carguemos
-       * en la sección siguiente.
+       * Los movimientos financieros
+       * ya existen y conservan sus
+       * propias órdenes de pago.
        */
 
       ordenPagoIdToUse =
         null;
 
     } else if (
-      Array.isArray(pagos) &&
-      pagos.length > 0
+      pagosQueRequierenOP.length > 0
     ) {
+
+      /*
+       * Solamente los pagos financieros
+       * generan una Orden de Pago.
+       *
+       * Los ajustes / compensaciones
+       * quedan excluidos.
+       */
+
+      const totalPagosQueRequierenOP =
+        pagosQueRequierenOP.reduce(
+          (acc, p) =>
+            acc +
+            Number(
+              p.monto || 0
+            ),
+          0
+        );
+
 
       const nuevaOP =
         await OrdenPago.create(
@@ -925,7 +963,7 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
 
             total:
               Number(
-                totalPagosPreview.toFixed(2)
+                totalPagosQueRequierenOP.toFixed(2)
               ),
 
             estado:
@@ -952,7 +990,6 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
       ordenPagoIdToUse =
         nuevaOP.id;
     }
-
     // ============ 4) Registrar FORMAS DE PAGO ================================
     //
     // REGLA:
@@ -1683,6 +1720,59 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
 
 
         // ============================================================
+        // COMPENSACION / AJUSTE
+        // ============================================================
+
+        if (
+          medio === "ajuste"
+        ) {
+
+          /*
+           * La compensación NO genera todavía
+           * AjusteComprobanteEgreso.
+           *
+           * El ajuste se creará durante la distribución
+           * pago -> cargo, porque recién allí conocemos
+           * exactamente el comprobante afectado.
+           */
+
+          pagosInfo.push({
+
+            formapago_id:
+              p.formapago_id || null,
+
+            tipoMovimiento:
+              "AjusteComprobanteEgreso",
+
+            movimiento_id:
+              null,
+
+            monto,
+
+            esAjuste:
+              true,
+
+            concepto:
+              p.concepto ||
+              "Compensación",
+
+            detalle:
+              p.detalle || null,
+
+            observaciones:
+              p.observaciones || null,
+
+            fecha:
+              fechaPago,
+
+          });
+
+          totalPagos += monto;
+
+          continue;
+        }
+
+        // ============================================================
         // PAGO NUEVO — CAJA
         // ============================================================
 
@@ -2347,6 +2437,14 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
 
       } else if (
         tipoMovimiento ===
+        "ajustecomprobanteegreso"
+      ) {
+
+        medioTxt =
+          "Compensación";
+
+      } else if (
+        tipoMovimiento ===
         "pagoprogramadotesoreria"
       ) {
 
@@ -2576,6 +2674,74 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
             nroCompTxt
           );
 
+        // ============================================================
+        // CREAR AJUSTE DE COMPROBANTE POR COMPENSACION
+        // ============================================================
+
+        if (
+          pagoActual.esAjuste === true
+        ) {
+
+          if (!compId) {
+            throw new Error(
+              `No se puede registrar la compensación porque el cargo #${cargoId} no tiene comprobante asociado.`
+            );
+          }
+
+          const ajuste =
+            await AjusteComprobanteEgreso.create(
+              {
+                comprobanteegreso_id:
+                  compId,
+
+                empresa_id,
+
+                proveedor_id,
+
+                fecha:
+                  pagoActual.fecha ||
+                  fechaAbono,
+
+                tipo:
+                  "disminuye",
+
+                concepto:
+                  pagoActual.concepto ||
+                  "Compensación",
+
+                importe:
+                  importePorcion,
+
+                detalle:
+                  pagoActual.detalle ||
+                  `Compensación aplicada al comprobante ${nroCompTxt || compId}`,
+
+                observaciones:
+                  pagoActual.observaciones ||
+                  null,
+
+                referencia_tipo:
+                  "AplicacionCtaCte",
+
+                referencia_id:
+                  cargoId,
+
+                anulado:
+                  false,
+              },
+              {
+                transaction: t,
+              }
+            );
+
+          /*
+           * Ahora que el ajuste existe,
+           * dejamos su referencia exacta en el pago
+           * que originará el abono.
+           */
+          pagoActual.movimiento_id =
+            ajuste.id;
+        }
 
         /*
          * IMPORTANTE:
@@ -2716,6 +2882,23 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
             ).toFixed(2)
           );
       }
+    }
+
+    const hayAjuste =
+      pagosInfo.some(
+        (p) =>
+          p.esAjuste === true
+      );
+
+    if (
+      hayAjuste &&
+      totalPagos >
+      totalAplicar + 0.0001
+    ) {
+
+      throw new Error(
+        "La compensación no puede generar saldo a favor. El total de pagos debe coincidir con el total aplicado."
+      );
     }
 
     // ============================================================
