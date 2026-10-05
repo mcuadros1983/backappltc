@@ -1426,6 +1426,8 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
             }
 
 
+
+
             /*
              * El eCheq YA EXISTE.
              *
@@ -1433,6 +1435,29 @@ export const aplicarAbonoCtaCteProveedor = async (req, res) => {
              * Solamente utilizamos el existente para
              * aplicar el pago a la Cta.Cte.
              */
+
+            /*
+ * Al utilizar un eCheq existente para cancelar
+ * un comprobante, dejamos asociado el eCheq
+ * al comprobante correspondiente.
+ *
+ * compIdUnico tendrá valor únicamente cuando
+ * todos los cargos aplicados correspondan
+ * al mismo comprobante.
+ */
+            if (compIdUnico) {
+
+              await echeq.update(
+                {
+                  comprobanteegreso_id:
+                    compIdUnico,
+                },
+                {
+                  transaction: t,
+                }
+              );
+
+            }
 
             pagosCreados.echeq.push(
               echeq
