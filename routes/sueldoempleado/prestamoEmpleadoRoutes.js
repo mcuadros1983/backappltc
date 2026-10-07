@@ -5,9 +5,15 @@ import * as controller
 
 const prestamoEmpleadoRouter = Router();
 
+
 prestamoEmpleadoRouter.post(
   "/prestamosempleado",
   controller.crear
+);
+
+prestamoEmpleadoRouter.post(
+  "/prestamosempleado/importar-masivo",
+  controller.importarMasivo
 );
 
 prestamoEmpleadoRouter.get(

@@ -3,6 +3,7 @@ import { sequelize } from "../../config/database.js";
 
 import PrestamoEmpleado from "../../models/sueldoempleado/prestamoEmpleadoModel.js";
 import AdicionalVariable from "../../models/sueldoempleado/adicionalvariable.js";
+import EmpleadoTabla from "../../models/tablas/empleadoModel.js";
 
 import {
     recalcularSaldoPrestamo,
@@ -20,6 +21,378 @@ const ESTADOS_VALIDOS = [
 const numeroValido = (v) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0;
+};
+
+/* =========================================================
+   IMPORTAR PRÉSTAMOS MASIVAMENTE
+========================================================= */
+
+export const importarMasivo = async (req, res) => {
+
+    const t = await sequelize.transaction();
+
+    try {
+
+        const { prestamos } = req.body || {};
+
+        if (!Array.isArray(prestamos) || prestamos.length === 0) {
+            throw new Error(
+                "No se recibieron préstamos para importar."
+            );
+        }
+
+        const errores = [];
+        const prestamosPreparados = [];
+
+        // =====================================================
+        // VALIDAR TODAS LAS FILAS ANTES DE INSERTAR
+        // =====================================================
+
+        for (let i = 0; i < prestamos.length; i++) {
+
+            const item = prestamos[i] || {};
+            const fila = Number(item.fila_excel) || i + 2;
+
+            const empleadoId = Number(item.empleado_id);
+            const montoOriginal = Number(item.monto_original);
+
+            // -------------------------------------------------
+            // EMPLEADO
+            // -------------------------------------------------
+
+            if (
+                !Number.isInteger(empleadoId) ||
+                empleadoId <= 0
+            ) {
+                errores.push({
+                    fila,
+                    campo: "empleado_id",
+                    error: "empleado_id inválido.",
+                });
+
+                continue;
+            }
+
+            // -------------------------------------------------
+            // MONTO
+            // -------------------------------------------------
+
+            if (!numeroValido(montoOriginal)) {
+                errores.push({
+                    fila,
+                    campo: "monto_original",
+                    error:
+                        "monto_original debe ser mayor a cero.",
+                });
+
+                continue;
+            }
+
+            // -------------------------------------------------
+            // FECHA OTORGAMIENTO
+            // -------------------------------------------------
+
+            if (!item.fecha_otorgamiento) {
+                errores.push({
+                    fila,
+                    campo: "fecha_otorgamiento",
+                    error:
+                        "fecha_otorgamiento es requerida.",
+                });
+
+                continue;
+            }
+
+            // -------------------------------------------------
+            // PRIMER DESCUENTO
+            // -------------------------------------------------
+
+            if (
+                item.fecha_primer_descuento &&
+                String(item.fecha_primer_descuento) <
+                String(item.fecha_otorgamiento)
+            ) {
+                errores.push({
+                    fila,
+                    campo: "fecha_primer_descuento",
+                    error:
+                        "La fecha del primer descuento no puede ser anterior a la fecha de otorgamiento.",
+                });
+
+                continue;
+            }
+
+            // -------------------------------------------------
+            // PREPARAR
+            // -------------------------------------------------
+
+            prestamosPreparados.push({
+                fila,
+
+                numero:
+                    item.numero === null ||
+                        item.numero === undefined ||
+                        String(item.numero).trim() === ""
+                        ? null
+                        : String(item.numero).trim(),
+
+                empleado_id: empleadoId,
+
+                monto_original: montoOriginal,
+
+                saldo: montoOriginal,
+
+                fecha_otorgamiento:
+                    item.fecha_otorgamiento,
+
+                fecha_primer_descuento:
+                    item.fecha_primer_descuento || null,
+
+                estado: "pendiente",
+
+                observaciones:
+                    item.observaciones === null ||
+                        item.observaciones === undefined ||
+                        String(item.observaciones).trim() === ""
+                        ? null
+                        : String(item.observaciones).trim(),
+            });
+        }
+
+        // =====================================================
+        // SI HAY ERRORES, NO INSERTAMOS NADA
+        // =====================================================
+
+        if (errores.length > 0) {
+
+            await t.rollback();
+
+            return res.status(400).json({
+                error:
+                    "La importación contiene filas con errores.",
+                errores,
+            });
+        }
+
+        // =====================================================
+        // VALIDAR QUE LOS EMPLEADOS EXISTAN
+        // =====================================================
+
+        const empleadosIds = [
+            ...new Set(
+                prestamosPreparados.map(
+                    (item) => Number(item.empleado_id)
+                )
+            ),
+        ];
+
+        const empleadosExistentes =
+            await EmpleadoTabla.findAll({
+                where: {
+                    id: {
+                        [Op.in]: empleadosIds,
+                    },
+                },
+                attributes: [
+                    "id",
+                    "numero",
+                    "apellido",
+                    "nombre",
+                    "fechabaja",
+                ],
+                transaction: t,
+            });
+
+        const empleadosExistentesIds =
+            new Set(
+                empleadosExistentes.map(
+                    (empleado) => Number(empleado.id)
+                )
+            );
+
+        for (const item of prestamosPreparados) {
+
+            if (
+                !empleadosExistentesIds.has(
+                    Number(item.empleado_id)
+                )
+            ) {
+                errores.push({
+                    fila: item.fila,
+                    campo: "empleado_id",
+                    error:
+                        `El empleado ID ${item.empleado_id} no existe.`,
+                });
+            }
+        }
+
+        if (errores.length > 0) {
+
+            await t.rollback();
+
+            return res.status(400).json({
+                error:
+                    "La importación contiene empleados inexistentes.",
+                errores,
+            });
+        }
+
+        // =====================================================
+        // CONTROLAR NÚMEROS DUPLICADOS DENTRO DEL ARCHIVO
+        // =====================================================
+
+        const numerosArchivo = new Map();
+
+        for (const item of prestamosPreparados) {
+
+            if (!item.numero) {
+                continue;
+            }
+
+            if (numerosArchivo.has(item.numero)) {
+
+                errores.push({
+                    fila: item.fila,
+                    campo: "numero",
+                    error:
+                        `El número de préstamo "${item.numero}" está repetido dentro del archivo.`,
+                });
+
+            } else {
+
+                numerosArchivo.set(
+                    item.numero,
+                    item.fila
+                );
+            }
+        }
+
+        if (errores.length > 0) {
+
+            await t.rollback();
+
+            return res.status(400).json({
+                error:
+                    "La importación contiene números de préstamo duplicados.",
+                errores,
+            });
+        }
+
+        // =====================================================
+        // CONTROLAR NÚMEROS QUE YA EXISTEN EN LA BASE
+        // =====================================================
+
+        const numeros = prestamosPreparados
+            .map((item) => item.numero)
+            .filter(Boolean);
+
+        if (numeros.length > 0) {
+
+            const existentes =
+                await PrestamoEmpleado.findAll({
+                    where: {
+                        numero: {
+                            [Op.in]: numeros,
+                        },
+                    },
+                    attributes: [
+                        "id",
+                        "numero",
+                    ],
+                    transaction: t,
+                });
+
+            if (existentes.length > 0) {
+
+                const numerosExistentes =
+                    new Set(
+                        existentes.map(
+                            (p) => String(p.numero)
+                        )
+                    );
+
+                for (const item of prestamosPreparados) {
+
+                    if (
+                        item.numero &&
+                        numerosExistentes.has(
+                            String(item.numero)
+                        )
+                    ) {
+                        errores.push({
+                            fila: item.fila,
+                            campo: "numero",
+                            error:
+                                `El número de préstamo "${item.numero}" ya existe.`,
+                        });
+                    }
+                }
+            }
+        }
+
+        if (errores.length > 0) {
+
+            await t.rollback();
+
+            return res.status(400).json({
+                error:
+                    "Existen préstamos que no pueden importarse.",
+                errores,
+            });
+        }
+
+        // =====================================================
+        // CREAR TODOS LOS PRÉSTAMOS
+        // =====================================================
+
+        const creados = [];
+
+        for (const item of prestamosPreparados) {
+
+            const {
+                fila,
+                ...datosPrestamo
+            } = item;
+
+            const prestamo =
+                await PrestamoEmpleado.create(
+                    datosPrestamo,
+                    {
+                        transaction: t,
+                    }
+                );
+
+            creados.push(prestamo);
+        }
+
+        await t.commit();
+
+        return res.status(201).json({
+            mensaje:
+                "Préstamos importados correctamente.",
+
+            cantidad: creados.length,
+
+            prestamos: creados,
+        });
+
+    } catch (error) {
+
+        if (!t.finished) {
+            await t.rollback();
+        }
+
+        console.error(
+            "❌ importarMasivo PrestamoEmpleado:",
+            error
+        );
+
+        return res.status(400).json({
+            error:
+                error.message ||
+                "Error importando préstamos.",
+        });
+    }
 };
 
 

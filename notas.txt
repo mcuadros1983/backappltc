@@ -39,3 +39,20 @@ DB_DIALECT=postgres
 # DB_HOST='roundhouse.proxy.rlwy.net'
 # DB_PORT=14155
 # DB_DIALECT=postgres
+
+
+// PC_OFICINA
+  # DB_DATABASE=ventas
+  # DB_USER=postgres
+  # DB_PASSWORD=latradicion123
+  # DB_HOST=localhost
+  # DB_PORT=5432
+  # PORT=5000
+
+// SERVIDOR_RAILWAY
+DB_DATABASE=railway
+DB_USER=postgres
+DB_PASSWORD=SREHCLpjnkmHsHuwyqiZGugPMlwmCVwO
+DB_HOST=roundhouse.proxy.rlwy.net
+DB_PORT=14155
+DB_DIALECT=postgres
