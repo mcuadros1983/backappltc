@@ -119,14 +119,14 @@ async function main() {
       "[SYNC] Sincronizando modelos..."
     );
 
-    const inicioSync =
-      Date.now();
+    // const inicioSync =
+    //   Date.now();
 
-    await sequelize.sync();
+    // await sequelize.sync();
 
-    console.log(
-      `[SYNC] ✅ Modelos sincronizados (${Date.now() - inicioSync} ms)`
-    );
+    // console.log(
+    //   `[SYNC] ✅ Modelos sincronizados (${Date.now() - inicioSync} ms)`
+    // );
 
     await crearRoles();
 
