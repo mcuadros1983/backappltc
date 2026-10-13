@@ -1035,13 +1035,61 @@ export const eliminarComprobanteEgreso = async (req, res) => {
       return res.status(404).json({ error: "Comprobante de egreso no encontrado" });
     }
 
-    // 2) Validar estado IMPAGA
-    const estado = String(comp.estadopago ?? comp.estado ?? "").trim().toLowerCase();
-    if (estado !== "impaga") {
-      await t.rollback();
-      return res.status(400).json({ error: "Sólo se puede eliminar un comprobante en estado IMPAGA" });
-    }
+    // 2) Validar estado y excepción para NOTAS DE CRÉDITO
 
+    const estado = String(
+      comp.estadopago ?? comp.estado ?? ""
+    )
+      .trim()
+      .toLowerCase();
+
+    // Identificar el tipo de comprobante desde la tabla correspondiente.
+    const tipoComprobante = await TipoComprobante.findByPk(
+      comp.tipocomprobante_id,
+      {
+        transaction: t,
+      }
+    );
+
+    const descripcionTipo = String(
+      tipoComprobante?.descripcion || ""
+    )
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toUpperCase();
+
+    const esNotaCredito =
+      descripcionTipo.includes("NOTA") &&
+      descripcionTipo.includes("CREDITO");
+
+    // La nota de crédito no debe tener pagos asociados.
+    const sinFormaPago =
+      comp.formapago_id == null ||
+      comp.formapago_id === "";
+
+    const sinOrdenPago =
+      comp.ordenpago_id == null ||
+      comp.ordenpago_id === "";
+
+    // Excepción exclusiva para notas de crédito pagadas sin pagos.
+    const notaCreditoSinPago =
+      esNotaCredito &&
+      sinFormaPago &&
+      sinOrdenPago;
+
+    // Mantener la restricción original para los demás comprobantes.
+    if (
+      estado !== "impaga" &&
+      !notaCreditoSinPago
+    ) {
+      await t.rollback();
+
+      return res.status(400).json({
+        error:
+          "Sólo se pueden eliminar comprobantes IMPAGOS o notas de crédito sin pagos asociados.",
+      });
+    }
     const compId = comp.id;
 
     // 2.1) 🔗 Desvincular Hacienda (si hubiera)
