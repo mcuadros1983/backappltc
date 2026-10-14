@@ -56,3 +56,6 @@ DB_PASSWORD=SREHCLpjnkmHsHuwyqiZGugPMlwmCVwO
 DB_HOST=roundhouse.proxy.rlwy.net
 DB_PORT=14155
 DB_DIALECT=postgres
+
+// AGREGAR EN GITIGNORE
+.arca-pruebas/

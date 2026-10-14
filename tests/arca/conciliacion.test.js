@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {centavos,normalizarFila} from '../../services/arca/conciliacion/normalizar.js';
+import {cotejar,normalizarERP} from '../../services/arca/conciliacion/cotejar.js';
+const a={fecha:'2026-10-01',tipo:'1',emisor_tipo:'80',emisor_documento:'30712345678',punto_venta:'8',numero_desde:'45',numero_hasta:'45',total:'100.00',neto:'80.00',iva105:null,iva21:'20.00'};
+const e={...a,id:1,motivos:[]};
+test('Identidad normaliza ceros y CUIT; exige mapeo fiscal',()=>{
+ const c={id:1,proveedor_id:2,tipocomprobante_id:3,letra:'A',nrocomprobante:'00008-00000045',total:'100.00',fechacomprobante:a.fecha};
+ const prov=[{id:2,cuit:'30-71234567-8'}];const mapas=[{tipo_id:3,letra:'A',codigo:1}];
+ const n=normalizarERP(c,prov,[],[],mapas);assert.equal(n.punto_venta,'8');assert.equal(n.numero_desde,'45');assert.equal(n.emisor_documento,a.emisor_documento);assert.deepEqual(n.motivos,[]);assert.equal(cotejar([a],[n])[0].estado,'coincide');
+ assert.ok(normalizarERP(c,prov,[],[],[]).motivos.length);
+});
+test('Importe y proveedor solos no vinculan; ambigüedad queda visible',()=>{const es=[{...e,numero_desde:'46',numero_hasta:'46'},{...e,id:2,numero_desde:'47',numero_hasta:'47'}];const r=cotejar([a],es);assert.equal(r[0].estado,'posible_coincidencia');assert.equal(r[0].erp.length,2);assert.equal(r.filter(x=>x.estado==='solo_erp').length,2);});
+test('Tipo diferente nunca se confunde con factura',()=>{const r=cotejar([a],[{...e,tipo:'3'}]);assert.equal(r[0].estado,'solo_arca');});
+test('Duplicados ERP no se consumen como coincidencia',()=>{const r=cotejar([a],[e,{...e,id:2}]);assert.equal(r.length,1);assert.equal(r[0].estado,'duplicado_erp');});
+test('Diferencias de un centavo toleradas, dos detectadas',()=>{assert.equal(cotejar([a],[{...e,total:'100.01'}])[0].estado,'coincide');assert.equal(cotejar([a],[{...e,total:'100.02'}])[0].estado,'diferencia');});
+test('Fechas distintas son informativas',()=>{const r=cotejar([a],[{...e,fecha:'2026-10-02'}])[0];assert.equal(r.estado,'coincide');assert.equal(r.observaciones.length,1);});
+test('Notas de crédito permiten signo negativo ERP sólo con tipo exacto',()=>{assert.equal(cotejar([{...a,tipo:'3'}],[{...e,tipo:'3',total:'-100.00',neto:'-80.00',iva21:'-20.00'}])[0].estado,'coincide');assert.equal(cotejar([a],[{...e,total:'-100.00'}])[0].estado,'diferencia');});
+test('IVA y neto no se evalúan',()=>{const r=cotejar([a],[{...e,neto:'1',iva21:'0'}])[0];assert.equal(r.estado,'coincide');});
+test('Centavos exactos sin error binario',()=>{assert.equal(centavos('4193601.12'),419360112n);assert.equal(centavos(null),null);assert.throws(()=>centavos('1,00'));});
+test('Cambios de columnas y empresa equivocada detienen normalización',()=>{assert.throws(()=>normalizarFila([],a.emisor_documento,'2026-10-01','2026-10-13'));const row=Array(52).fill(null);row[0]='01/10/2026';row[15]='30708490004';assert.throws(()=>normalizarFila(row,'30707719547','2026-10-01','2026-10-13'));});
+test('No se confunde punto explícito con correspondencia contradictoria',()=>{const c={id:1,proveedor_id:2,tipocomprobante_id:3,ptoventa_id:4,letra:'A',nrocomprobante:'00008-45',total:'100'};const n=normalizarERP(c,[{id:2,cuit:a.emisor_documento}],[],[],[{tipo_id:3,letra:'A',codigo:1},{punto_id:4,codigo:9}]);assert.ok(n.motivos.some(m=>m.includes('inconsistente')));});

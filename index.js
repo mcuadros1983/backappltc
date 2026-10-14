@@ -32,6 +32,10 @@ import { handleWebSocketConnection } from "./websocket.js"; // Manejar eventos d
 import { runFidelizacionJobs } from "./jobs/fidelizacion/fidelizacionJobs.js";
 import motorConceptoService
   from "./services/motorconceptos/motorConceptoService.js";
+import {
+  ArcaConsultaRecibidos,
+  ArcaMapaConciliacion,
+} from "./models/arca/arcaConsultaRecibidos.js";
 
 async function main() {
   try {
@@ -127,6 +131,13 @@ async function main() {
     // console.log(
     //   `[SYNC] ✅ Modelos sincronizados (${Date.now() - inicioSync} ms)`
     // );
+
+    console.log("[SYNC] Creando tablas de conciliación ARCA...");
+
+    await ArcaConsultaRecibidos.sync();
+    await ArcaMapaConciliacion.sync();
+
+    console.log("[SYNC] ✅ Tablas de conciliación ARCA disponibles.");
 
     await crearRoles();
 

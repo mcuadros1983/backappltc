@@ -212,6 +212,8 @@ import inteligenciaRoutes
 import ajusteComprobanteEgresoRouter
   from "./tesoreria/ajusteComprobanteEgresoRoute.js";
 
+import conciliacionArcaRouter from "./arca/conciliacionRoute.js";
+
 const router = Router();
 
 const indexRouter = Router();
@@ -279,6 +281,8 @@ router.post(
 // 🔐 A partir de acá, todo autenticado:
 router.use(JWTAuth, attachPermissions);
 // protegidas para frontend ERP
+
+router.use("/arca/conciliacion", conciliacionArcaRouter);
 
 router.use("/motorconceptos/registros", motorConceptoRegistroRoutes);
 

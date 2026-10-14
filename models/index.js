@@ -210,6 +210,9 @@ import InteligenciaEventoArticulo
 
 import PagoProgramadoTesoreria from "../models/tesoreria/PagoProgramadoTesoreria.js";
 
+
+import { ArcaConsultaRecibidos, ArcaMapaConciliacion } from "./arca/arcaConsultaRecibidos.js";
+
 initMotorConceptosAssociations();
 initMotorConceptosOperacionAssociations();
 
@@ -1205,5 +1208,7 @@ export {
   InteligenciaEventoSucursal,
   InteligenciaEventoArticulo,
   PagoProgramadoTesoreria,
+  ArcaConsultaRecibidos,
+  ArcaMapaConciliacion
 };
 
