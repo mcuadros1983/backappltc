@@ -9,7 +9,7 @@ const Producto = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    categoria_producto: { 
+    categoria_producto: {
       type: DataTypes.STRING,
     },
     subcategoria: {
@@ -51,6 +51,11 @@ const Producto = sequelize.define(
     fecha: {
       type: DataTypes.DATEONLY,
       defaultValue: sequelize.literal("CURRENT_DATE"), // Establece la fecha actual por defecto
+    },
+    fecha_faena: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+      defaultValue: null,
     },
   },
 

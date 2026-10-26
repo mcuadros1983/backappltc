@@ -1620,6 +1620,18 @@ export const emitirComprobanteEgreso = async (req, res) => {
         ? pagos
         : [];
 
+    const requiereFechaPago = pagosNormalizados.some(
+      (p) =>
+        String(p.medio || "").trim().toLowerCase() !== "ajuste" &&
+        !p.existing_ref
+    );
+
+    if (requiereFechaPago && !comprobante.fechapago) {
+      throw new Error(
+        "Debe indicar la fecha de pago para generar movimientos de tesorería."
+      );
+    }
+
     // const totalComp = Number(comprobante.total || 0);
     // if (totalComp <= 0) throw new Error("Total del comprobante inválido");
     const totalComp = Number(comprobante.total || 0);
@@ -2288,8 +2300,8 @@ export const emitirComprobanteEgreso = async (req, res) => {
     for (const p of pagosFinancieros) {
       const medio = medioDe(p);
       const monto = normaliza(p.monto);
-      const fechaPagoEntrada = p.fecha || comp.fechapago || comp.fechacomprobante;
-
+      // const fechaPagoEntrada = p.fecha || comp.fechapago || comp.fechacomprobante;
+      const fechaPagoEntrada = comp.fechapago;
       const cancelarRenov = Boolean(p?.gastoestimado?.cancelar_renovacion);
       const instanciaId = Number(p?.gastoestimado?.instancia_id || 0);
       const obsPago = p.detalle || `Pago comp. ${comp.nrocomprobante}`;

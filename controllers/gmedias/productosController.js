@@ -42,7 +42,7 @@ const obtenerProductos = async (req, res, next) => {
 };
 
 const obtenerNumMediaPorcino = async (req, res, next) => {
-   try {
+  try {
     const productos = await Producto.findAll({
       where: { categoria_producto: "porcino" },
       attributes: ["num_media"],
@@ -69,7 +69,7 @@ const obtenerProductosPorFecha = async (req, res, next) => {
 
     // Buscar productos dentro del rango de fechas
     const productos = await Producto.findAll({
-      
+
       where: {
         fecha: {
           [Op.between]: [fechaDesde, fechaHasta],
@@ -490,15 +490,15 @@ const actualizarDatosProducto = async (
   fecha
 ) => {
   try {
-    console.log( "producto_id", producto_id,
-  "orden_id", orden_id,
-  "sucursal_id", sucursal_id,
-  "cliente_id", cliente_id,
-  "venta_id", venta_id,
-  "precio", precio,
-  "kg", kg,
-  "tropa", tropa,
-  "fecha", fecha)
+    console.log("producto_id", producto_id,
+      "orden_id", orden_id,
+      "sucursal_id", sucursal_id,
+      "cliente_id", cliente_id,
+      "venta_id", venta_id,
+      "precio", precio,
+      "kg", kg,
+      "tropa", tropa,
+      "fecha", fecha)
     console.log("sucursal_Id", sucursal_id);
 
     const producto = await Producto.findByPk(producto_id);
@@ -644,9 +644,79 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     const data = xlsx.utils.sheet_to_json(sheet);
 
     // Obtiene los datos adicionales del cuerpo de la solicitud
-    const { operacion, destino, formaPago,fechaOperacion } = req.body;
+    const {
+      operacion,
+      destino,
+      formaPago,
+      fechaOperacion,
+      fechaFaena,
+    } = req.body;
+
+    const convertirFechaFaena = (valor) => {
+      if (valor === undefined || valor === null || valor === "") {
+        return null;
+      }
+
+      // Excel puede almacenar fechas como números de serie.
+      if (typeof valor === "number") {
+        const fechaExcel = xlsx.SSF.parse_date_code(valor);
+
+        if (
+          !Number.isInteger(valor) ||
+          valor <= 0 ||
+          !fechaExcel ||
+          fechaExcel.y < 1900
+        ) {
+          throw new Error(`Fecha de faena inválida: ${valor}`);
+        }
+
+        const anio = String(fechaExcel.y).padStart(4, "0");
+        const mes = String(fechaExcel.m).padStart(2, "0");
+        const dia = String(fechaExcel.d).padStart(2, "0");
+
+        return `${anio}-${mes}-${dia}`;
+      }
+
+      const fecha = String(valor).trim();
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        throw new Error(`Formato de fecha de faena inválido: ${fecha}`);
+      }
+
+      const [anio, mes, dia] = fecha.split("-").map(Number);
+      const comprobacion = new Date(Date.UTC(anio, mes - 1, dia));
+
+      if (
+        comprobacion.getUTCFullYear() !== anio ||
+        comprobacion.getUTCMonth() + 1 !== mes ||
+        comprobacion.getUTCDate() !== dia
+      ) {
+        throw new Error(`Fecha de faena inválida: ${fecha}`);
+      }
+
+      return fecha;
+    };
 
     if (operacion === "romaneo") {
+
+      // Validar todas las fechas antes de comenzar a crear productos
+      try {
+        for (const row of data) {
+          const valorFecha =
+            row.fecha_faena !== undefined &&
+              row.fecha_faena !== null &&
+              String(row.fecha_faena).trim() !== ""
+              ? row.fecha_faena
+              : fechaFaena;
+
+          convertirFechaFaena(valorFecha);
+        }
+      } catch (error) {
+        return res.status(400).json({
+          mensaje: error.message,
+        });
+      }
+
       // Procesar productos para la operación "Romaneo"
       const productosProcesados = await Promise.all(
         data.map(async (row) => {
@@ -656,6 +726,14 @@ const crearProductosDesdeExcel = async (req, res, next) => {
             const productoExistente = await Producto.findOne({
               where: { num_media: String(row.num_media) },
             });
+
+            const fechaFaenaProducto = convertirFechaFaena(
+              row.fecha_faena !== undefined &&
+                row.fecha_faena !== null &&
+                String(row.fecha_faena).trim() !== ""
+                ? row.fecha_faena
+                : fechaFaena
+            );
 
             if (productoExistente) {
               console.log(`El producto con num_media ${row.num_media} ya existe.`);
@@ -672,14 +750,15 @@ const crearProductosDesdeExcel = async (req, res, next) => {
               costo: row.costo,
               kg: row.kg,
               tropa: row.tropa,
+              fecha_faena: fechaFaenaProducto,
               sucursal_id: 32, // Sucursal fija para romaneo
               codigo_de_barra:
-              "00" +
-              String(row.num_media) +
-              "00" +
-              String(row.tropa) +
-              "00" +
-              String(row.kg),
+                "00" +
+                String(row.num_media) +
+                "00" +
+                String(row.tropa) +
+                "00" +
+                String(row.kg),
             });
 
             return nuevoProducto;
@@ -719,24 +798,24 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         // Buscar el producto existente por num_media
         let producto = await Producto.findOne({ where: { num_media: String(row.num_media) } });
         console.log("Ubicando producto ---------", producto);
-    
+
         if (producto && producto.ingreso_id) {
           // Eliminar el archivo cargado antes de devolver el error
           if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    
+
           // Retornar error si el producto ya tiene ingreso_id
           return res.status(400).json({
             error: true,
             mensaje: `El listado contiene productos ingresados previamente. Producto duplicado: num_media ${producto.num_media}`
           });
         }
-    
+
       } catch (error) {
         console.error("Error al verificar producto desde Excel:", row, error);
-    
+
         // Eliminar archivo si ocurre un error durante la verificación
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    
+
         return res.status(500).json({
           error: true,
           mensaje: "Error al verificar productos desde el archivo Excel."
@@ -744,7 +823,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
       }
     }
 
-    
+
     const productosCreados = await Promise.all(
       data.map(async (row) => {
         try {
@@ -764,12 +843,12 @@ const crearProductosDesdeExcel = async (req, res, next) => {
               tropa: row.tropa,
               sucursal_id: null, // Sucursal será asignada más adelante
               codigo_de_barra:
-              "00" +
-              String(row.num_media) +
-              "00" +
-              String(row.tropa) +
-              "00" +
-              String(row.kg),
+                "00" +
+                String(row.num_media) +
+                "00" +
+                String(row.tropa) +
+                "00" +
+                String(row.kg),
             });
           }
 
@@ -792,7 +871,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     if (operacion === "venta") {
       const cliente = await Cliente.findByPk(destino);
 
-    
+
       // Verificar y calcular precio si es necesario
       productosCreados.forEach((producto) => {
         if (!producto.precio || producto.precio === 0) {
@@ -805,12 +884,12 @@ const crearProductosDesdeExcel = async (req, res, next) => {
           }
         }
       });
-    
+
       // Calcula el monto total de la venta (suma de productos: peso por precio)
       const montoTotal = productosCreados.reduce((total, producto) => {
         return Number(total) + Number(producto.kg) * Number(producto.precio);
       }, 0);
-    
+
       // Manejar cuenta corriente si la forma de pago es cuenta corriente
       if (formaPago == 2) {
         let cuentaCorriente = await obtenerCuentaCorrientePorIdCliente(destino);
@@ -819,14 +898,14 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         } else {
           await actualizarCuentaCorrienteIdCliente(destino, montoTotal);
         }
-    
+
         // Crear el detalle de la cuenta corriente
         await crearDetalleCuentaCorriente(cuentaCorriente.id, montoTotal);
       }
-    
+
       // Crea la venta
       const nuevaVenta = await Venta.create({
-        fecha:fechaOperacion,
+        fecha: fechaOperacion,
         cantidad_total: productosCreados.length,
         // peso_total: productosCreados.reduce((total, p) => total + p.kg, 0),
         peso_total: productosCreados.reduce((total, p) => total + Number(p.kg || 0), 0),
@@ -834,7 +913,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         cliente_id: destino,
         formaPago_id: formaPago,
       });
-    
+
       // Asocia los productos a la venta
       await Promise.all(
         productosCreados.map(async (producto) => {
@@ -850,25 +929,25 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         const productoExistente = await Producto.findOne({
           where: { num_media: String(producto.num_media) }
         });
-    
+
         if (productoExistente && productoExistente.ingreso_id) {
           if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        
+
           return res.status(400).json({
             error: true,
             mensaje: `El listado contiene productos ingresados previamente. Producto duplicado: num_media ${producto.num_media}`
           });
         }
-        
+
       }
-    
+
       // Calcular cantidad_total y peso_total
       const cantidad_total = productosCreados.length;
       const peso_total = productosCreados.reduce((total, p) => total + Number(p.kg || 0), 0);
-      
+
       // Determinar la categoría del ingreso (por ejemplo, a partir del primer producto)
       const categoria = productosCreados[0]?.categoria_producto || "sin_categoria";
-    
+
       // Crear el ingreso
       const nuevoIngreso = await Ingreso.create({
         cantidad_total,
@@ -876,9 +955,9 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         categoria_ingreso: categoria,
         fecha: fechaOperacion,
       });
-    
+
       const ingreso_id = nuevoIngreso.id;
-    
+
       // Asociar productos al ingreso
       await Promise.all(
         productosCreados.map(async (producto) => {
@@ -888,7 +967,7 @@ const crearProductosDesdeExcel = async (req, res, next) => {
         })
       );
     }
-    
+
 
     // Devuelve una respuesta exitosa con los productos creados
     return res.status(200).json({
@@ -937,7 +1016,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
         tropa,
       } = row;
 
-      console.log("Valores extraídos:", { 
+      console.log("Valores extraídos:", {
         categoria_producto,
         subcategoria,
         codigo_de_barra,
@@ -1097,7 +1176,7 @@ const actualizarProductosDesdeExcel = async (req, res, next) => {
 };
 
 
-const generarCodigos = async (req, res, next) => { 
+const generarCodigos = async (req, res, next) => {
   // console.log("categoria----------", req.body)
   try {
     const { categoria } = req.body;

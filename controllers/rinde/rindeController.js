@@ -22,35 +22,6 @@ import xlsx from "xlsx";
 import fs from "fs";
 import RindeGeneral from "../../models/rinde/rindeGeneral.js";
 
-// const obtenerMovimientosFiltrados = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     // Define los filtros para la consulta
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//     };
-
-//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     // Consultar los movimientos internos desde la base de datos
-//     const movimientos = await InventarioMovimientoInterno.findAll({
-//       where: filters,
-//     });
-
-//     // Retornar los movimientos como respuesta
-//     res.status(200).json(movimientos);
-//   } catch (error) {
-//     console.error("Error al listar los movimientos filtrados:", error);
-//     next(error);
-//   }
-// };
-
 const obtenerMovimientosFiltrados = async (req, res) => {
   console.log("🔍 Iniciando función obtenerMovimientosFiltrados");
 
@@ -206,29 +177,6 @@ const obtenerUltimoIdMovimiento = async () => {
     throw error;
   }
 };
-
-// Función para buscar el precio de un artículo en la base de datos
-// async function buscarPrecioArticulo(articuloCodigo) {
-//   try {
-//     // Buscar el precio del artículo en la tabla de precios de artículos (ArticuloPrecioTabla)
-//     const precioArticulo = await ArticuloPrecioTabla.findOne({
-//       include: [
-//         {
-//           model: ArticuloTabla,
-//           where: {
-//             codigobarra: articuloCodigo,
-//           },
-//         },
-//       ],
-//     });
-
-//     // Retornar el precio del artículo si se encuentra
-//     return precioArticulo ? parseFloat(precioArticulo.precio) : null;
-//   } catch (error) {
-//     console.error("Error al buscar el precio del artículo:", error);
-//     return null;
-//   }
-// }
 
 async function buscarPrecioArticulo(articuloCodigo) {
   try {
@@ -466,86 +414,6 @@ const obtenerInventariosFiltrados = async (req, res, next) => {
     next(error);
   }
 };
-
-// const obtenerMontoInventariosFiltrados = async (req, res, next) => {
-//   try {
-//     // let { sucursalId } = req.body;
-//     // let { fechaDesde, fechaHasta } = req.body;
-//     let { sucursalId, fechaDesde, fechaHasta, excludedCategories } = req.body;
-
-//     let filters = {};
-
-//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
-//     if (sucursalId) {
-//       filters.sucursal_id = sucursalId;
-//     }
-
-//     // Si se proporciona la fecha de inicio y la fecha de fin, agrega el filtro por fecha
-//     if (fechaDesde && fechaHasta) {
-//       // Agregar el filtro de fecha al objeto de filtros
-//       filters.fecha = {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       };
-//     }
-
-//     // Consultar todos los inventarios desde la base de datos con los filtros definidos
-//     const inventarios = await Inventario.findAll({
-//       include: [
-//         {
-//           model: InventarioArticulo,
-//           through: {
-//             model: InventarioInventarioArticulo,
-//             attributes: [], // No queremos obtener los atributos de la tabla intermedia
-//           },
-//         },
-//       ],
-//       where: filters,
-//     });
-
-//     // Calcular el monto total de cada inventario
-//     for (const inventario of inventarios) {
-//       let montoTotalInventario = 0;
-//       // for (const inventarioArticulo of inventario.Inventario_articulos) {
-//       //   const precioArticulo = await buscarPrecioArticulo(
-//       //     inventarioArticulo.articulocodigo
-//       //   );
-//       //   if (precioArticulo !== null) {
-//       //     // Si se encuentra el precio, calcular el monto del artículo y sumarlo al total del inventario
-//       //     montoTotalInventario +=
-//       //       Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
-//       //   }
-//       // }
-//       for (const inventarioArticulo of inventario.Inventario_articulos) {
-//         const articulo = await ArticuloTabla.findOne({
-//           where: { codigobarra: inventarioArticulo.articulocodigo },
-//         });
-
-//         // Excluir si la subcategoría está en excludedCategories
-//         if (
-//           articulo &&
-//           (!excludedCategories || !excludedCategories.includes(articulo.subcategoria_id))
-//         ) {
-//           const precioArticulo = await buscarPrecioArticulo(
-//             inventarioArticulo.articulocodigo
-//           );
-//           if (precioArticulo !== null) {
-//             montoTotalInventario +=
-//               Number(precioArticulo) * Number(inventarioArticulo.cantidadpeso);
-//           }
-//         }
-//       }
-//       // Agregar el monto total al objeto del inventario
-//       inventario.total = Number(montoTotalInventario) / 1.4;
-//     }
-//     //    console.log("inventarios", inventarios);
-
-//     // Retornar los inventarios como respuesta
-//     res.status(200).json(inventarios);
-//   } catch (error) {
-//     console.error("Error al listar los inventarios filtrados:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerMontoInventariosFiltrados = async (req, res, next) => {
   try {
@@ -868,88 +736,6 @@ const crearRinde = async (req, res, next) => {
   }
 };
 
-
-// const crearRinde = async (req, res, next) => {
-//   try {
-//     const {
-//       fechaDesde,
-//       fechaHasta,
-//       mes,
-//       anio,
-//       sucursal_id,
-//       totalVentas,
-//       totalMovimientos,
-//       totalMovimientosOtros,
-//       totalInventarioInicial,
-//       totalInventarioFinal,
-//       ingresoEsperadoNovillo,
-//       ingresoEsperadoVaca,
-//       ingresoEsperadoCerdo,
-//       totalKgNovillo,
-//       totalKgVaca,
-//       totalKgCerdo,
-//       rinde,
-//       datosAjuste,
-//     } = req.body;
-
-//     const formatToTwoDecimals = (value) => {
-//       if (value && !isNaN(value)) {
-//         return parseFloat(value).toFixed(2);
-//       }
-//       return 0;
-//     };
-
-//     const formattedTotalVentas = formatToTwoDecimals(totalVentas);
-//     const formattedTotalMovimientos = formatToTwoDecimals(totalMovimientos);
-//     const formattedTotalMovimientosOtros = formatToTwoDecimals(totalMovimientosOtros);
-//     const formattedTotalInventarioInicial = formatToTwoDecimals(
-//       totalInventarioInicial
-//     );
-//     const formattedTotalInventarioFinal =
-//       formatToTwoDecimals(totalInventarioFinal);
-//     const formattedRinde = formatToTwoDecimals(rinde);
-
-//     const nuevoRinde = await Rinde.create({
-//       fechaDesde,
-//       fechaHasta,
-//       mes,
-//       anio,
-//       sucursal_id,
-//       totalVentas: formattedTotalVentas,
-//       totalMovimientos: formattedTotalMovimientos,
-//       totalMovimientosOtros: formattedTotalMovimientosOtros,
-//       totalInventarioInicial: formattedTotalInventarioInicial,
-//       totalInventarioFinal: formattedTotalInventarioFinal,
-//       ingresoEsperadoNovillo,
-//       ingresoEsperadoVaca,
-//       ingresoEsperadoCerdo,
-//       totalKgNovillo,
-//       totalKgVaca,
-//       totalKgCerdo,
-//       rinde: formattedRinde,
-//     });
-
-//     // Verifica si hay ajustes a crear y si el array no está vacío
-//     if (datosAjuste && Array.isArray(datosAjuste) && datosAjuste.length > 0) {
-//       const ajustesPromesas = datosAjuste.map(async (ajuste) => {
-//         return AjusteRinde.create({
-//           ...ajuste,
-//           rinde_id: nuevoRinde.id,
-//         });
-//       });
-
-//       await Promise.all(ajustesPromesas);
-//     }
-
-//     res
-//       .status(201)
-//       .json({ mensaje: "Rinde creado satisfactoriamente", rinde: nuevoRinde });
-//   } catch (error) {
-//     console.error("Error al crear el registro de Rinde:", error);
-//     next(error);
-//   }
-// };
-
 const obtenerRindes = async (req, res, next) => {
   try {
     // Obtener los registros de Rinde filtrados por sucursal_id
@@ -1255,14 +1041,6 @@ const obtenerSumaKgMediasPorSubcategoria = async (
 
     // Calcular la suma de los campos 'kg' de los productos agrupados por subcategoría
     const sumaKgPorSubcategoria = {};
-    // ordenes.forEach((orden) => {
-    //   orden.Productos.forEach((producto) => {
-    //     if (!sumaKgPorSubcategoria[producto.subcategoria]) {
-    //       sumaKgPorSubcategoria[producto.subcategoria] = 0;
-    //     }
-    //     sumaKgPorSubcategoria[producto.subcategoria] += producto.kg;
-    //   });
-    // });
 
     ordenes.forEach((orden) => {
       orden.Productos.forEach((producto) => {
@@ -1476,142 +1254,498 @@ const obtenerKgsPorProductoUltimoInventario = async (
   }
 };
 
+// const obtenerKgPorProductoMovimientosFiltrados = async (
+//   fechaDesde,
+//   fechaHasta,
+//   sucursalId
+// ) => {
+//   try {
+//     const filters = {
+//       fecha: {
+//         [Op.between]: [fechaDesde, fechaHasta],
+//       },
+//     };
+
+//     // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
+//     if (sucursalId) {
+//       filters.sucursal_id = sucursalId;
+//     }
+
+//     // Obtener los movimientos de inventario filtrados por fecha y sucursal
+//     const movimientos = await InventarioMovimientoInterno.findAll({
+//       where: filters,
+//     });
+
+//     // Procesar los movimientos para obtener el saldo final de cada producto
+//     const saldoProductos = movimientos.reduce((acumulador, movimiento) => {
+//       // Verificar si el producto ya está en el acumulador
+//       const index = acumulador.findIndex(
+//         (item) => item.codigo === movimiento.articulocodigo
+//       );
+
+//       // Calcular la cantidad para agregar al acumulador
+//       const cantidad =
+//         movimiento.tipo === "salida"
+//           ? -parseInt(movimiento.cantidad)
+//           : parseInt(movimiento.cantidad);
+
+//       // Si el producto ya está en el acumulador, sumar la cantidad
+//       // Si no, agregarlo al acumulador con su cantidad correspondiente
+//       if (index !== -1) {
+//         acumulador[index].cantidad += Number(cantidad);
+//       } else {
+//         acumulador.push({
+//           codigo: movimiento.articulocodigo,
+//           descripcion: movimiento.articulodescripcion,
+//           cantidad: cantidad,
+//         });
+//       }
+
+//       return acumulador;
+//     }, []);
+
+//     // Obtener los códigos de barra de los productos del saldo
+//     const codigosProductos = saldoProductos.map((producto) => producto.codigo);
+
+//     // Obtener las fórmulas que corresponden a los productos del saldo
+//     const formulas = await Formula.findAll({
+//       where: {
+//         codigobarraformula: codigosProductos,
+//       },
+//       include: {
+//         model: FormulaArticulo,
+//         through: {
+//           model: FormulaFormulaArticulo,
+//           attributes: [],
+//         },
+//         attributes: ["codigobarra", "descripcion", "cantidad"],
+//       },
+//       attributes: ["codigobarraformula", "descripcionformula"],
+//     });
+//     // Crear un mapa para almacenar los detalles de las fórmulas
+//     const detallesFormulasMap = new Map();
+
+//     formulas.forEach((formula) => {
+//       const detallesFormula = formula.formulaarticulos.map((detalle) => ({
+//         codigo: detalle.codigobarra,
+//         descripcion: detalle.descripcion,
+//         cantidad:
+//           (parseFloat(detalle.cantidad) / 100) *
+//           saldoProductos.find(
+//             (movimiento) => movimiento.codigo === formula.codigobarraformula
+//           ).cantidad,
+//       }));
+//       detallesFormulasMap.set(formula.codigobarraformula, detallesFormula);
+//     });
+//     // Filtrar los artículos del movimiento que no están en ninguna fórmula
+//     const articulosNoFormula = saldoProductos.filter(
+//       (producto) => !detallesFormulasMap.has(producto.codigo)
+//     );
+//     // Crear el conjunto completo de productos finales
+//     const productosFinalesMap = new Map();
+
+//     articulosNoFormula.forEach((producto) => {
+//       const { codigo, descripcion, cantidad } = producto;
+//       if (productosFinalesMap.has(codigo)) {
+//         productosFinalesMap.set(codigo, {
+//           codigo: codigo,
+//           descripcion: descripcion,
+//           cantidad:
+//             parseFloat(productosFinalesMap.get(codigo).cantidad) +
+//             parseFloat(cantidad),
+//         });
+//       } else {
+//         productosFinalesMap.set(codigo, {
+//           codigo: codigo,
+//           descripcion: descripcion,
+//           cantidad: parseFloat(cantidad),
+//         });
+//       }
+//     });
+//     detallesFormulasMap.forEach((detallesFormula) => {
+//       detallesFormula.forEach((detalle) => {
+//         const { codigo, descripcion, cantidad } = detalle;
+//         if (productosFinalesMap.has(codigo)) {
+//           productosFinalesMap.set(codigo, {
+//             codigo: codigo,
+//             descripcion: descripcion,
+//             cantidad: productosFinalesMap.get(codigo).cantidad + cantidad,
+//           });
+//         } else {
+//           productosFinalesMap.set(codigo, {
+//             codigo: codigo,
+//             descripcion: descripcion,
+//             cantidad: cantidad,
+//           });
+//         }
+//       });
+//     });
+//     // Convertir el mapa a un array
+//     const productosFinales = Array.from(productosFinalesMap.values());
+
+//     return productosFinales;
+//   } catch (error) {
+//     console.error(
+//       "Error al obtener los kg por producto de los movimientos:",
+//       error
+//     );
+//     throw error; // Propagar el error para manejarlo en el llamador
+//   }
+// };
+
 const obtenerKgPorProductoMovimientosFiltrados = async (
   fechaDesde,
   fechaHasta,
   sucursalId
 ) => {
   try {
-    const filters = {
+    // =====================================================
+    // 1. FILTROS PARA MOVIMIENTOS INTERNOS
+    // =====================================================
+
+    const filtersInternos = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],
       },
     };
 
-    // Si se proporciona el ID de sucursal, agrega el filtro por sucursal
     if (sucursalId) {
-      filters.sucursal_id = sucursalId;
+      filtersInternos.sucursal_id = sucursalId;
     }
 
-    // Obtener los movimientos de inventario filtrados por fecha y sucursal
-    const movimientos = await InventarioMovimientoInterno.findAll({
-      where: filters,
-    });
+    // =====================================================
+    // 2. FILTROS PARA MOVIMIENTOS OTROS
+    // =====================================================
 
-    // Procesar los movimientos para obtener el saldo final de cada producto
-    const saldoProductos = movimientos.reduce((acumulador, movimiento) => {
-      // Verificar si el producto ya está en el acumulador
-      const index = acumulador.findIndex(
-        (item) => item.codigo === movimiento.articulocodigo
-      );
+    const filtersOtros = {
+      fecha: {
+        [Op.between]: [fechaDesde, fechaHasta],
+      },
+    };
 
-      // Calcular la cantidad para agregar al acumulador
-      const cantidad =
-        movimiento.tipo === "salida"
-          ? -parseInt(movimiento.cantidad)
-          : parseInt(movimiento.cantidad);
+    // IMPORTANTE:
+    // Los movimientos FABRICA, ACHURA y OTROS
+    // solamente suman a la sucursal destino.
 
-      // Si el producto ya está en el acumulador, sumar la cantidad
-      // Si no, agregarlo al acumulador con su cantidad correspondiente
-      if (index !== -1) {
-        acumulador[index].cantidad += Number(cantidad);
-      } else {
-        acumulador.push({
-          codigo: movimiento.articulocodigo,
-          descripcion: movimiento.articulodescripcion,
-          cantidad: cantidad,
-        });
+    if (sucursalId) {
+      filtersOtros.sucursaldestino_id = sucursalId;
+    }
+
+    // No filtramos por tipo.
+    // Se incluyen FABRICA, ACHURA y OTROS.
+
+    // =====================================================
+    // 3. OBTENER MOVIMIENTOS DE AMBAS TABLAS
+    // =====================================================
+
+    const [
+      movimientosInternos,
+      movimientosOtros
+    ] = await Promise.all([
+
+      InventarioMovimientoInterno.findAll({
+        where: filtersInternos,
+      }),
+
+      InventarioMovimientoOtro.findAll({
+        where: filtersOtros,
+      }),
+
+    ]);
+
+    // =====================================================
+    // 4. ACUMULAR CANTIDADES POR PRODUCTO
+    // =====================================================
+
+    const saldoProductosMap = new Map();
+
+    const agregarCantidad = (
+      codigo,
+      descripcion,
+      cantidad
+    ) => {
+
+      const codigoNormalizado =
+        String(codigo ?? "").trim();
+
+      const cantidadNumerica =
+        Number(cantidad);
+
+      if (
+        !codigoNormalizado ||
+        !Number.isFinite(cantidadNumerica)
+      ) {
+        return;
       }
 
-      return acumulador;
-    }, []);
+      if (saldoProductosMap.has(codigoNormalizado)) {
 
-    // Obtener los códigos de barra de los productos del saldo
-    const codigosProductos = saldoProductos.map((producto) => producto.codigo);
+        const producto =
+          saldoProductosMap.get(codigoNormalizado);
 
-    // Obtener las fórmulas que corresponden a los productos del saldo
+        producto.cantidad += cantidadNumerica;
+
+      } else {
+
+        saldoProductosMap.set(codigoNormalizado, {
+          codigo: codigoNormalizado,
+          descripcion: descripcion || "",
+          cantidad: cantidadNumerica,
+        });
+
+      }
+    };
+
+    // =====================================================
+    // 5. PROCESAR MOVIMIENTOS INTERNOS
+    // =====================================================
+
+    // Conservamos la lógica actual:
+    // entrada = suma
+    // salida  = resta
+
+    for (const movimiento of movimientosInternos) {
+
+      const cantidadOriginal =
+        Number(movimiento.cantidad);
+
+      if (!Number.isFinite(cantidadOriginal)) {
+        continue;
+      }
+
+      const cantidad =
+        movimiento.tipo === "salida"
+          ? -cantidadOriginal
+          : cantidadOriginal;
+
+      agregarCantidad(
+        movimiento.articulocodigo,
+        movimiento.articulodescripcion,
+        cantidad
+      );
+    }
+
+    // =====================================================
+    // 6. PROCESAR INVENTARIOMOVIMIENTOOTRO
+    // =====================================================
+
+    // FABRICA = suma
+    // ACHURA  = suma
+    // OTROS   = suma
+    //
+    // Siempre a sucursaldestino_id.
+    // Nunca se resta a sucursal_id.
+
+    for (const movimiento of movimientosOtros) {
+
+      const cantidadOriginal =
+        Number(movimiento.cantidad);
+
+      if (
+        !Number.isFinite(cantidadOriginal) ||
+        cantidadOriginal <= 0
+      ) {
+        continue;
+      }
+
+      agregarCantidad(
+        movimiento.articulocodigo,
+        movimiento.articulodescripcion,
+        cantidadOriginal
+      );
+    }
+
+    // =====================================================
+    // 7. CONVERTIR MAPA A ARRAY
+    // =====================================================
+
+    const saldoProductos =
+      Array.from(saldoProductosMap.values());
+
+    // =====================================================
+    // 8. OBTENER FÓRMULAS
+    // =====================================================
+
+    const codigosProductos =
+      saldoProductos.map(
+        (producto) => producto.codigo
+      );
+
     const formulas = await Formula.findAll({
       where: {
         codigobarraformula: codigosProductos,
       },
+
       include: {
         model: FormulaArticulo,
+
         through: {
           model: FormulaFormulaArticulo,
           attributes: [],
         },
-        attributes: ["codigobarra", "descripcion", "cantidad"],
+
+        attributes: [
+          "codigobarra",
+          "descripcion",
+          "cantidad"
+        ],
       },
-      attributes: ["codigobarraformula", "descripcionformula"],
+
+      attributes: [
+        "codigobarraformula",
+        "descripcionformula"
+      ],
     });
-    // Crear un mapa para almacenar los detalles de las fórmulas
+
+    // =====================================================
+    // 9. CREAR MAPA DE DETALLES DE FÓRMULAS
+    // =====================================================
+
     const detallesFormulasMap = new Map();
 
-    formulas.forEach((formula) => {
-      const detallesFormula = formula.formulaarticulos.map((detalle) => ({
-        codigo: detalle.codigobarra,
-        descripcion: detalle.descripcion,
-        cantidad:
-          (parseFloat(detalle.cantidad) / 100) *
-          saldoProductos.find(
-            (movimiento) => movimiento.codigo === formula.codigobarraformula
-          ).cantidad,
-      }));
-      detallesFormulasMap.set(formula.codigobarraformula, detallesFormula);
-    });
-    // Filtrar los artículos del movimiento que no están en ninguna fórmula
-    const articulosNoFormula = saldoProductos.filter(
-      (producto) => !detallesFormulasMap.has(producto.codigo)
+    // Mapa auxiliar para obtener rápidamente
+    // la cantidad acumulada de cada producto.
+
+    const saldoPorCodigo = new Map(
+      saldoProductos.map(
+        (producto) => [
+          producto.codigo,
+          producto.cantidad
+        ]
+      )
     );
-    // Crear el conjunto completo de productos finales
+
+    formulas.forEach((formula) => {
+
+      const codigoFormula =
+        String(formula.codigobarraformula).trim();
+
+      const cantidadFormula =
+        saldoPorCodigo.get(codigoFormula) || 0;
+
+      const detallesFormula =
+        formula.formulaarticulos.map((detalle) => ({
+
+          codigo:
+            detalle.codigobarra,
+
+          descripcion:
+            detalle.descripcion,
+
+          cantidad:
+            (Number(detalle.cantidad) / 100) *
+            cantidadFormula,
+
+        }));
+
+      detallesFormulasMap.set(
+        codigoFormula,
+        detallesFormula
+      );
+    });
+
+    // =====================================================
+    // 10. FILTRAR ARTÍCULOS QUE NO TIENEN FÓRMULA
+    // =====================================================
+
+    const articulosNoFormula =
+      saldoProductos.filter(
+        (producto) =>
+          !detallesFormulasMap.has(producto.codigo)
+      );
+
+    // =====================================================
+    // 11. CREAR PRODUCTOS FINALES
+    // =====================================================
+
     const productosFinalesMap = new Map();
 
-    articulosNoFormula.forEach((producto) => {
-      const { codigo, descripcion, cantidad } = producto;
-      if (productosFinalesMap.has(codigo)) {
-        productosFinalesMap.set(codigo, {
-          codigo: codigo,
-          descripcion: descripcion,
-          cantidad:
-            parseFloat(productosFinalesMap.get(codigo).cantidad) +
-            parseFloat(cantidad),
-        });
-      } else {
-        productosFinalesMap.set(codigo, {
-          codigo: codigo,
-          descripcion: descripcion,
-          cantidad: parseFloat(cantidad),
-        });
+    const agregarProductoFinal = (
+      codigo,
+      descripcion,
+      cantidad
+    ) => {
+
+      const codigoNormalizado =
+        String(codigo ?? "").trim();
+
+      const cantidadNumerica =
+        Number(cantidad);
+
+      if (
+        !codigoNormalizado ||
+        !Number.isFinite(cantidadNumerica)
+      ) {
+        return;
       }
+
+      if (productosFinalesMap.has(codigoNormalizado)) {
+
+        const producto =
+          productosFinalesMap.get(codigoNormalizado);
+
+        producto.cantidad += cantidadNumerica;
+
+      } else {
+
+        productosFinalesMap.set(codigoNormalizado, {
+          codigo: codigoNormalizado,
+          descripcion: descripcion || "",
+          cantidad: cantidadNumerica,
+        });
+
+      }
+    };
+
+    // =====================================================
+    // 12. AGREGAR ARTÍCULOS SIN FÓRMULA
+    // =====================================================
+
+    articulosNoFormula.forEach((producto) => {
+
+      agregarProductoFinal(
+        producto.codigo,
+        producto.descripcion,
+        producto.cantidad
+      );
+
     });
+
+    // =====================================================
+    // 13. AGREGAR ARTÍCULOS DE LAS FÓRMULAS
+    // =====================================================
+
     detallesFormulasMap.forEach((detallesFormula) => {
+
       detallesFormula.forEach((detalle) => {
-        const { codigo, descripcion, cantidad } = detalle;
-        if (productosFinalesMap.has(codigo)) {
-          productosFinalesMap.set(codigo, {
-            codigo: codigo,
-            descripcion: descripcion,
-            cantidad: productosFinalesMap.get(codigo).cantidad + cantidad,
-          });
-        } else {
-          productosFinalesMap.set(codigo, {
-            codigo: codigo,
-            descripcion: descripcion,
-            cantidad: cantidad,
-          });
-        }
+
+        agregarProductoFinal(
+          detalle.codigo,
+          detalle.descripcion,
+          detalle.cantidad
+        );
+
       });
+
     });
-    // Convertir el mapa a un array
-    const productosFinales = Array.from(productosFinalesMap.values());
+
+    // =====================================================
+    // 14. DEVOLVER RESULTADO
+    // =====================================================
+
+    const productosFinales =
+      Array.from(productosFinalesMap.values());
 
     return productosFinales;
+
   } catch (error) {
+
     console.error(
       "Error al obtener los kg por producto de los movimientos:",
       error
     );
-    throw error; // Propagar el error para manejarlo en el llamador
+
+    throw error;
   }
 };
 
@@ -1767,11 +1901,6 @@ const obtenerStock = async (req, res, next) => {
 
   try {
     let sumaCantidadesMedias = [];
-    // const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
-    //   fechaDesde,
-    //   fechaHasta,
-    //   sucursalId
-    // );
 
     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
       fechaDesde,
@@ -1865,10 +1994,31 @@ const obtenerStock = async (req, res, next) => {
     };
 
     // Sumar cantidades de todas las fuentes de datos
+    // sumarCantidades(sumaCantidadesMedias);
+    // sumarCantidades(sumaInventario);
+    // sumarCantidades(sumaMovimientos);
+    // sumarCantidades(sumaCantidadesVendidasPorArticulo);
+
+    // =====================================================
+    // SUMAR INVENTARIO, MEDIAS Y MOVIMIENTOS
+    // =====================================================
+
     sumarCantidades(sumaCantidadesMedias);
     sumarCantidades(sumaInventario);
     sumarCantidades(sumaMovimientos);
-    sumarCantidades(sumaCantidadesVendidasPorArticulo);
+
+    // =====================================================
+    // RESTAR VENTAS DEL STOCK
+    // =====================================================
+
+    sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+      const cantidadVendida = Number(cantidad);
+
+      if (!Number.isFinite(cantidadVendida)) return;
+
+      // Las ventas se descuentan del stock.
+      sumarCantidad(codigo, -cantidadVendida);
+    });
 
     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
       sumarVenta(codigo, parseFloat(cantidad));
@@ -1897,13 +2047,6 @@ const obtenerStock = async (req, res, next) => {
         descripcionMap.set(articulo.codigobarra, articulo.descripcion);
       });
     }
-
-    // Convertir el mapa a un array de objetos con la estructura requerida
-    // const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-    //   codigo,
-    //   cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
-    //   descripcion: descripcionMap.get(codigo) || "", // Obtener la descripción desde ArticuloTabla
-    // }));
 
     const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
       codigo,
@@ -1985,7 +2128,16 @@ const eliminarMovimientoOtro = async (req, res, next) => {
 //       },
 //     };
 
+//     let nombreSucursal = null;
+
 //     if (sucursalId) {
+//       const sucursal = await Sucursal.findByPk(sucursalId);
+//       nombreSucursal = sucursal?.nombre?.toUpperCase();
+//     }
+
+//     if (nombreSucursal === "FABRICA") {
+//       filters.sucursal_id = sucursalId;
+//     } else if (sucursalId) {
 //       filters.sucursaldestino_id = sucursalId;
 //     }
 
@@ -2013,6 +2165,11 @@ const eliminarMovimientoOtro = async (req, res, next) => {
 //       }
 //     }
 
+//     // Si la sucursal es FABRICA, el monto se envía como negativo
+//     if (nombreSucursal === "FABRICA") {
+//       montoTotalMovimientos = -Math.abs(montoTotalMovimientos);
+//     }
+
 //     console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
 
 //     res.status(200).json({ montoTotalMovimientos });
@@ -2029,6 +2186,11 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
     const filters = {
       fecha: {
         [Op.between]: [fechaDesde, fechaHasta],
+      },
+
+      // Excluir movimientos de tipo OTROS
+      tipo: {
+        [Op.ne]: "OTROS",
       },
     };
 
@@ -2056,7 +2218,10 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
       let precioArticulo = preciosArticulos.get(movimiento.articulocodigo);
 
       if (!precioArticulo) {
-        const precio = await buscarPrecioArticulo(movimiento.articulocodigo);
+        const precio = await buscarPrecioArticulo(
+          movimiento.articulocodigo
+        );
+
         if (precio) {
           preciosArticulos.set(movimiento.articulocodigo, precio);
           precioArticulo = precio;
@@ -2077,135 +2242,455 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
     console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
 
     res.status(200).json({ montoTotalMovimientos });
+
   } catch (error) {
     console.error("Error al calcular monto de movimientos OTRO:", error);
     next(error);
   }
 };
 
+// const crearMovimientosOtrosDesdeExcel = async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
+//     }
+
+//     const { tipo, sucursal_codigo } = req.body;
+
+//     if (!tipo || !sucursal_codigo) {
+//       return res.status(400).json({
+//         mensaje: "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+//       });
+//     }
+
+//     if (!["FABRICA", "ACHURA"].includes(tipo)) {
+//       return res.status(400).json({
+//         mensaje: `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
+//       });
+//     }
+
+//     const sucursalOrigen = await Sucursal.findOne({
+//       where: { codigo: String(sucursal_codigo).trim() },
+//     });
+
+//     if (!sucursalOrigen) {
+//       throw new Error(`Sucursal origen inexistente (código: ${sucursal_codigo})`);
+//     }
+
+//     const workbook = xlsx.readFile(req.file.path);
+//     const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//     const data = xlsx.utils.sheet_to_json(sheet);
+
+//     const movimientosAInsertar = [];
+
+//     const parseFechaExcel = (fechaValor) => {
+//       if (typeof fechaValor === "string" && fechaValor.includes("/")) {
+//         const [dia, mes, anio] = fechaValor.split("/");
+//         const fechaISO = `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+//         if (isNaN(new Date(fechaISO))) return null;
+//         return fechaISO;
+//       }
+
+//       if (typeof fechaValor === "number") {
+//         const date = new Date(Math.round((fechaValor - 25569) * 86400 * 1000));
+//         return date.toISOString().split("T")[0];
+//       }
+
+//       // Si viene como texto tipo "2024-05-01"
+//       const date = new Date(fechaValor);
+//       return isNaN(date) ? null : date.toISOString().split("T")[0];
+//     };
+
+//     for (let index = 0; index < data.length; index++) {
+//       const row = data[index];
+//       const fila = index + 2;
+
+//       const { fecha, articulocodigo, cantidad, remito, sucursaldestino_codigo } = row;
+
+//       if (!fecha || !articulocodigo || !cantidad || !sucursaldestino_codigo) {
+//         throw new Error(`Faltan campos obligatorios en la fila ${fila}.`);
+//       }
+
+//       const fechaNormalizada = parseFechaExcel(fecha);
+//       if (!fechaNormalizada) {
+//         throw new Error(`Fecha inválida en la fila ${fila}: ${fecha}`);
+//       }
+
+//       const sucursalDestino = await Sucursal.findOne({
+//         where: { codigo: String(sucursaldestino_codigo).trim() },
+//       });
+
+//       if (!sucursalDestino) {
+//         throw new Error(
+//           `Sucursal destino inexistente en fila ${fila} (código: ${sucursaldestino_codigo})`
+//         );
+//       }
+
+//       const articulo = await ArticuloTabla.findOne({
+//         where: { codigobarra: String(articulocodigo).trim() },
+//       });
+
+//       if (!articulo) {
+//         throw new Error(
+//           `Artículo inexistente en fila ${fila} (código: ${articulocodigo})`
+//         );
+//       }
+
+//       // Validar cantidad como número (puede venir como string con coma)
+//       const cantidadNormalizada = parseFloat(String(cantidad).replace(",", "."));
+//       if (isNaN(cantidadNormalizada)) {
+//         throw new Error(`Cantidad inválida en la fila ${fila}: ${cantidad}`);
+//       }
+
+//       movimientosAInsertar.push({
+//         fecha: fechaNormalizada,
+//         sucursal_id: sucursalOrigen.id,
+//         articulocodigo,
+//         articulodescripcion: articulo.descripcion,
+//         cantidad: cantidadNormalizada,
+//         tipo: tipo === "FABRICA" ? "FABRICA" : "ACHURA",
+//         numerolote: remito || null,
+//         sucursaldestino_id: sucursalDestino.id,
+//       });
+//     }
+
+//     const movimientosCreados = await InventarioMovimientoOtro.bulkCreate(movimientosAInsertar);
+
+//     if (fs.existsSync(req.file.path)) {
+//       fs.unlinkSync(req.file.path);
+//     }
+
+//     return res.status(200).json({
+//       mensaje: `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
+//       movimientos: movimientosCreados,
+//     });
+//   } catch (error) {
+//     console.error("Error al procesar Excel de movimientos otros:", error.message);
+//     if (req.file && fs.existsSync(req.file.path)) {
+//       fs.unlinkSync(req.file.path);
+//     }
+//     return res.status(400).json({
+//       mensaje: `Error al procesar archivo: ${error.message}`,
+//     });
+//   }
+// };
+
 const crearMovimientosOtrosDesdeExcel = async (req, res) => {
   try {
+    // ==========================================
+    // VALIDAR ARCHIVO
+    // ==========================================
+
     if (!req.file) {
-      return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
-    }
-
-    const { tipo, sucursal_codigo } = req.body;
-
-    if (!tipo || !sucursal_codigo) {
       return res.status(400).json({
-        mensaje: "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+        mensaje: "No se ha subido ningún archivo.",
       });
     }
 
-    if (!["FABRICA", "ACHURA"].includes(tipo)) {
+    const { tipo } = req.body;
+
+    // ==========================================
+    // VALIDAR TIPO DE MOVIMIENTO
+    // ==========================================
+
+    const tiposPermitidos = ["FABRICA", "ACHURA", "OTROS"];
+
+    if (!tiposPermitidos.includes(tipo)) {
       return res.status(400).json({
-        mensaje: `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
+        mensaje:
+          `Tipo inválido: ${tipo}. ` +
+          "Debe ser 'FABRICA', 'ACHURA' u 'OTROS'.",
       });
     }
+
+    // ==========================================
+    // DETERMINAR SUCURSAL DE ORIGEN
+    // ==========================================
+
+    const sucursalesOrigenPorTipo = {
+      FABRICA: 20,
+      ACHURA: 1,
+      OTROS: 1,
+    };
+
+    const codigoOrigen = sucursalesOrigenPorTipo[tipo];
 
     const sucursalOrigen = await Sucursal.findOne({
-      where: { codigo: String(sucursal_codigo).trim() },
+      where: {
+        codigo: String(codigoOrigen),
+      },
     });
 
     if (!sucursalOrigen) {
-      throw new Error(`Sucursal origen inexistente (código: ${sucursal_codigo})`);
+      throw new Error(
+        `Sucursal origen inexistente (código: ${codigoOrigen})`
+      );
     }
 
+    // ==========================================
+    // LEER ARCHIVO EXCEL
+    // ==========================================
+
     const workbook = xlsx.readFile(req.file.path);
+
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
     const data = xlsx.utils.sheet_to_json(sheet);
 
     const movimientosAInsertar = [];
 
+    // ==========================================
+    // NORMALIZAR FECHAS
+    // ==========================================
+
     const parseFechaExcel = (fechaValor) => {
-      if (typeof fechaValor === "string" && fechaValor.includes("/")) {
-        const [dia, mes, anio] = fechaValor.split("/");
-        const fechaISO = `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
-        if (isNaN(new Date(fechaISO))) return null;
-        return fechaISO;
+      if (fechaValor === null || fechaValor === undefined || fechaValor === "") {
+        return null;
       }
+
+      let dia;
+      let mes;
+      let anio;
 
       if (typeof fechaValor === "number") {
-        const date = new Date(Math.round((fechaValor - 25569) * 86400 * 1000));
-        return date.toISOString().split("T")[0];
+        const fechaExcel = xlsx.SSF.parse_date_code(fechaValor);
+
+        if (!fechaExcel) {
+          return null;
+        }
+
+        dia = fechaExcel.d;
+        mes = fechaExcel.m;
+        anio = fechaExcel.y;
+      } else {
+        const valor = String(fechaValor).trim();
+
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(valor)) {
+          [dia, mes, anio] = valor.split("/").map(Number);
+        } else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(valor)) {
+          [anio, mes, dia] = valor.split("-").map(Number);
+        } else {
+          return null;
+        }
       }
 
-      // Si viene como texto tipo "2024-05-01"
-      const date = new Date(fechaValor);
-      return isNaN(date) ? null : date.toISOString().split("T")[0];
+      const fechaJS = new Date(anio, mes - 1, dia);
+
+      if (
+        fechaJS.getFullYear() !== anio ||
+        fechaJS.getMonth() !== mes - 1 ||
+        fechaJS.getDate() !== dia
+      ) {
+        return null;
+      }
+
+      return (
+        `${anio}-` +
+        `${String(mes).padStart(2, "0")}-` +
+        `${String(dia).padStart(2, "0")}`
+      );
     };
+
+    // ==========================================
+    // PROCESAR MOVIMIENTOS
+    // ==========================================
 
     for (let index = 0; index < data.length; index++) {
       const row = data[index];
+
       const fila = index + 2;
 
-      const { fecha, articulocodigo, cantidad, remito, sucursaldestino_codigo } = row;
+      const {
+        fecha,
+        articulocodigo,
+        cantidad,
+        remito,
+        sucursaldestino_codigo,
+      } = row;
 
-      if (!fecha || !articulocodigo || !cantidad || !sucursaldestino_codigo) {
-        throw new Error(`Faltan campos obligatorios en la fila ${fila}.`);
+      // ========================================
+      // VALIDAR CAMPOS OBLIGATORIOS
+      // ========================================
+
+      if (
+        fecha === undefined ||
+        fecha === null ||
+        String(fecha).trim() === "" ||
+        articulocodigo === undefined ||
+        articulocodigo === null ||
+        String(articulocodigo).trim() === "" ||
+        cantidad === undefined ||
+        cantidad === null ||
+        String(cantidad).trim() === "" ||
+        sucursaldestino_codigo === undefined ||
+        sucursaldestino_codigo === null ||
+        String(sucursaldestino_codigo).trim() === ""
+      ) {
+        throw new Error(
+          `Faltan campos obligatorios en la fila ${fila}.`
+        );
       }
+
+      // ========================================
+      // VALIDAR FECHA
+      // ========================================
 
       const fechaNormalizada = parseFechaExcel(fecha);
+
       if (!fechaNormalizada) {
-        throw new Error(`Fecha inválida en la fila ${fila}: ${fecha}`);
+        throw new Error(
+          `Fecha inválida en la fila ${fila}: ${fecha}`
+        );
       }
 
+      // ========================================
+      // BUSCAR SUCURSAL DESTINO
+      // ========================================
+
+      const codigoDestino = String(
+        sucursaldestino_codigo
+      ).trim();
+
       const sucursalDestino = await Sucursal.findOne({
-        where: { codigo: String(sucursaldestino_codigo).trim() },
+        where: {
+          codigo: codigoDestino,
+        },
       });
 
       if (!sucursalDestino) {
         throw new Error(
-          `Sucursal destino inexistente en fila ${fila} (código: ${sucursaldestino_codigo})`
+          `Sucursal destino inexistente en fila ${fila} ` +
+          `(código: ${codigoDestino})`
         );
       }
 
+      // ========================================
+      // BUSCAR ARTÍCULO
+      // ========================================
+
+      const codigoArticulo = String(
+        articulocodigo
+      ).trim();
+
       const articulo = await ArticuloTabla.findOne({
-        where: { codigobarra: String(articulocodigo).trim() },
+        where: {
+          codigobarra: codigoArticulo,
+        },
       });
 
       if (!articulo) {
         throw new Error(
-          `Artículo inexistente en fila ${fila} (código: ${articulocodigo})`
+          `Artículo inexistente en fila ${fila} ` +
+          `(código: ${codigoArticulo})`
         );
       }
 
-      // Validar cantidad como número (puede venir como string con coma)
-      const cantidadNormalizada = parseFloat(String(cantidad).replace(",", "."));
-      if (isNaN(cantidadNormalizada)) {
-        throw new Error(`Cantidad inválida en la fila ${fila}: ${cantidad}`);
+      // ========================================
+      // VALIDAR CANTIDAD
+      // ========================================
+
+      const cantidadNormalizada = Number(
+        String(cantidad).trim().replace(",", ".")
+      );
+
+      if (
+        !Number.isFinite(cantidadNormalizada) ||
+        cantidadNormalizada <= 0
+      ) {
+        throw new Error(
+          `Cantidad inválida en la fila ${fila}: ${cantidad}`
+        );
       }
+
+      // ========================================
+      // PREPARAR MOVIMIENTO
+      // ========================================
 
       movimientosAInsertar.push({
         fecha: fechaNormalizada,
+
+        // Sucursal origen según tipo
         sucursal_id: sucursalOrigen.id,
-        articulocodigo,
+
+        articulocodigo: codigoArticulo,
+
         articulodescripcion: articulo.descripcion,
+
         cantidad: cantidadNormalizada,
-        tipo: tipo === "FABRICA" ? "FABRICA" : "ACHURA",
-        numerolote: remito || null,
+
+        // FABRICA, ACHURA u OTROS
+        tipo,
+
+        numerolote:
+          remito !== undefined &&
+            remito !== null &&
+            String(remito).trim() !== ""
+            ? String(remito).trim()
+            : null,
+
+        // Sucursal destino indicada en Excel
         sucursaldestino_id: sucursalDestino.id,
       });
     }
 
-    const movimientosCreados = await InventarioMovimientoOtro.bulkCreate(movimientosAInsertar);
+    // ==========================================
+    // VALIDAR EXISTENCIA DE MOVIMIENTOS
+    // ==========================================
 
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (movimientosAInsertar.length === 0) {
+      return res.status(400).json({
+        mensaje: "El archivo no contiene movimientos para procesar.",
+      });
     }
+
+    // ==========================================
+    // GUARDAR MOVIMIENTOS
+    // ==========================================
+
+    const movimientosCreados =
+      await InventarioMovimientoOtro.bulkCreate(
+        movimientosAInsertar,
+        {
+          validate: true,
+        }
+      );
 
     return res.status(200).json({
-      mensaje: `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
+      mensaje:
+        `Se procesaron correctamente ` +
+        `${movimientosCreados.length} movimientos.`,
+
       movimientos: movimientosCreados,
     });
+
   } catch (error) {
-    console.error("Error al procesar Excel de movimientos otros:", error.message);
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    console.error(
+      "Error al procesar Excel de movimientos otros:",
+      error
+    );
+
     return res.status(400).json({
       mensaje: `Error al procesar archivo: ${error.message}`,
     });
+
+  } finally {
+    // ==========================================
+    // ELIMINAR ARCHIVO TEMPORAL
+    // ==========================================
+
+    if (
+      req.file?.path &&
+      fs.existsSync(req.file.path)
+    ) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (error) {
+        console.error(
+          "Error al eliminar archivo temporal:",
+          error
+        );
+      }
+    }
   }
 };
 
@@ -2252,8 +2737,7 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //     const sucursalOrigen =
 //       await Sucursal.findOne({
 //         where: {
-//           codigo:
-//             String(sucursal_codigo).trim(),
+//           codigo: String(sucursal_codigo).trim(),
 //         },
 //       });
 
@@ -2264,7 +2748,7 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //     }
 
 //     // ==========================================
-//     // NORMALIZAR FECHA
+//     // FUNCIÓN PARA NORMALIZAR FECHA
 //     // ==========================================
 
 //     const parseFecha = (fechaValor) => {
@@ -2275,22 +2759,25 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //       const valor =
 //         String(fechaValor).trim();
 
-//       // dd/mm/yyyy
+//       // Formato DD/MM/YYYY
 //       if (valor.includes("/")) {
-//         const partes = valor.split("/");
+//         const partes =
+//           valor.split("/");
 
 //         if (partes.length !== 3) {
 //           return null;
 //         }
 
-//         const [dia, mes, anio] = partes;
+//         const [dia, mes, anio] =
+//           partes;
 
 //         const fechaISO =
-//           `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+//           `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 
-//         const date = new Date(
-//           `${fechaISO}T00:00:00`
-//         );
+//         const date =
+//           new Date(
+//             `${fechaISO}T00:00:00`
+//           );
 
 //         if (isNaN(date.getTime())) {
 //           return null;
@@ -2299,34 +2786,36 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         return fechaISO;
 //       }
 
-//       // yyyy-mm-dd
-//       const partesISO =
-//         valor.split("-");
+//       // Formato YYYY-MM-DD
+//       const match =
+//         valor.match(
+//           /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+//         );
 
-//       if (partesISO.length === 3) {
-//         const [
-//           anio,
-//           mes,
-//           dia,
-//         ] = partesISO;
+//       if (match) {
+//         const [, anio, mes, dia] =
+//           match;
 
 //         const fechaISO =
 //           `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
 
-//         const date = new Date(
-//           `${fechaISO}T00:00:00`
-//         );
+//         const date =
+//           new Date(
+//             `${fechaISO}T00:00:00`
+//           );
 
-//         if (!isNaN(date.getTime())) {
-//           return fechaISO;
+//         if (isNaN(date.getTime())) {
+//           return null;
 //         }
+
+//         return fechaISO;
 //       }
 
 //       return null;
 //     };
 
 //     // ==========================================
-//     // PROCESAR FILAS
+//     // PROCESAR MOVIMIENTOS
 //     // ==========================================
 
 //     const movimientosAInsertar = [];
@@ -2336,9 +2825,11 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //       index < movimientos.length;
 //       index++
 //     ) {
-//       const row = movimientos[index];
+//       const row =
+//         movimientos[index];
 
-//       const fila = index + 1;
+//       const fila =
+//         index + 1;
 
 //       const {
 //         fecha,
@@ -2348,9 +2839,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         sucursaldestino_codigo,
 //       } = row;
 
-//       // ------------------------------------------
+//       // ========================================
 //       // CAMPOS OBLIGATORIOS
-//       // ------------------------------------------
+//       // ========================================
 
 //       if (
 //         !fecha ||
@@ -2365,9 +2856,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         );
 //       }
 
-//       // ------------------------------------------
+//       // ========================================
 //       // FECHA
-//       // ------------------------------------------
+//       // ========================================
 
 //       const fechaNormalizada =
 //         parseFecha(fecha);
@@ -2378,9 +2869,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         );
 //       }
 
-//       // ------------------------------------------
+//       // ========================================
 //       // SUCURSAL DESTINO
-//       // ------------------------------------------
+//       // ========================================
 
 //       const sucursalDestino =
 //         await Sucursal.findOne({
@@ -2399,9 +2890,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         );
 //       }
 
-//       // ------------------------------------------
+//       // ========================================
 //       // ARTÍCULO
-//       // ------------------------------------------
+//       // ========================================
 
 //       const codigoArticulo =
 //         String(
@@ -2423,9 +2914,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         );
 //       }
 
-//       // ------------------------------------------
+//       // ========================================
 //       // CANTIDAD
-//       // ------------------------------------------
+//       // ========================================
 
 //       const cantidadNormalizada =
 //         Number(
@@ -2445,9 +2936,9 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         );
 //       }
 
-//       // ------------------------------------------
-//       // MOVIMIENTO
-//       // ------------------------------------------
+//       // ========================================
+//       // PREPARAR MOVIMIENTO
+//       // ========================================
 
 //       movimientosAInsertar.push({
 //         fecha:
@@ -2465,10 +2956,7 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //         cantidad:
 //           cantidadNormalizada,
 
-//         tipo:
-//           tipo === "FABRICA"
-//             ? "FABRICA"
-//             : "ACHURA",
+//         tipo,
 
 //         numerolote:
 //           remito
@@ -2481,7 +2969,7 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //     }
 
 //     // ==========================================
-//     // INSERTAR
+//     // GUARDAR
 //     // ==========================================
 
 //     const movimientosCreados =
@@ -2500,7 +2988,7 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
 //   } catch (error) {
 //     console.error(
 //       "Error al procesar movimientos pegados:",
-//       error.message
+//       error
 //     );
 
 //     return res.status(400).json({
@@ -2514,120 +3002,110 @@ const crearMovimientosOtrosPegados = async (req, res) => {
   try {
     const {
       tipo,
-      sucursal_codigo,
       movimientos = [],
     } = req.body;
 
     // ==========================================
-    // VALIDACIONES GENERALES
+    // VALIDAR TIPO DE MOVIMIENTO
     // ==========================================
 
-    if (!tipo || !sucursal_codigo) {
+    const tiposPermitidos = ["FABRICA", "ACHURA", "OTROS"];
+
+    if (!tiposPermitidos.includes(tipo)) {
       return res.status(400).json({
         mensaje:
-          "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
+          `Tipo inválido: ${tipo}. ` +
+          "Debe ser 'FABRICA', 'ACHURA' u 'OTROS'.",
       });
     }
 
-    if (!["FABRICA", "ACHURA"].includes(tipo)) {
-      return res.status(400).json({
-        mensaje:
-          `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
-      });
-    }
+    // ==========================================
+    // VALIDAR MOVIMIENTOS
+    // ==========================================
 
     if (
       !Array.isArray(movimientos) ||
       movimientos.length === 0
     ) {
       return res.status(400).json({
-        mensaje:
-          "Debe enviar al menos un movimiento.",
+        mensaje: "Debe enviar al menos un movimiento.",
       });
     }
 
     // ==========================================
-    // SUCURSAL ORIGEN
+    // DETERMINAR SUCURSAL DE ORIGEN
     // ==========================================
 
-    const sucursalOrigen =
-      await Sucursal.findOne({
-        where: {
-          codigo: String(sucursal_codigo).trim(),
-        },
-      });
+    const sucursalesOrigenPorTipo = {
+      FABRICA: 20,
+      ACHURA: 1,
+      OTROS: 1,
+    };
+
+    const codigoOrigen = sucursalesOrigenPorTipo[tipo];
+
+    const sucursalOrigen = await Sucursal.findOne({
+      where: {
+        codigo: String(codigoOrigen),
+      },
+    });
 
     if (!sucursalOrigen) {
       throw new Error(
-        `Sucursal origen inexistente (código: ${sucursal_codigo})`
+        `Sucursal origen inexistente (código: ${codigoOrigen})`
       );
     }
 
     // ==========================================
-    // FUNCIÓN PARA NORMALIZAR FECHA
+    // NORMALIZAR FECHAS
     // ==========================================
 
     const parseFecha = (fechaValor) => {
-      if (!fechaValor) {
+      if (
+        fechaValor === null ||
+        fechaValor === undefined ||
+        String(fechaValor).trim() === ""
+      ) {
         return null;
       }
 
-      const valor =
-        String(fechaValor).trim();
+      const valor = String(fechaValor).trim();
 
-      // Formato DD/MM/YYYY
-      if (valor.includes("/")) {
-        const partes =
-          valor.split("/");
+      let dia;
+      let mes;
+      let anio;
 
-        if (partes.length !== 3) {
-          return null;
-        }
+      // DD/MM/YYYY
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(valor)) {
+        [dia, mes, anio] = valor.split("/").map(Number);
 
-        const [dia, mes, anio] =
-          partes;
+        // YYYY-MM-DD
+      } else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(valor)) {
+        [anio, mes, dia] = valor.split("-").map(Number);
 
-        const fechaISO =
-          `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-
-        const date =
-          new Date(
-            `${fechaISO}T00:00:00`
-          );
-
-        if (isNaN(date.getTime())) {
-          return null;
-        }
-
-        return fechaISO;
+      } else {
+        return null;
       }
 
-      // Formato YYYY-MM-DD
-      const match =
-        valor.match(
-          /^(\d{4})-(\d{1,2})-(\d{1,2})$/
-        );
-
-      if (match) {
-        const [, anio, mes, dia] =
-          match;
-
-        const fechaISO =
-          `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
-
-        const date =
-          new Date(
-            `${fechaISO}T00:00:00`
-          );
-
-        if (isNaN(date.getTime())) {
-          return null;
-        }
-
-        return fechaISO;
+      if (anio < 1000) {
+        return null;
       }
 
-      return null;
+      const fechaJS = new Date(anio, mes - 1, dia);
+
+      if (
+        fechaJS.getFullYear() !== anio ||
+        fechaJS.getMonth() !== mes - 1 ||
+        fechaJS.getDate() !== dia
+      ) {
+        return null;
+      }
+
+      return (
+        `${anio}-` +
+        `${String(mes).padStart(2, "0")}-` +
+        `${String(dia).padStart(2, "0")}`
+      );
     };
 
     // ==========================================
@@ -2641,11 +3119,15 @@ const crearMovimientosOtrosPegados = async (req, res) => {
       index < movimientos.length;
       index++
     ) {
-      const row =
-        movimientos[index];
+      const row = movimientos[index];
 
-      const fila =
-        index + 1;
+      const fila = index + 1;
+
+      if (!row || typeof row !== "object") {
+        throw new Error(
+          `Datos inválidos en la fila ${fila}.`
+        );
+      }
 
       const {
         fecha,
@@ -2656,16 +3138,22 @@ const crearMovimientosOtrosPegados = async (req, res) => {
       } = row;
 
       // ========================================
-      // CAMPOS OBLIGATORIOS
+      // VALIDAR CAMPOS OBLIGATORIOS
       // ========================================
 
       if (
-        !fecha ||
-        !articulocodigo ||
+        fecha === undefined ||
+        fecha === null ||
+        String(fecha).trim() === "" ||
+        articulocodigo === undefined ||
+        articulocodigo === null ||
+        String(articulocodigo).trim() === "" ||
         cantidad === undefined ||
         cantidad === null ||
         String(cantidad).trim() === "" ||
-        !sucursaldestino_codigo
+        sucursaldestino_codigo === undefined ||
+        sucursaldestino_codigo === null ||
+        String(sucursaldestino_codigo).trim() === ""
       ) {
         throw new Error(
           `Faltan campos obligatorios en la fila ${fila}.`
@@ -2673,11 +3161,10 @@ const crearMovimientosOtrosPegados = async (req, res) => {
       }
 
       // ========================================
-      // FECHA
+      // VALIDAR FECHA
       // ========================================
 
-      const fechaNormalizada =
-        parseFecha(fecha);
+      const fechaNormalizada = parseFecha(fecha);
 
       if (!fechaNormalizada) {
         throw new Error(
@@ -2686,65 +3173,57 @@ const crearMovimientosOtrosPegados = async (req, res) => {
       }
 
       // ========================================
-      // SUCURSAL DESTINO
+      // BUSCAR SUCURSAL DESTINO
       // ========================================
 
-      const sucursalDestino =
-        await Sucursal.findOne({
-          where: {
-            codigo:
-              String(
-                sucursaldestino_codigo
-              ).trim(),
-          },
-        });
+      const codigoDestino = String(
+        sucursaldestino_codigo
+      ).trim();
+
+      const sucursalDestino = await Sucursal.findOne({
+        where: {
+          codigo: codigoDestino,
+        },
+      });
 
       if (!sucursalDestino) {
         throw new Error(
           `Sucursal destino inexistente en fila ${fila} ` +
-          `(código: ${sucursaldestino_codigo})`
+          `(código: ${codigoDestino})`
         );
       }
 
       // ========================================
-      // ARTÍCULO
+      // BUSCAR ARTÍCULO
       // ========================================
 
-      const codigoArticulo =
-        String(
-          articulocodigo
-        ).trim();
+      const codigoArticulo = String(
+        articulocodigo
+      ).trim();
 
-      const articulo =
-        await ArticuloTabla.findOne({
-          where: {
-            codigobarra:
-              codigoArticulo,
-          },
-        });
+      const articulo = await ArticuloTabla.findOne({
+        where: {
+          codigobarra: codigoArticulo,
+        },
+      });
 
       if (!articulo) {
         throw new Error(
           `Artículo inexistente en fila ${fila} ` +
-          `(código: ${articulocodigo})`
+          `(código: ${codigoArticulo})`
         );
       }
 
       // ========================================
-      // CANTIDAD
+      // VALIDAR CANTIDAD
       // ========================================
 
-      const cantidadNormalizada =
-        Number(
-          String(cantidad)
-            .trim()
-            .replace(",", ".")
-        );
+      const cantidadNormalizada = Number(
+        String(cantidad).trim().replace(",", ".")
+      );
 
       if (
-        !Number.isFinite(
-          cantidadNormalizada
-        ) ||
+        !Number.isFinite(cantidadNormalizada) ||
         cantidadNormalizada <= 0
       ) {
         throw new Error(
@@ -2757,48 +3236,50 @@ const crearMovimientosOtrosPegados = async (req, res) => {
       // ========================================
 
       movimientosAInsertar.push({
-        fecha:
-          fechaNormalizada,
+        fecha: fechaNormalizada,
 
-        sucursal_id:
-          sucursalOrigen.id,
+        // Sucursal de origen según tipo
+        sucursal_id: sucursalOrigen.id,
 
-        articulocodigo:
-          codigoArticulo,
+        articulocodigo: codigoArticulo,
 
-        articulodescripcion:
-          articulo.descripcion,
+        articulodescripcion: articulo.descripcion,
 
-        cantidad:
-          cantidadNormalizada,
+        cantidad: cantidadNormalizada,
 
+        // FABRICA, ACHURA u OTROS
         tipo,
 
         numerolote:
-          remito
+          remito !== undefined &&
+            remito !== null &&
+            String(remito).trim() !== ""
             ? String(remito).trim()
             : null,
 
-        sucursaldestino_id:
-          sucursalDestino.id,
+        // Sucursal destino individual
+        sucursaldestino_id: sucursalDestino.id,
       });
     }
 
     // ==========================================
-    // GUARDAR
+    // GUARDAR MOVIMIENTOS
     // ==========================================
 
     const movimientosCreados =
       await InventarioMovimientoOtro.bulkCreate(
-        movimientosAInsertar
+        movimientosAInsertar,
+        {
+          validate: true,
+        }
       );
 
     return res.status(200).json({
       mensaje:
-        `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
+        `Se procesaron correctamente ` +
+        `${movimientosCreados.length} movimientos.`,
 
-      movimientos:
-        movimientosCreados,
+      movimientos: movimientosCreados,
     });
 
   } catch (error) {
@@ -2963,16 +3444,6 @@ const cargarInventariosMasivosDesdeExcel = async (req, res, next) => {
       });
     }
 
-    // =====================================================
-    // 3. VALIDAR Y AGRUPAR
-    //
-    // Estructura:
-    //
-    // sucursal_codigo
-    //      └── articulocodigo
-    //              └── cantidadpeso acumulada
-    //
-    // =====================================================
 
     const inventariosAgrupados = new Map();
 
