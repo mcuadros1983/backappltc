@@ -79,6 +79,11 @@ const ComprobanteIngreso = sequelize.define("ComprobanteIngreso", {
     type: DataTypes.INTEGER,
     allowNull: true, // Si está en modo unificado, puede ser null
   },
+  ajusta_cierre_z: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: false,
+  },
 }, {
   timestamps: false,
   freezeTableName: true,
