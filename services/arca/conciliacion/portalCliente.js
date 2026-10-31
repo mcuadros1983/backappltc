@@ -96,9 +96,16 @@ export function crearPortalCliente() {
         let target = destino(url), opts = options;
         for (let i = 0; i < 8; i++) {
             registrarPagina(target);
-            
+
             let r; try { r = await http.request({ ...opts, url: target }); } catch { throw safe('No se pudo conectar con ARCA. No se reintentó el login automáticamente.'); }
-            if (!r.headers.location) return { html: r.data, url: target };
+            if (!r.headers.location) {
+                return {
+                    html: r.data,
+                    url: target,
+                    status: r.status,
+                    contentType: String(r.headers["content-type"] || ""),
+                };
+            }
             if ([307, 308].includes(r.status)) throw safe('Redirección ARCA que requiere revisión');
             target = destino(new URL(r.headers.location, target).href); opts = { method: 'GET' };
         } throw safe('Demasiadas redirecciones ARCA');
@@ -110,7 +117,56 @@ export function crearPortalCliente() {
         return { url: destino(new URL($(f).attr('action') || page.url, page.url).href), method: ($(f).attr('method') || 'get').toUpperCase(), data, $ };
     }
     async function submit(f, referer) { if (f.method !== 'POST') throw safe('Cambió el formulario ARCA'); return request(f.url, { method: 'POST', data: f.data.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: new URL(referer).origin, Referer: referer } }); }
-    async function json(url, options = {}) { const p = await request(url, options); try { return JSON.parse(p.html); } catch { throw safe('ARCA devolvió HTML o una sesión vencida en lugar de datos'); } }
+
+
+    async function json(url, options = {}) {
+        const p = await request(url, options);
+
+        const contenido = String(p.html ?? "")
+            .replace(/^\uFEFF/, "")
+            .trim();
+
+        try {
+            return JSON.parse(contenido);
+        } catch {
+            const esHTML =
+                /^(?:<!doctype\s+html\b|<html\b|<head\b|<body\b)/i
+                    .test(contenido) ||
+                p.contentType.toLowerCase().includes("text/html");
+
+            // Metadatos únicamente: no registrar el cuerpo de la respuesta.
+            console.warn("[ARCA RESPUESTA NO JSON]", {
+                etapa: contextoActual.etapa,
+                pagina: contextoActual.pagina,
+                estadoHTTP: p.status,
+                tipoContenido: p.contentType,
+                longitud: contenido.length,
+                respuestaVacia: contenido.length === 0,
+                pareceHTML: esHTML,
+            });
+
+            if (!contenido) {
+                throw safe(
+                    "ARCA devolvió una respuesta vacía durante la consulta. " +
+                    "Se conservó el identificador de la ejecución."
+                );
+            }
+
+            if (esHTML) {
+                throw safe(
+                    "ARCA devolvió una página HTML donde se esperaban datos JSON. " +
+                    "Puede ser una página de error o de acceso; " +
+                    "no se pudo confirmar el resultado de la consulta."
+                );
+            }
+
+            throw safe(
+                "ARCA devolvió una respuesta que no es JSON válido. " +
+                "Contactá al programador para revisar la integración."
+            );
+        }
+    }
+
     async function abrir(cuit) {
         const user = process.env.ARCA_LOGIN_CUIT, password = process.env.ARCA_LOGIN_PASSWORD;
         if (user !== '20246050822' || !password) throw safe('Configurar ARCA_LOGIN_CUIT y ARCA_LOGIN_PASSWORD de Gustavo en el servidor');
@@ -249,22 +305,107 @@ export function crearPortalCliente() {
     async function ajax(params) { const r = await json(`${FES}/mcmp/jsp/ajax.do?${new URLSearchParams(params)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Referer: `${FES}/mcmp/jsp/comprobantesRecibidos.do` } }); if (r.estado !== 'ok') throw safe('ARCA rechazó la consulta'); return r; }
 
     async function recibidosInterno(cuit, desde, hasta, onId) {
+        const cuitEsperado = documento(cuit);
+        const fecha = (s) => s.split("-").reverse().join("/");
 
-        await abrir(cuit); const fecha = s => s.split('-').reverse().join('/');
-        const q = await ajax({ f: 'generarConsulta', t: 'R', fechaEmision: `${fecha(desde)} - ${fecha(hasta)}`, cuitConsultada: cuit }); const id = q.datos?.idConsulta;
-        if (!id) throw safe('Consulta enviada sin identificador. Revisar historial de ARCA antes de repetir.');
+        await abrir(cuitEsperado);
+
+        const q = await ajax({
+            f: "generarConsulta",
+            t: "R",
+            fechaEmision: `${fecha(desde)} - ${fecha(hasta)}`,
+            cuitConsultada: cuitEsperado,
+        });
+
+        const id = q.datos?.idConsulta;
+
+        if (!id) {
+            throw safe(
+                "Consulta enviada sin identificador. " +
+                "Revisar historial de ARCA antes de repetir."
+            );
+        }
+
         await onId(String(id));
-        for (let i = 0; i < 60; i++) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            await ajax({ f: 'estimarResultados', id: String(id) }); const r = await ajax({ f: 'listaResultados', id: String(id), _: String(Date.now()) }); const consulta = r.datos?.consulta;
-            if (consulta?.error) throw safe('ARCA informó un error de procesamiento');
-            if (!['PR', 'TE'].includes(consulta?.estado) || !Array.isArray(r.datos?.data)) continue;
-            if (documento(consulta.filtroCuitConsultada) !== cuit || consulta.filtroFechaDesde !== fecha(desde) || consulta.filtroFechaHasta !== fecha(hasta)) throw safe('La consulta devuelta no corresponde a los filtros enviados');
-            const rows = r.datos.data; if (rows.length !== Number(r.recordsTotal) || rows.length !== Number(r.recordsFiltered) || rows.length !== Number(consulta.cantidadResultados)) throw safe('Respuesta parcial de ARCA: no se conciliará hasta revisar la paginación');
-            const normal = rows.map(row => normalizarFila(row, cuit, desde, hasta)); if (new Set(normal.map(identidad)).size !== normal.length) throw safe('ARCA devolvió identidades repetidas; revisar antes de conciliar'); return normal;
-        } throw safe('Consulta pendiente en ARCA. Se conservó el ID; no se repetirá automáticamente.');
-    }
 
+        for (let i = 0; i < 60; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+            await ajax({
+                f: "estimarResultados",
+                id: String(id),
+            });
+
+            const r = await ajax({
+                f: "listaResultados",
+                id: String(id),
+                _: String(Date.now()),
+            });
+
+            const consulta = r.datos?.consulta;
+
+            if (consulta?.error) {
+                throw safe("ARCA informó un error de procesamiento");
+            }
+
+            // Esperar a que ARCA confirme que terminó.
+            if (consulta?.estado !== "TE") {
+                continue;
+            }
+
+            if (!Array.isArray(r.datos?.data)) {
+                throw cambioArca("Estructura de resultados de la consulta");
+            }
+
+            if (
+                documento(consulta.filtroCuitConsultada) !== cuitEsperado ||
+                consulta.filtroFechaDesde !== fecha(desde) ||
+                consulta.filtroFechaHasta !== fecha(hasta)
+            ) {
+                throw safe(
+                    "La consulta devuelta no corresponde a los filtros enviados"
+                );
+            }
+
+            const rows = r.datos.data;
+
+            if (
+                rows.length !== Number(r.recordsTotal) ||
+                rows.length !== Number(r.recordsFiltered) ||
+                rows.length !== Number(consulta.cantidadResultados)
+            ) {
+                throw safe(
+                    "Respuesta parcial de ARCA: " +
+                    "no se conciliará hasta revisar la paginación"
+                );
+            }
+
+            const normal = rows.map((row) =>
+                normalizarFila(row, cuitEsperado, desde, hasta, {
+                    cuitConsultaVerificado: documento(
+                        consulta.filtroCuitConsultada
+                    ),
+                })
+            );
+
+            if (
+                new Set(normal.map(identidad)).size !== normal.length
+            ) {
+                throw safe(
+                    "ARCA devolvió identidades repetidas; " +
+                    "revisar antes de conciliar"
+                );
+            }
+
+            // Finalizar: no volver a consultar una descarga completa.
+            return normal;
+        }
+
+        throw safe(
+            "Consulta pendiente en ARCA. Se conservó el ID; " +
+            "no se repetirá automáticamente."
+        );
+    }
     async function recibidos(cuit, desde, hasta, onId) {
         try {
             return await recibidosInterno(cuit, desde, hasta, onId);
@@ -302,6 +443,7 @@ export function crearPortalCliente() {
                 pagina: contextoActual.pagina,
                 nombre: error.name,
                 codigo: error.code,
+                mensajeOriginal: error.message,
             });
 
             const errorConContexto = new PortalError(detalle);

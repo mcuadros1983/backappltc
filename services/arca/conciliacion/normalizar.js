@@ -14,10 +14,14 @@ export function centavos(value) {
   const result = BigInt(integer) * 100n + BigInt((fraction + '00').slice(0, 2));
   return negative ? -result : result;
 }
-export function normalizarFila(fila, cuit, desde, hasta) {
-  // if (!Array.isArray(fila) || fila.length !== 52) {
-  //   throw new Error("Cambió la estructura de columnas de ARCA");
-  // }
+export function normalizarFila(
+  fila,
+  cuit,
+  desde,
+  hasta,
+  { cuitConsultaVerificado = null } = {}
+) {
+
 
   if (!Array.isArray(fila) || fila.length !== 52) {
     const error = new Error(
@@ -45,26 +49,43 @@ export function normalizarFila(fila, cuit, desde, hasta) {
       `Período solicitado: ${desde} a ${hasta}`
     );
   }
-
   const receptor = documento(fila[15]);
   const cuitEsperado = documento(cuit);
   const tipoDocumentoReceptor = numero(fila[14]);
 
-  // Correspondencia confirmada para Gustavo Walther.
   const documentosPersonales = {
     "20246050822": "24605082",
   };
 
-  const coincideCUIT = receptor === cuitEsperado;
+  const coincideCUIT =
+    receptor === cuitEsperado;
 
   const coincideDocumentoPersonal =
     tipoDocumentoReceptor === "96" &&
     documentosPersonales[cuitEsperado] !== undefined &&
     numero(receptor) === numero(documentosPersonales[cuitEsperado]);
 
-  if (!coincideCUIT && !coincideDocumentoPersonal) {
+  // Admitir ausencia de ambos campos únicamente cuando
+  // el servidor verificó el CUIT de la consulta devuelta por ARCA.
+  const receptorNoInformado =
+    receptor === "" &&
+    String(fila[14] ?? "").trim() === "";
+
+  const perteneceAConsultaVerificada =
+    cuitEsperado.length === 11 &&
+    documento(cuitConsultaVerificado) === cuitEsperado;
+
+  const admitirSinReceptor =
+    receptorNoInformado &&
+    perteneceAConsultaVerificada;
+
+  if (
+    !coincideCUIT &&
+    !coincideDocumentoPersonal &&
+    !admitirSinReceptor
+  ) {
     throw new Error(
-      `Documento receptor diferente. ` +
+      `Documento receptor diferente o sin verificar. ` +
       `Tipo documento ARCA: ${tipoDocumentoReceptor}. ` +
       `Número receptor ARCA: ${receptor || "vacío"}. ` +
       `CUIT solicitado: ${cuitEsperado}`
@@ -88,6 +109,10 @@ export function normalizarFila(fila, cuit, desde, hasta) {
     moneda: String(fila[17] ?? ""),
     tipo_cambio: decimal(fila[16]),
   };
+
+  result.receptor_validacion = admitirSinReceptor
+    ? "CUIT confirmado por los filtros de la consulta; receptor no informado"
+    : "Documento receptor verificado";
 
   const columnasImportes = {
     neto0: 18,
