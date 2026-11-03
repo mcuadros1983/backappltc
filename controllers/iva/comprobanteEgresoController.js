@@ -21,7 +21,7 @@ import {
   recalcularComprobanteEgreso,
 } from "../tesoreria/helpers/recalcularComprobanteEgreso.js";
 import TipoComprobante from "../../models/comun/tipocomprobante.js";
-
+import FormaPago from "../../models/comun/formapagotesoreria.js";
 
 function validarDatosFiscalesComprobante(data = {}) {
 
@@ -1078,16 +1078,39 @@ export const eliminarComprobanteEgreso = async (req, res) => {
       sinFormaPago &&
       sinOrdenPago;
 
+
+    const formaPago = comp.formapago_id
+      ? await FormaPago.findByPk(comp.formapago_id, {
+        transaction: t,
+      })
+      : null;
+
+    const descripcionFormaPago = String(
+      formaPago?.descripcion || ""
+    )
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+
+    const esCompensacion =
+      descripcionFormaPago === "compensacion";
+
+    const compensacionPagada =
+      estado === "pagada" &&
+      esCompensacion;
+
     // Mantener la restricción original para los demás comprobantes.
     if (
       estado !== "impaga" &&
-      !notaCreditoSinPago
+      !notaCreditoSinPago &&
+      !compensacionPagada
     ) {
       await t.rollback();
 
       return res.status(400).json({
         error:
-          "Sólo se pueden eliminar comprobantes IMPAGOS o notas de crédito sin pagos asociados.",
+          "Sólo se pueden eliminar comprobantes IMPAGOS, notas de crédito sin pagos asociados o comprobantes pagados exclusivamente mediante compensación.",
       });
     }
     const compId = comp.id;
@@ -1645,11 +1668,24 @@ export const emitirComprobanteEgreso = async (req, res) => {
     const normaliza = (n) =>
       Number(n) || 0;
 
-    const medioDe = (p) =>
-      String(p.medio || "")
-        .trim()
-        .toLowerCase();
+    // const medioDe = (p) =>
+    //   String(p.medio || "")
+    //     .trim()
+    //     .toLowerCase();
 
+    const medioDe = (p) => {
+      const medio = String(p.medio || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+      if (medio === "compensacion") {
+        return "compensacion";
+      }
+
+      return medio;
+    };
 
     /*
      * ============================================================
@@ -1789,11 +1825,9 @@ export const emitirComprobanteEgreso = async (req, res) => {
      */
 
     const esEfectivoAhora = (m) => {
-
-      const v =
-        String(m || "")
-          .trim()
-          .toLowerCase();
+      const v = String(m || "")
+        .trim()
+        .toLowerCase();
 
       return [
         "caja",
@@ -1801,6 +1835,7 @@ export const emitirComprobanteEgreso = async (req, res) => {
         "banco",
         "echeq",
         "tarjeta",
+        "compensacion",
       ].includes(v);
     };
 
@@ -2300,6 +2335,14 @@ export const emitirComprobanteEgreso = async (req, res) => {
     for (const p of pagosFinancieros) {
       const medio = medioDe(p);
       const monto = normaliza(p.monto);
+
+      console.log("🔎 FORMA DE PAGO RECIBIDA:", {
+        medio: p.medio,
+        formapago_id: p.formapago_id,
+        monto: p.monto,
+        pagoCompleto: p,
+      });
+
       // const fechaPagoEntrada = p.fecha || comp.fechapago || comp.fechacomprobante;
       const fechaPagoEntrada = comp.fechapago;
       const cancelarRenov = Boolean(p?.gastoestimado?.cancelar_renovacion);
@@ -2831,6 +2874,21 @@ export const emitirComprobanteEgreso = async (req, res) => {
           { transaction: t }
         );
         // ctacte no suma a efectivos
+        // ctacte no suma a efectivos
+        continue;
+      }
+
+      // ============================================
+      // COMPENSACIÓN
+      // ============================================
+      if (medio === "compensacion") {
+
+        // No genera movimientos financieros.
+        // No requiere vinculación con otros registros.
+        // El importe se considera cancelado.
+
+        sumaEfectivosReal += monto;
+
         continue;
       }
 
