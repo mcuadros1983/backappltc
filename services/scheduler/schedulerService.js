@@ -4,6 +4,7 @@ import SchedulerJob from "../../models/scheduler/schedulerJobModel.js";
 
 import schedulerExecutor from "./schedulerExecutor.js";
 
+import schedulerRegistry from "./schedulerRegistry.js";
 /*=========================================================
   TAREAS REGISTRADAS
 =========================================================*/
@@ -29,6 +30,38 @@ const start = async () => {
 
         });
 
+    console.log("========== DIAGNÓSTICO SCHEDULER ==========");
+
+    console.log(
+        "[Scheduler] Fecha actual:",
+        new Date().toISOString()
+    );
+
+    console.log(
+        "[Scheduler] PID:",
+        process.pid
+    );
+
+    console.log(
+        "[Scheduler] Jobs activos en PostgreSQL:",
+        jobs.length
+    );
+
+    for (const job of jobs) {
+        const handler = schedulerRegistry.get(job.codigo);
+
+        console.log("[Scheduler] Configuración:", {
+            codigo: job.codigo,
+            cron: job.cron,
+            activo: job.activo,
+            registrado: !!handler,
+            tipoHandler: typeof handler,
+            tieneExecute: typeof handler?.execute === "function",
+        });
+    }
+
+    console.log("===========================================");
+
     for (const job of jobs) {
 
         const task =
@@ -37,19 +70,28 @@ const start = async () => {
                 job.cron,
 
                 async () => {
+                    const inicio = new Date();
 
                     console.log(
-
-                        `[Scheduler] Ejecutando ${job.codigo}`
-
+                        `[Scheduler] DISPARADO | ${job.codigo} | ${inicio.toISOString()}`
                     );
 
-                    await schedulerExecutor.execute(
+                    try {
+                        const resultado = await schedulerExecutor.execute(
+                            job.codigo
+                        );
 
-                        job.codigo
+                        console.log(
+                            `[Scheduler] FINALIZADO OK | ${job.codigo}`,
+                            resultado
+                        );
 
-                    );
-
+                    } catch (error) {
+                        console.error(
+                            `[Scheduler] ERROR | ${job.codigo}`,
+                            error
+                        );
+                    }
                 },
 
                 {

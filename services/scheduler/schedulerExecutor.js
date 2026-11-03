@@ -33,18 +33,17 @@ const execute = async (
 
     }
 
-    if (
+    const ejecutarJob =
+        typeof job === "function"
+            ? job
+            : typeof job?.execute === "function"
+                ? job.execute.bind(job)
+                : null;
 
-        typeof job.execute !== "function"
-
-    ) {
-
+    if (!ejecutarJob) {
         throw new Error(
-
-            `El job "${codigo}" no implementa execute().`
-
+            `El job "${codigo}" no es una función ejecutable ni implementa execute().`
         );
-
     }
 
     const schedulerJob =
@@ -93,13 +92,7 @@ const execute = async (
 
     try {
 
-        const resultado =
-
-            await job.execute(
-
-                contexto
-
-            );
+        const resultado = await ejecutarJob(contexto);
 
         const fin = new Date();
 
