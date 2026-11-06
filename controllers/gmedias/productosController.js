@@ -641,7 +641,28 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     const workbook = xlsx.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(sheet);
+    // const data = xlsx.utils.sheet_to_json(sheet);
+
+    const data = xlsx.utils.sheet_to_json(sheet).map((row) => {
+      const filaNormalizada = {};
+
+      Object.entries(row).forEach(([clave, valor]) => {
+        const claveNormalizada = clave.trim().toLowerCase();
+
+        filaNormalizada[claveNormalizada] = valor;
+      });
+
+      // Admitir ambos nombres para la categoría
+      if (
+        filaNormalizada.categoria === undefined &&
+        filaNormalizada.categoria_producto !== undefined
+      ) {
+        filaNormalizada.categoria = filaNormalizada.categoria_producto;
+      }
+
+      return filaNormalizada;
+    });
+
 
     // Obtiene los datos adicionales del cuerpo de la solicitud
     const {
@@ -793,6 +814,47 @@ const crearProductosDesdeExcel = async (req, res, next) => {
     }
 
     // Para operaciones diferentes de "romaneo"
+
+    if (operacion === "ingreso") {
+      const camposRequeridos = [
+        "categoria",
+        "subcategoria",
+        "num_media",
+        "garron",
+        "precio",
+        "costo",
+        "kg",
+        "tropa",
+      ];
+
+      for (const [index, row] of data.entries()) {
+        const productoExistente = await Producto.findOne({
+          where: { num_media: String(row.num_media) },
+        });
+
+        // Los datos del Excel se requieren cuando hay que crear
+        // una media res nueva.
+        if (!productoExistente) {
+          const camposFaltantes = camposRequeridos.filter(
+            (campo) =>
+              row[campo] === undefined ||
+              row[campo] === null ||
+              String(row[campo]).trim() === ""
+          );
+
+          if (camposFaltantes.length > 0) {
+            return res.status(400).json({
+              error: true,
+              mensaje:
+                `Fila ${index + 2}: la media res ${row.num_media ?? "sin número"} ` +
+                `no existe y faltan datos en el Excel: ` +
+                camposFaltantes.join(", "),
+            });
+          }
+        }
+      }
+    }
+
     for (const row of data) {
       try {
         // Buscar el producto existente por num_media

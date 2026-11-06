@@ -286,6 +286,13 @@ export const obtenerInspeccionPorId =
     try {
       const { id } = req.params;
 
+      if (
+        !/^[1-9]\d*$/.test(String(id))
+      ) {
+        return res.status(400).json({
+          message: "ID de inspección inválido",
+        });
+      }
       const inspeccion =
         await Inspeccion.findByPk(id, {
           include: [
@@ -770,7 +777,10 @@ export const actualizarRespuestasMasivo =
     }
   };
 
+
 export const trabajarRespuesta = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
 
@@ -779,54 +789,95 @@ export const trabajarRespuesta = async (req, res) => {
       fecha_compromiso_sucursal,
     } = req.body;
 
-    const respuesta =
-      await InspeccionRespuesta.findByPk(id);
+    const respuesta = await InspeccionRespuesta.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
 
     if (!respuesta) {
+      await transaction.rollback();
+
       return res.status(404).json({
         message: "Respuesta no encontrada",
       });
     }
 
-    const estadoAnterior = respuesta.estado;
-
-    await respuesta.update({
-      comentario_sucursal,
-      fecha_compromiso_sucursal,
-
-      fecha_inicio_trabajo:
-        respuesta.fecha_inicio_trabajo ||
-        new Date(),
-
-      fecha_respuesta_sucursal:
-        new Date(),
-
-      usuario_corrector_id:
-        req.user.id,
-
-      estado:
-        "EN_TRABAJO",
-    });
-    await InspeccionHistorial.create({
-      respuesta_id: respuesta.id,
-      usuario_id: req.user.id,
-      accion: "SUCURSAL_INICIA_TRABAJO",
-      estado_anterior: estadoAnterior,
-      estado_nuevo: "EN_TRABAJO",
-    });
-
-    await recalcularEstadoInspeccion(
-      respuesta.inspeccion_id
+    const inspeccion = await Inspeccion.findByPk(
+      respuesta.inspeccion_id,
+      { transaction }
     );
 
+    if (!inspeccion || inspeccion.estado === "ANULADA") {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        message: "La inspección no está disponible para modificaciones.",
+      });
+    }
+
+    const estadoAnterior = respuesta.estado;
+
+    const comentarioSucursal =
+      typeof comentario_sucursal === "string"
+        ? comentario_sucursal.trim()
+        : respuesta.comentario_sucursal || "";
+
+    await respuesta.update(
+      {
+        comentario_sucursal: comentarioSucursal,
+
+        fecha_compromiso_sucursal:
+          fecha_compromiso_sucursal || null,
+
+        fecha_inicio_trabajo:
+          respuesta.fecha_inicio_trabajo || new Date(),
+
+        fecha_respuesta_sucursal: new Date(),
+
+        usuario_corrector_id: req.user.id,
+
+        estado: "EN_TRABAJO",
+      },
+      { transaction }
+    );
+
+    await InspeccionHistorial.create(
+      {
+        respuesta_id: respuesta.id,
+        usuario_id: req.user.id,
+
+        accion: "SUCURSAL_INICIA_TRABAJO",
+
+        estado_anterior: estadoAnterior,
+        estado_nuevo: "EN_TRABAJO",
+
+        comentario: comentarioSucursal || null,
+      },
+      { transaction }
+    );
+
+    await recalcularEstadoInspeccion(
+      respuesta.inspeccion_id,
+      transaction
+    );
+
+    await transaction.commit();
+
     return res.json({
-      message: "Trabajo iniciado",
+      message: "Trabajo guardado correctamente",
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json(error);
+    await transaction.rollback();
+
+    console.error("Error trabajando respuesta:", error);
+
+    return res.status(500).json({
+      message: "Error guardando trabajo de sucursal",
+      error: error.message,
+    });
   }
 };
+
 
 export const subirEvidencia = async (
   req,
@@ -898,6 +949,8 @@ export const subirEvidencia = async (
 
       accion:
         "EVIDENCIA_CARGADA",
+
+      comentario: req.body.comentario || null,
     });
 
     return res.json({
@@ -916,92 +969,136 @@ export const subirEvidencia = async (
   }
 };
 
-export const enviarRevision = async (
-  req,
-  res
-) => {
+
+export const enviarRevision = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
 
-    const respuesta =
-      await InspeccionRespuesta.findByPk(id);
+    const respuesta = await InspeccionRespuesta.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
 
     if (!respuesta) {
+      await transaction.rollback();
+
       return res.status(404).json({
         message: "Respuesta no encontrada",
       });
     }
 
+    const inspeccion = await Inspeccion.findByPk(
+      respuesta.inspeccion_id,
+      { transaction }
+    );
+
+    if (!inspeccion || inspeccion.estado === "ANULADA") {
+      await transaction.rollback();
+
+      return res.status(409).json({
+        message: "La inspección no está disponible para revisión.",
+      });
+    }
+
+    // Validar evidencia fotográfica obligatoria
     if (respuesta.requiere_foto) {
-      const cantidad =
-        await InspeccionEvidencia.count({
-          where: {
-            respuesta_id: respuesta.id,
-          },
-        });
+      const cantidad = await InspeccionEvidencia.count({
+        where: {
+          respuesta_id: respuesta.id,
+        },
+        transaction,
+      });
 
       if (cantidad === 0) {
+        await transaction.rollback();
+
         return res.status(400).json({
-          message:
-            "Debe cargar evidencia fotográfica.",
+          message: "Debe cargar evidencia fotográfica.",
         });
       }
     }
 
-    const estadoAnterior =
-      respuesta.estado;
+    const estadoAnterior = respuesta.estado;
 
-    await respuesta.update({
-      estado: "EN_REVISION",
-    });
+    // El frontend puede enviar el comentario actualizado.
+    // Si no lo envía, utilizamos el último guardado.
+    const comentarioSucursal =
+      typeof req.body?.comentario_sucursal === "string"
+        ? req.body.comentario_sucursal.trim()
+        : respuesta.comentario_sucursal || "";
 
-    const inspeccion =
-      await Inspeccion.findByPk(
-        respuesta.inspeccion_id
-      );
-
-    await crearNotificacion({
-      inspeccion_id:
-        respuesta.inspeccion_id,
-
-      respuesta_id:
-        respuesta.id,
-
-      usuario_destino_id:
-        inspeccion.usuario_inspector_id,
-
-      titulo:
-        "Revisión solicitada",
-
-      mensaje:
-        respuesta.descripcion_item,
-
-      tipo:
-        "REVISION_SOLICITADA",
-    });
-
-
-    await InspeccionHistorial.create({
-      respuesta_id: respuesta.id,
-      usuario_id: req.user.id,
-      accion: "ENVIA_REVISION",
-      estado_anterior: estadoAnterior,
-      estado_nuevo: "EN_REVISION",
-    });
-
-    await recalcularEstadoInspeccion(
-      respuesta.inspeccion_id
+    await respuesta.update(
+      {
+        comentario_sucursal: comentarioSucursal,
+        estado: "EN_REVISION",
+        fecha_respuesta_sucursal: new Date(),
+      },
+      { transaction }
     );
 
+    await InspeccionHistorial.create(
+      {
+        respuesta_id: respuesta.id,
+        usuario_id: req.user.id,
+
+        accion: "ENVIA_REVISION",
+
+        estado_anterior: estadoAnterior,
+        estado_nuevo: "EN_REVISION",
+
+        comentario: comentarioSucursal || null,
+      },
+      { transaction }
+    );
+
+    await recalcularEstadoInspeccion(
+      respuesta.inspeccion_id,
+      transaction
+    );
+
+    await transaction.commit();
+
+    // Conservamos la notificación al inspector.
+    try {
+      await crearNotificacion({
+        inspeccion_id: respuesta.inspeccion_id,
+        respuesta_id: respuesta.id,
+
+        usuario_destino_id:
+          inspeccion.usuario_inspector_id,
+
+        titulo: "Revisión solicitada",
+
+        mensaje: respuesta.descripcion_item,
+
+        tipo: "REVISION_SOLICITADA",
+      });
+    } catch (notificationError) {
+      console.error(
+        "No se pudo crear la notificación de revisión:",
+        notificationError
+      );
+    }
+
     return res.json({
-      message:
-        "Enviado a revisión",
+      message: "Enviado a revisión",
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json(error);
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    console.error("Error enviando revisión:", error);
+
+    return res.status(500).json({
+      message: "Error enviando a revisión",
+      error: error.message,
+    });
   }
 };
+
 
 export const aprobarRespuesta = async (
   req,
@@ -1289,8 +1386,13 @@ const recalcularEstadoInspeccion = async (
     inspeccion_id,
     { transaction }
   );
-
   if (!inspeccion) return;
+
+  // Una inspección anulada no puede volver
+  // automáticamente a ABIERTA, PARCIAL o CERRADA.
+  if (inspeccion.estado === "ANULADA") {
+    return;
+  }
 
   const total = respuestas.length;
 
