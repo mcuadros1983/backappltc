@@ -1888,9 +1888,647 @@ const obtenerKgPorArticuloVendido = async (
   }
 };
 
-const obtenerStock = async (req, res, next) => {
-  // const { fechaDesde, fechaHasta, sucursalId, inventarioId } = req.body;
+// const obtenerStock = async (req, res, next) => {
+//   // const { fechaDesde, fechaHasta, sucursalId, inventarioId } = req.body;
 
+//   const {
+//     fechaDesde,
+//     fechaHasta,
+//     sucursalId,
+//     inventarioId,
+//     subcategoriasOmitidas = [],
+//   } = req.body;
+
+//   try {
+//     let sumaCantidadesMedias = [];
+
+//     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
+//       fechaDesde,
+//       fechaHasta,
+//       sucursalId,
+//       subcategoriasOmitidas
+//     );
+
+//     if (sumaMedias.length > 0) {
+//       const articulosPorcentaje = await ArticuloPorcentajetabla.findAll({
+//         include: [{ model: ArticuloTabla }],
+//       });
+
+//       // Crear un mapa para almacenar las cantidades de cada código de barras
+//       const codigoBarraCantidadMap = new Map();
+
+//       // Calcular las cantidades para cada código de barras
+//       for (const articuloPorcentaje of articulosPorcentaje) {
+//         const sumaMediaCorrespondiente = sumaMedias.find(
+//           (item) => item.subcategoria === articuloPorcentaje.subcategoria
+//         );
+
+//         if (sumaMediaCorrespondiente) {
+//           const nuevaCantidad =
+//             sumaMediaCorrespondiente.cantidad *
+//             (articuloPorcentaje.porcentaje / 100);
+
+//           // Agregar la cantidad calculada al mapa, agrupando por código de barras
+//           const codigoBarra = articuloPorcentaje.Articulotabla.codigobarra;
+//           const cantidadActual = codigoBarraCantidadMap.get(codigoBarra) || 0;
+//           codigoBarraCantidadMap.set(
+//             codigoBarra,
+//             cantidadActual + nuevaCantidad
+//           );
+//         }
+//       }
+
+//       // Convertir el mapa a un array de objetos
+//       sumaCantidadesMedias = Array.from(
+//         codigoBarraCantidadMap,
+//         ([codigo, cantidad]) => ({
+//           codigo,
+//           cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
+//           descripcion: articulosPorcentaje.find(
+//             (item) => item.Articulotabla.codigobarra === codigo
+//           ).Articulotabla.descripcion,
+//           // Obtenemos la descripción correspondiente al código de barras actual
+//         })
+//       );
+//     }
+//     const sumaInventario = await obtenerKgsPorProductoUltimoInventario(
+//       sucursalId,
+//       inventarioId
+//     );
+//     const sumaMovimientos = await obtenerKgPorProductoMovimientosFiltrados(
+//       fechaDesde,
+//       fechaHasta,
+//       sucursalId
+//     );
+//     const sumaCantidadesVendidasPorArticulo = await obtenerKgPorArticuloVendido(
+//       fechaDesde,
+//       fechaHasta,
+//       sucursalId
+//     );
+
+//     // Crear un mapa para almacenar las cantidades por código de barras
+//     const codigoCantidadMap = new Map();
+//     const codigoVentasMap = new Map();
+//     const codigoEgresosMap = new Map();
+
+//     // Función para sumar cantidades al mapa
+//     const sumarCantidad = (codigo, cantidad) => {
+//       const cantidadActual = codigoCantidadMap.get(codigo) || 0;
+//       codigoCantidadMap.set(codigo, cantidadActual + cantidad);
+//     };
+
+//     const sumarVenta = (codigo, cantidad) => {
+//       const cantidadActual = codigoVentasMap.get(codigo) || 0;
+//       codigoVentasMap.set(codigo, cantidadActual + cantidad);
+//     };
+
+//     const sumarEgreso = (codigo, cantidad) => {
+//       const cantidadActual = codigoEgresosMap.get(codigo) || 0;
+//       codigoEgresosMap.set(codigo, cantidadActual + cantidad);
+//     };
+//     // Función para iterar sobre los datos y sumar cantidades al mapa
+//     const sumarCantidades = (datos) => {
+//       datos.forEach(({ codigo, cantidad }) => {
+//         sumarCantidad(codigo, parseFloat(cantidad));
+//       });
+//     };
+
+//     // Sumar cantidades de todas las fuentes de datos
+//     // sumarCantidades(sumaCantidadesMedias);
+//     // sumarCantidades(sumaInventario);
+//     // sumarCantidades(sumaMovimientos);
+//     // sumarCantidades(sumaCantidadesVendidasPorArticulo);
+
+//     // =====================================================
+//     // SUMAR INVENTARIO, MEDIAS Y MOVIMIENTOS
+//     // =====================================================
+
+//     sumarCantidades(sumaCantidadesMedias);
+//     sumarCantidades(sumaInventario);
+//     sumarCantidades(sumaMovimientos);
+
+//     // =====================================================
+//     // RESTAR VENTAS DEL STOCK
+//     // =====================================================
+
+//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+//       const cantidadVendida = Number(cantidad);
+
+//       if (!Number.isFinite(cantidadVendida)) return;
+
+//       // Las ventas se descuentan del stock.
+//       sumarCantidad(codigo, -cantidadVendida);
+//     });
+
+//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+//       sumarVenta(codigo, parseFloat(cantidad));
+//     });
+
+//     sumaMovimientos.forEach(({ codigo, cantidad }) => {
+//       const cantidadNumerica = parseFloat(cantidad);
+
+//       if (cantidadNumerica < 0) {
+//         sumarEgreso(codigo, Math.abs(cantidadNumerica));
+//       }
+//     });
+
+//     // Obtener las descripciones de los productos desde ArticuloTabla
+//     const descripcionMap = new Map();
+//     const codigosArticulos = Array.from(codigoCantidadMap.keys());
+
+//     if (codigosArticulos.length > 0) {
+//       const articulos = await ArticuloTabla.findAll({
+//         where: {
+//           codigobarra: codigosArticulos,
+//         },
+//       });
+
+//       articulos.forEach((articulo) => {
+//         descripcionMap.set(articulo.codigobarra, articulo.descripcion);
+//       });
+//     }
+
+//     const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+//       codigo,
+//       cantidad: cantidad.toFixed(2),
+//       ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
+//       egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
+//       descripcion: descripcionMap.get(codigo) || "",
+//     }));
+
+//     // Devolver el stock unificado
+//     res.status(200).json(stock);
+//   } catch (error) {
+//     console.error("Error al obtener el stock:", error);
+//     next(error);
+//   }
+// };
+
+// const obtenerStock = async (req, res, next) => {
+//   const {
+//     fechaDesde,
+//     fechaHasta,
+//     sucursalId,
+//     inventarioId,
+//     subcategoriasOmitidas = [],
+//   } = req.body;
+
+//   try {
+//     console.log("\n");
+//     console.log("======================================================");
+//     console.log("              INICIO CALCULO DE STOCK");
+//     console.log("======================================================");
+
+//     console.log("PARAMETROS RECIBIDOS:");
+//     console.table([
+//       {
+//         fechaDesde,
+//         fechaHasta,
+//         sucursalId,
+//         inventarioId,
+//         subcategoriasOmitidas: subcategoriasOmitidas.join(", "),
+//       },
+//     ]);
+
+//     let sumaCantidadesMedias = [];
+
+//     // =====================================================
+//     // 1. OBTENER PRODUCCION DE MEDIAS
+//     // =====================================================
+
+//     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
+//       fechaDesde,
+//       fechaHasta,
+//       sucursalId,
+//       subcategoriasOmitidas
+//     );
+
+//     console.log("\n========== 1. MEDIAS POR SUBCATEGORIA ==========");
+
+//     console.table(sumaMedias);
+
+//     if (sumaMedias.length > 0) {
+//       const articulosPorcentaje = await ArticuloPorcentajetabla.findAll({
+//         include: [{ model: ArticuloTabla }],
+//       });
+
+//       const codigoBarraCantidadMap = new Map();
+
+//       // =====================================================
+//       // DIAGNOSTICO ARTICULO 52 - FILET
+//       // =====================================================
+
+//       const porcentajesFilet = articulosPorcentaje.filter(
+//         (item) =>
+//           String(item.Articulotabla?.codigobarra).trim() === "52"
+//       );
+
+//       console.log("\n========== DIAGNOSTICO FILET 52 ==========");
+
+//       console.log("1. CONFIGURACION DE PORCENTAJES:");
+
+//       console.table(
+//         porcentajesFilet.map((item) => ({
+//           codigo: item.Articulotabla?.codigobarra,
+//           descripcion: item.Articulotabla?.descripcion,
+//           subcategoria: item.subcategoria,
+//           porcentaje: item.porcentaje,
+//         }))
+//       );
+
+//       console.log("2. SUBCATEGORIAS DE MEDIAS OBTENIDAS:");
+
+//       console.table(sumaMedias);
+
+//       console.log("3. SUBCATEGORIAS OMITIDAS:");
+
+//       console.log(subcategoriasOmitidas);
+
+//       console.log("4. CALCULO FILET:");
+
+//       porcentajesFilet.forEach((item) => {
+//         const subcategoriaConfigurada =
+//           String(item.subcategoria ?? "").trim().toUpperCase();
+
+//         const mediaEncontrada = sumaMedias.find(
+//           (media) =>
+//             String(media.subcategoria ?? "").trim().toUpperCase() ===
+//             subcategoriaConfigurada
+//         );
+
+//         const kgMedias = Number(mediaEncontrada?.cantidad || 0);
+//         const porcentaje = Number(item.porcentaje || 0);
+
+//         const cantidadCalculada = kgMedias * (porcentaje / 100);
+
+//         console.table([
+//           {
+//             codigo: "52",
+//             subcategoriaConfigurada,
+//             mediaEncontrada: Boolean(mediaEncontrada),
+//             kgMedias,
+//             porcentaje,
+//             factorAplicado: porcentaje / 100,
+//             cantidadCalculada,
+//             cantidadRedondeada: cantidadCalculada.toFixed(2),
+//           },
+//         ]);
+//       });
+
+//       console.log("========== FIN DIAGNOSTICO FILET ==========\n");
+
+//       for (const articuloPorcentaje of articulosPorcentaje) {
+//         const sumaMediaCorrespondiente = sumaMedias.find(
+//           (item) => item.subcategoria === articuloPorcentaje.subcategoria
+//         );
+
+//         if (sumaMediaCorrespondiente) {
+//           const nuevaCantidad =
+//             sumaMediaCorrespondiente.cantidad *
+//             (articuloPorcentaje.porcentaje / 100);
+
+//           const codigoBarra =
+//             articuloPorcentaje.Articulotabla.codigobarra;
+
+//           const cantidadActual =
+//             codigoBarraCantidadMap.get(codigoBarra) || 0;
+
+//           codigoBarraCantidadMap.set(
+//             codigoBarra,
+//             cantidadActual + nuevaCantidad
+//           );
+//         }
+//       }
+
+//       sumaCantidadesMedias = Array.from(
+//         codigoBarraCantidadMap,
+//         ([codigo, cantidad]) => ({
+//           codigo,
+//           cantidad: cantidad.toFixed(2),
+//           descripcion: articulosPorcentaje.find(
+//             (item) => item.Articulotabla.codigobarra === codigo
+//           ).Articulotabla.descripcion,
+//         })
+//       );
+//     }
+
+//     console.log("\n========== 2. MEDIAS DISTRIBUIDAS POR ARTICULO ==========");
+
+//     console.table(sumaCantidadesMedias);
+
+//     // =====================================================
+//     // 2. OBTENER INVENTARIO INICIAL
+//     // =====================================================
+
+//     const sumaInventario = await obtenerKgsPorProductoUltimoInventario(
+//       sucursalId,
+//       inventarioId
+//     );
+
+//     console.log("\n========== 3. INVENTARIO INICIAL ==========");
+
+//     console.table(sumaInventario);
+
+//     // =====================================================
+//     // 3. OBTENER MOVIMIENTOS
+//     // =====================================================
+
+//     const sumaMovimientos = await obtenerKgPorProductoMovimientosFiltrados(
+//       fechaDesde,
+//       fechaHasta,
+//       sucursalId
+//     );
+
+//     console.log("\n========== 4. MOVIMIENTOS DE INVENTARIO ==========");
+
+//     console.table(sumaMovimientos);
+
+//     // =====================================================
+//     // 4. OBTENER VENTAS
+//     // =====================================================
+
+//     const sumaCantidadesVendidasPorArticulo =
+//       await obtenerKgPorArticuloVendido(
+//         fechaDesde,
+//         fechaHasta,
+//         sucursalId
+//       );
+
+//     console.log("\n========== 5. VENTAS POR ARTICULO ==========");
+
+//     console.table(sumaCantidadesVendidasPorArticulo);
+
+//     // =====================================================
+//     // 5. CREAR MAPAS
+//     // =====================================================
+
+//     const codigoCantidadMap = new Map();
+//     const codigoVentasMap = new Map();
+//     const codigoEgresosMap = new Map();
+
+//     const sumarCantidad = (codigo, cantidad) => {
+//       const cantidadActual = codigoCantidadMap.get(codigo) || 0;
+
+//       codigoCantidadMap.set(
+//         codigo,
+//         cantidadActual + cantidad
+//       );
+//     };
+
+//     const sumarVenta = (codigo, cantidad) => {
+//       const cantidadActual = codigoVentasMap.get(codigo) || 0;
+
+//       codigoVentasMap.set(
+//         codigo,
+//         cantidadActual + cantidad
+//       );
+//     };
+
+//     const sumarEgreso = (codigo, cantidad) => {
+//       const cantidadActual = codigoEgresosMap.get(codigo) || 0;
+
+//       codigoEgresosMap.set(
+//         codigo,
+//         cantidadActual + cantidad
+//       );
+//     };
+
+//     const sumarCantidades = (datos) => {
+//       datos.forEach(({ codigo, cantidad }) => {
+//         sumarCantidad(codigo, parseFloat(cantidad));
+//       });
+//     };
+
+//     // =====================================================
+//     // 6. SUMAR MEDIAS
+//     // =====================================================
+
+//     sumarCantidades(sumaCantidadesMedias);
+
+//     console.log("\n========== 6. STOCK DESPUES DE SUMAR MEDIAS ==========");
+
+//     console.table(
+//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+//         codigo,
+//         cantidad,
+//       }))
+//     );
+
+//     // =====================================================
+//     // 7. SUMAR INVENTARIO
+//     // =====================================================
+
+//     sumarCantidades(sumaInventario);
+
+//     console.log("\n========== 7. STOCK DESPUES DE SUMAR INVENTARIO ==========");
+
+//     console.table(
+//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+//         codigo,
+//         cantidad,
+//       }))
+//     );
+
+//     // =====================================================
+//     // 8. SUMAR MOVIMIENTOS
+//     // =====================================================
+
+//     sumarCantidades(sumaMovimientos);
+
+//     console.log("\n========== 8. STOCK DESPUES DE MOVIMIENTOS ==========");
+
+//     console.table(
+//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+//         codigo,
+//         cantidad,
+//       }))
+//     );
+
+//     // =====================================================
+//     // 9. RESTAR VENTAS
+//     // =====================================================
+
+//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+//       const cantidadVendida = Number(cantidad);
+
+//       if (!Number.isFinite(cantidadVendida)) return;
+
+//       sumarCantidad(codigo, -cantidadVendida);
+//     });
+
+//     console.log("\n========== 9. STOCK DESPUES DE RESTAR VENTAS ==========");
+
+//     console.table(
+//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+//         codigo,
+//         cantidad,
+//       }))
+//     );
+
+//     // =====================================================
+//     // 10. ACUMULAR VENTAS
+//     // =====================================================
+
+//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
+//       sumarVenta(codigo, parseFloat(cantidad));
+//     });
+
+//     // =====================================================
+//     // 11. ACUMULAR EGRESOS
+//     // =====================================================
+
+//     sumaMovimientos.forEach(({ codigo, cantidad }) => {
+//       const cantidadNumerica = parseFloat(cantidad);
+
+//       if (cantidadNumerica < 0) {
+//         sumarEgreso(codigo, Math.abs(cantidadNumerica));
+//       }
+//     });
+
+//     // =====================================================
+//     // 12. OBTENER DESCRIPCIONES
+//     // =====================================================
+
+//     const descripcionMap = new Map();
+
+//     const codigosArticulos = Array.from(codigoCantidadMap.keys());
+
+//     if (codigosArticulos.length > 0) {
+//       const articulos = await ArticuloTabla.findAll({
+//         where: {
+//           codigobarra: codigosArticulos,
+//         },
+//       });
+
+//       articulos.forEach((articulo) => {
+//         descripcionMap.set(
+//           articulo.codigobarra,
+//           articulo.descripcion
+//         );
+//       });
+//     }
+
+//     // =====================================================
+//     // 13. GENERAR STOCK FINAL
+//     // =====================================================
+
+//     const stock = Array.from(
+//       codigoCantidadMap,
+//       ([codigo, cantidad]) => ({
+//         codigo,
+//         cantidad: cantidad.toFixed(2),
+//         ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
+//         egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
+//         descripcion: descripcionMap.get(codigo) || "",
+//       })
+//     );
+
+//     // =====================================================
+//     // 14. RESUMEN COMPLETO POR ARTICULO
+//     // =====================================================
+
+//     const crearMapa = (datos) => {
+//       const mapa = new Map();
+
+//       datos.forEach(({ codigo, cantidad }) => {
+//         const cantidadActual = mapa.get(codigo) || 0;
+
+//         mapa.set(
+//           codigo,
+//           cantidadActual + Number(cantidad)
+//         );
+//       });
+
+//       return mapa;
+//     };
+
+//     const mapaMedias = crearMapa(sumaCantidadesMedias);
+//     const mapaInventario = crearMapa(sumaInventario);
+//     const mapaMovimientos = crearMapa(sumaMovimientos);
+//     const mapaVentas = crearMapa(sumaCantidadesVendidasPorArticulo);
+
+//     const resumenStock = stock.map((articulo) => {
+//       const codigo = articulo.codigo;
+
+//       return {
+//         codigo,
+//         descripcion: articulo.descripcion,
+
+//         inventario: Number(
+//           (mapaInventario.get(codigo) || 0).toFixed(2)
+//         ),
+
+//         medias: Number(
+//           (mapaMedias.get(codigo) || 0).toFixed(2)
+//         ),
+
+//         movimientos: Number(
+//           (mapaMovimientos.get(codigo) || 0).toFixed(2)
+//         ),
+
+//         ventas: Number(
+//           (mapaVentas.get(codigo) || 0).toFixed(2)
+//         ),
+
+//         stockFinal: Number(articulo.cantidad),
+//       };
+//     });
+
+//     console.log("\n");
+//     console.log("======================================================");
+//     console.log("             RESUMEN FINAL DEL STOCK");
+//     console.log("======================================================");
+
+//     console.table(resumenStock);
+
+//     // =====================================================
+//     // 15. TOTALES GENERALES
+//     // =====================================================
+
+//     const totalizar = (datos) =>
+//       datos.reduce(
+//         (total, item) => total + Number(item.cantidad || 0),
+//         0
+//       );
+
+//     const totalInventario = totalizar(sumaInventario);
+//     const totalMedias = totalizar(sumaCantidadesMedias);
+//     const totalMovimientos = totalizar(sumaMovimientos);
+//     const totalVentas = totalizar(sumaCantidadesVendidasPorArticulo);
+//     const totalStock = totalizar(stock);
+
+//     console.log("\n========== TOTALES GENERALES ==========");
+
+//     console.table([
+//       {
+//         inventario: totalInventario.toFixed(2),
+//         medias: totalMedias.toFixed(2),
+//         movimientos: totalMovimientos.toFixed(2),
+//         ventas: totalVentas.toFixed(2),
+//         stockFinal: totalStock.toFixed(2),
+//       },
+//     ]);
+
+//     console.log("======================================================");
+//     console.log("                FIN CALCULO STOCK");
+//     console.log("======================================================");
+//     console.log("\n");
+
+//     // =====================================================
+//     // 16. DEVOLVER RESPUESTA
+//     // =====================================================
+
+//     res.status(200).json(stock);
+
+//   } catch (error) {
+//     console.error("Error al obtener el stock:", error);
+//     next(error);
+//   }
+// };
+
+
+
+const obtenerStock = async (req, res, next) => {
   const {
     fechaDesde,
     fechaHasta,
@@ -1900,140 +2538,371 @@ const obtenerStock = async (req, res, next) => {
   } = req.body;
 
   try {
+    console.log("\n");
+    console.log("======================================================");
+    console.log("              INICIO CALCULO DE STOCK");
+    console.log("======================================================");
+
+    // =====================================================
+    // PARAMETROS RECIBIDOS
+    // =====================================================
+
+    // Normalizar las subcategorías omitidas
+    const omisiones = Array.isArray(subcategoriasOmitidas)
+      ? subcategoriasOmitidas
+      : [];
+
+    console.log("PARAMETROS RECIBIDOS:");
+
+    console.table([
+      {
+        fechaDesde,
+        fechaHasta,
+        sucursalId,
+        inventarioId,
+        subcategoriasOmitidas: omisiones.join(", "),
+      },
+    ]);
+
     let sumaCantidadesMedias = [];
+
+    // =====================================================
+    // 1. OBTENER PRODUCCION DE MEDIAS
+    // =====================================================
 
     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
       fechaDesde,
       fechaHasta,
       sucursalId,
-      subcategoriasOmitidas
+      omisiones
     );
+
+    console.log("\n========== 1. MEDIAS POR SUBCATEGORIA ==========");
+    console.table(sumaMedias);
+
+    // =====================================================
+    // 2. CALCULAR TOTAL DE MEDIAS DISPONIBLES
+    // =====================================================
+
+    // La función anterior ya debe excluir las subcategorías
+    // seleccionadas desde el frontend.
+
+    const totalKgMedias = sumaMedias.reduce(
+      (total, item) => total + Number(item.cantidad || 0),
+      0
+    );
+
+    console.log("\n========== TOTAL DE MEDIAS DISPONIBLES ==========");
+
+    console.log("Subcategorías omitidas:", omisiones);
+
+    console.log("Detalle de medias incluidas:");
+    console.table(sumaMedias);
+
+    console.log("TOTAL KG MEDIAS DISPONIBLES:", totalKgMedias);
+
+    // =====================================================
+    // 3. DISTRIBUIR MEDIAS POR PORCENTAJE DE CADA ARTICULO
+    // =====================================================
 
     if (sumaMedias.length > 0) {
       const articulosPorcentaje = await ArticuloPorcentajetabla.findAll({
         include: [{ model: ArticuloTabla }],
       });
 
-      // Crear un mapa para almacenar las cantidades de cada código de barras
-      const codigoBarraCantidadMap = new Map();
+      console.log(
+        "\n========== AUDITORIA TABLA DE PORCENTAJES =========="
+      );
 
-      // Calcular las cantidades para cada código de barras
+      console.log(
+        "Total de registros encontrados:",
+        articulosPorcentaje.length
+      );
+
+      console.table(
+        articulosPorcentaje.map((item) => ({
+          id: item.id,
+          codigo: item.Articulotabla?.codigobarra,
+          descripcion: item.Articulotabla?.descripcion,
+          subcategoria: item.subcategoria,
+          porcentaje: item.porcentaje,
+        }))
+      );
+
+      console.log("========== FIN AUDITORIA ==========\n");
+
+      // =====================================================
+      // ACUMULAR KG CALCULADOS POR ARTICULO
+      // =====================================================
+
+      const codigoBarraCantidadMap = new Map();
+      const descripcionPorCodigo = new Map();
+
       for (const articuloPorcentaje of articulosPorcentaje) {
-        const sumaMediaCorrespondiente = sumaMedias.find(
-          (item) => item.subcategoria === articuloPorcentaje.subcategoria
+        const codigoBarra = String(
+          articuloPorcentaje.Articulotabla?.codigobarra ?? ""
+        ).trim();
+
+        if (!codigoBarra) continue;
+
+        const descripcion =
+          articuloPorcentaje.Articulotabla?.descripcion || "";
+
+        const porcentaje = Number(
+          articuloPorcentaje.porcentaje || 0
         );
 
-        if (sumaMediaCorrespondiente) {
-          const nuevaCantidad =
-            sumaMediaCorrespondiente.cantidad *
-            (articuloPorcentaje.porcentaje / 100);
-
-          // Agregar la cantidad calculada al mapa, agrupando por código de barras
-          const codigoBarra = articuloPorcentaje.Articulotabla.codigobarra;
-          const cantidadActual = codigoBarraCantidadMap.get(codigoBarra) || 0;
-          codigoBarraCantidadMap.set(
+        if (!Number.isFinite(porcentaje)) {
+          console.warn(
+            "Porcentaje inválido para el artículo:",
             codigoBarra,
-            cantidadActual + nuevaCantidad
+            articuloPorcentaje.porcentaje
           );
+          continue;
         }
+
+        // =================================================
+        // NUEVA LOGICA:
+        // Aplicar el porcentaje sobre TODAS las medias
+        // disponibles, sin relacionar por subcategoría.
+        // =================================================
+
+        const nuevaCantidad =
+          totalKgMedias * (porcentaje / 100);
+
+        const cantidadActual =
+          codigoBarraCantidadMap.get(codigoBarra) || 0;
+
+        codigoBarraCantidadMap.set(
+          codigoBarra,
+          cantidadActual + nuevaCantidad
+        );
+
+        descripcionPorCodigo.set(
+          codigoBarra,
+          descripcion
+        );
+
+        console.log("========== DISTRIBUCION DE MEDIAS ==========");
+
+        console.log({
+          codigo: codigoBarra,
+          descripcion,
+          subcategoriaConfigurada: articuloPorcentaje.subcategoria,
+          porcentaje,
+          totalKgMedias,
+          cantidadCalculada: nuevaCantidad,
+          cantidadAcumulada:
+            codigoBarraCantidadMap.get(codigoBarra),
+        });
       }
 
-      // Convertir el mapa a un array de objetos
+      // =====================================================
+      // GENERAR RESULTADO DE MEDIAS POR ARTICULO
+      // =====================================================
+
       sumaCantidadesMedias = Array.from(
         codigoBarraCantidadMap,
         ([codigo, cantidad]) => ({
           codigo,
-          cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
-          descripcion: articulosPorcentaje.find(
-            (item) => item.Articulotabla.codigobarra === codigo
-          ).Articulotabla.descripcion,
-          // Obtenemos la descripción correspondiente al código de barras actual
+          cantidad: cantidad.toFixed(2),
+          descripcion: descripcionPorCodigo.get(codigo) || "",
         })
       );
     }
+
+    console.log(
+      "\n========== 2. MEDIAS DISTRIBUIDAS POR ARTICULO =========="
+    );
+
+    console.table(sumaCantidadesMedias);
+
+    // =====================================================
+    // DIAGNOSTICO ESPECIFICO: FILET CODIGO 52
+    // =====================================================
+
+    const filetCalculado = sumaCantidadesMedias.find(
+      (item) => String(item.codigo).trim() === "52"
+    );
+
+    console.log("\n========== DIAGNOSTICO FILET 52 ==========");
+
+    console.log({
+      totalKgMedias,
+      subcategoriasOmitidas: omisiones,
+      filetKgCalculados: Number(filetCalculado?.cantidad || 0),
+    });
+
+    console.log("========== FIN DIAGNOSTICO FILET ==========\n");
+
+    // =====================================================
+    // 4. OBTENER INVENTARIO INICIAL
+    // =====================================================
+
     const sumaInventario = await obtenerKgsPorProductoUltimoInventario(
       sucursalId,
       inventarioId
     );
-    const sumaMovimientos = await obtenerKgPorProductoMovimientosFiltrados(
-      fechaDesde,
-      fechaHasta,
-      sucursalId
-    );
-    const sumaCantidadesVendidasPorArticulo = await obtenerKgPorArticuloVendido(
-      fechaDesde,
-      fechaHasta,
-      sucursalId
+
+    console.log("\n========== 3. INVENTARIO INICIAL ==========");
+
+    console.table(sumaInventario);
+
+    // =====================================================
+    // 5. OBTENER MOVIMIENTOS
+    // =====================================================
+
+    const sumaMovimientos =
+      await obtenerKgPorProductoMovimientosFiltrados(
+        fechaDesde,
+        fechaHasta,
+        sucursalId
+      );
+
+    console.log(
+      "\n========== 4. MOVIMIENTOS DE INVENTARIO =========="
     );
 
-    // Crear un mapa para almacenar las cantidades por código de barras
+    console.table(sumaMovimientos);
+
+    // =====================================================
+    // 6. OBTENER VENTAS
+    // =====================================================
+
+    const sumaCantidadesVendidasPorArticulo =
+      await obtenerKgPorArticuloVendido(
+        fechaDesde,
+        fechaHasta,
+        sucursalId
+      );
+
+    console.log("\n========== 5. VENTAS POR ARTICULO ==========");
+
+    console.table(sumaCantidadesVendidasPorArticulo);
+
+    // =====================================================
+    // 7. CREAR MAPAS
+    // =====================================================
+
     const codigoCantidadMap = new Map();
     const codigoVentasMap = new Map();
-    const codigoEgresosMap = new Map();
 
-    // Función para sumar cantidades al mapa
     const sumarCantidad = (codigo, cantidad) => {
       const cantidadActual = codigoCantidadMap.get(codigo) || 0;
-      codigoCantidadMap.set(codigo, cantidadActual + cantidad);
+
+      codigoCantidadMap.set(
+        codigo,
+        cantidadActual + cantidad
+      );
     };
 
     const sumarVenta = (codigo, cantidad) => {
       const cantidadActual = codigoVentasMap.get(codigo) || 0;
-      codigoVentasMap.set(codigo, cantidadActual + cantidad);
+
+      codigoVentasMap.set(
+        codigo,
+        cantidadActual + cantidad
+      );
     };
 
-    const sumarEgreso = (codigo, cantidad) => {
-      const cantidadActual = codigoEgresosMap.get(codigo) || 0;
-      codigoEgresosMap.set(codigo, cantidadActual + cantidad);
-    };
-    // Función para iterar sobre los datos y sumar cantidades al mapa
     const sumarCantidades = (datos) => {
       datos.forEach(({ codigo, cantidad }) => {
         sumarCantidad(codigo, parseFloat(cantidad));
       });
     };
 
-    // Sumar cantidades de todas las fuentes de datos
-    // sumarCantidades(sumaCantidadesMedias);
-    // sumarCantidades(sumaInventario);
-    // sumarCantidades(sumaMovimientos);
-    // sumarCantidades(sumaCantidadesVendidasPorArticulo);
-
     // =====================================================
-    // SUMAR INVENTARIO, MEDIAS Y MOVIMIENTOS
+    // 8. SUMAR MEDIAS
     // =====================================================
 
     sumarCantidades(sumaCantidadesMedias);
+
+    console.log(
+      "\n========== 6. STOCK DESPUES DE SUMAR MEDIAS =========="
+    );
+
+    console.table(
+      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+        codigo,
+        cantidad,
+      }))
+    );
+
+    // =====================================================
+    // 9. SUMAR INVENTARIO
+    // =====================================================
+
     sumarCantidades(sumaInventario);
+
+    console.log(
+      "\n========== 7. STOCK DESPUES DE SUMAR INVENTARIO =========="
+    );
+
+    console.table(
+      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+        codigo,
+        cantidad,
+      }))
+    );
+
+    // =====================================================
+    // 10. SUMAR MOVIMIENTOS
+    // =====================================================
+
     sumarCantidades(sumaMovimientos);
 
+    console.log(
+      "\n========== 8. STOCK DESPUES DE MOVIMIENTOS =========="
+    );
+
+    console.table(
+      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+        codigo,
+        cantidad,
+      }))
+    );
+
     // =====================================================
-    // RESTAR VENTAS DEL STOCK
+    // 11. RESTAR VENTAS
     // =====================================================
 
-    sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-      const cantidadVendida = Number(cantidad);
+    sumaCantidadesVendidasPorArticulo.forEach(
+      ({ codigo, cantidad }) => {
+        const cantidadVendida = Number(cantidad);
 
-      if (!Number.isFinite(cantidadVendida)) return;
+        if (!Number.isFinite(cantidadVendida)) return;
 
-      // Las ventas se descuentan del stock.
-      sumarCantidad(codigo, -cantidadVendida);
-    });
-
-    sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-      sumarVenta(codigo, parseFloat(cantidad));
-    });
-
-    sumaMovimientos.forEach(({ codigo, cantidad }) => {
-      const cantidadNumerica = parseFloat(cantidad);
-
-      if (cantidadNumerica < 0) {
-        sumarEgreso(codigo, Math.abs(cantidadNumerica));
+        sumarCantidad(codigo, -cantidadVendida);
       }
-    });
+    );
 
-    // Obtener las descripciones de los productos desde ArticuloTabla
+    console.log(
+      "\n========== 9. STOCK DESPUES DE RESTAR VENTAS =========="
+    );
+
+    console.table(
+      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+        codigo,
+        cantidad,
+      }))
+    );
+
+    // =====================================================
+    // 12. ACUMULAR VENTAS
+    // =====================================================
+
+    sumaCantidadesVendidasPorArticulo.forEach(
+      ({ codigo, cantidad }) => {
+        sumarVenta(codigo, parseFloat(cantidad));
+      }
+    );
+
+    // =====================================================
+    // 13. OBTENER DESCRIPCIONES
+    // =====================================================
+
     const descripcionMap = new Map();
+
     const codigosArticulos = Array.from(codigoCantidadMap.keys());
 
     if (codigosArticulos.length > 0) {
@@ -2044,20 +2913,125 @@ const obtenerStock = async (req, res, next) => {
       });
 
       articulos.forEach((articulo) => {
-        descripcionMap.set(articulo.codigobarra, articulo.descripcion);
+        descripcionMap.set(
+          articulo.codigobarra,
+          articulo.descripcion
+        );
       });
     }
 
-    const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-      codigo,
-      cantidad: cantidad.toFixed(2),
-      ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
-      egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
-      descripcion: descripcionMap.get(codigo) || "",
-    }));
+    // =====================================================
+    // 14. GENERAR STOCK FINAL
+    // =====================================================
 
-    // Devolver el stock unificado
-    res.status(200).json(stock);
+    const stock = Array.from(
+      codigoCantidadMap,
+      ([codigo, cantidad]) => ({
+        codigo,
+        cantidad: cantidad.toFixed(2),
+        ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
+        descripcion: descripcionMap.get(codigo) || "",
+      })
+    );
+
+    // =====================================================
+    // 15. RESUMEN COMPLETO POR ARTICULO
+    // =====================================================
+
+    const crearMapa = (datos) => {
+      const mapa = new Map();
+
+      datos.forEach(({ codigo, cantidad }) => {
+        const cantidadActual = mapa.get(codigo) || 0;
+
+        mapa.set(
+          codigo,
+          cantidadActual + Number(cantidad)
+        );
+      });
+
+      return mapa;
+    };
+
+    const mapaMedias = crearMapa(sumaCantidadesMedias);
+    const mapaInventario = crearMapa(sumaInventario);
+    const mapaMovimientos = crearMapa(sumaMovimientos);
+    const mapaVentas = crearMapa(sumaCantidadesVendidasPorArticulo);
+
+    const resumenStock = stock.map((articulo) => {
+      const codigo = articulo.codigo;
+
+      return {
+        codigo,
+        descripcion: articulo.descripcion,
+
+        inventario: Number(
+          (mapaInventario.get(codigo) || 0).toFixed(2)
+        ),
+
+        medias: Number(
+          (mapaMedias.get(codigo) || 0).toFixed(2)
+        ),
+
+        movimientos: Number(
+          (mapaMovimientos.get(codigo) || 0).toFixed(2)
+        ),
+
+        ventas: Number(
+          (mapaVentas.get(codigo) || 0).toFixed(2)
+        ),
+
+        stockFinal: Number(articulo.cantidad),
+        cantidad: Number(articulo.cantidad),
+      };
+    });
+
+    console.log("\n");
+    console.log("======================================================");
+    console.log("             RESUMEN FINAL DEL STOCK");
+    console.log("======================================================");
+
+    console.table(resumenStock);
+
+    // =====================================================
+    // 16. TOTALES GENERALES
+    // =====================================================
+
+    const totalizar = (datos) =>
+      datos.reduce(
+        (total, item) => total + Number(item.cantidad || 0),
+        0
+      );
+
+    const totalInventario = totalizar(sumaInventario);
+    const totalMedias = totalizar(sumaCantidadesMedias);
+    const totalMovimientos = totalizar(sumaMovimientos);
+    const totalVentas = totalizar(sumaCantidadesVendidasPorArticulo);
+    const totalStock = totalizar(stock);
+
+    console.log("\n========== TOTALES GENERALES ==========");
+
+    console.table([
+      {
+        inventario: totalInventario.toFixed(2),
+        medias: totalMedias.toFixed(2),
+        movimientos: totalMovimientos.toFixed(2),
+        ventas: totalVentas.toFixed(2),
+        stockFinal: totalStock.toFixed(2),
+      },
+    ]);
+
+    console.log("======================================================");
+    console.log("                FIN CALCULO STOCK");
+    console.log("======================================================");
+    console.log("\n");
+
+    // =====================================================
+    // 17. DEVOLVER RESPUESTA
+    // =====================================================
+
+    res.status(200).json(resumenStock);
+
   } catch (error) {
     console.error("Error al obtener el stock:", error);
     next(error);

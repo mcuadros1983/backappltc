@@ -12,7 +12,7 @@ const ArticuloPorcentajetabla = sequelize.define(
       autoIncrement: true,
     },
     porcentaje: {
-      type: DataTypes.NUMERIC(12, 2),
+      type: DataTypes.DECIMAL(12, 6),
       allowNull: false,
     },
     articulo_id: {

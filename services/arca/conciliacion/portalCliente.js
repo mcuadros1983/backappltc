@@ -97,7 +97,28 @@ export function crearPortalCliente() {
         for (let i = 0; i < 8; i++) {
             registrarPagina(target);
 
-            let r; try { r = await http.request({ ...opts, url: target }); } catch { throw safe('No se pudo conectar con ARCA. No se reintentó el login automáticamente.'); }
+            let r;
+
+            try {
+                r = await http.request({ ...opts, url: target });
+            } catch (error) {
+                const estadoHTTP = error.response?.status ?? null;
+                const codigo = error.cause?.code ?? error.code ?? "SIN_CODIGO";
+
+                console.warn("[ARCA ERROR HTTP]", {
+                    etapa: contextoActual.etapa,
+                    pagina: contextoActual.pagina,
+                    metodo: opts.method ?? "GET",
+                    estadoHTTP,
+                    codigo,
+                });
+
+                const detalle = estadoHTTP !== null
+                    ? `ARCA respondió con HTTP ${estadoHTTP}.`
+                    : `No se recibió una respuesta HTTP de ARCA (${codigo}).`;
+
+                throw safe(`${detalle} No se reintentó el login automáticamente.`);
+            }
             if (!r.headers.location) {
                 return {
                     html: r.data,
