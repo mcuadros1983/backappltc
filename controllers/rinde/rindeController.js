@@ -23,21 +23,21 @@ import fs from "fs";
 import RindeGeneral from "../../models/rinde/rindeGeneral.js";
 
 const obtenerMovimientosFiltrados = async (req, res) => {
-  console.log("🔍 Iniciando función obtenerMovimientosFiltrados");
+  // console.log("🔍 Iniciando función obtenerMovimientosFiltrados");
 
   try {
     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-    console.log("📥 Datos recibidos:", { fechaDesde, fechaHasta, sucursalId });
+    // console.log("📥 Datos recibidos:", { fechaDesde, fechaHasta, sucursalId });
 
     if (!fechaDesde || !fechaHasta) {
-      console.log("⚠️ Faltan fechas para el filtrado");
+      // console.log("⚠️ Faltan fechas para el filtrado");
       return res.status(400).json({ error: "Debe proporcionar fechaDesde y fechaHasta." });
     }
 
     let movimientosSucursal = [];
 
     if (sucursalId) {
-      console.log("🔄 Filtrando por sucursal y fechas...");
+      // console.log("🔄 Filtrando por sucursal y fechas...");
       movimientosSucursal = await InventarioMovimientoInterno.findAll({
         where: {
           sucursal_id: sucursalId,
@@ -49,7 +49,7 @@ const obtenerMovimientosFiltrados = async (req, res) => {
         raw: true
       });
     } else {
-      console.log("🔄 Filtrando solo por fechas (sin sucursal)...");
+      // console.log("🔄 Filtrando solo por fechas (sin sucursal)...");
       movimientosSucursal = await InventarioMovimientoInterno.findAll({
         where: {
           fecha: {
@@ -61,17 +61,17 @@ const obtenerMovimientosFiltrados = async (req, res) => {
       });
     }
 
-    console.log("✅ Movimientos obtenidos para búsqueda de lotes:", movimientosSucursal.length);
+    // console.log("✅ Movimientos obtenidos para búsqueda de lotes:", movimientosSucursal.length);
 
     const lotesAsociados = [...new Set(movimientosSucursal.map(m => m.numerolote))];
-    console.log("📦 Lotes únicos asociados:", lotesAsociados);
+    // console.log("📦 Lotes únicos asociados:", lotesAsociados);
 
     if (lotesAsociados.length === 0) {
-      console.log("ℹ️ No hay lotes, devolviendo array vacío");
+      // console.log("ℹ️ No hay lotes, devolviendo array vacío");
       return res.status(200).json([]);
     }
 
-    console.log("🔄 Buscando movimientos relacionados a los lotes...");
+    // console.log("🔄 Buscando movimientos relacionados a los lotes...");
     const movimientosRelacionados = await InventarioMovimientoInterno.findAll({
       where: {
         numerolote: {
@@ -84,7 +84,7 @@ const obtenerMovimientosFiltrados = async (req, res) => {
       order: [['fecha', 'DESC']],
     });
 
-    console.log("✅ Movimientos relacionados encontrados:", movimientosRelacionados.length);
+    // console.log("✅ Movimientos relacionados encontrados:", movimientosRelacionados.length);
 
     res.status(200).json(movimientosRelacionados);
 
@@ -1031,12 +1031,12 @@ const obtenerSumaKgMediasPorSubcategoria = async (
       where: filters,
     });
 
-    console.log(
-      "Subcategorías encontradas en productos de medias:",
-      ordenes.flatMap((orden) =>
-        orden.Productos.map((producto) => producto.subcategoria)
-      )
-    );
+    // console.log(
+    //   "Subcategorías encontradas en productos de medias:",
+    //   ordenes.flatMap((orden) =>
+    //     orden.Productos.map((producto) => producto.subcategoria)
+    //   )
+    // );
 
 
     // Calcular la suma de los campos 'kg' de los productos agrupados por subcategoría
@@ -1150,9 +1150,9 @@ const obtenerKgsPorProductoUltimoInventario = async (
     });
 
     if (!ultimoInventario) {
-      console.log(
-        "No se encontró un inventario para la sucursal especificada."
-      );
+      // console.log(
+      //   "No se encontró un inventario para la sucursal especificada."
+      // );
       return [];
     }
 
@@ -1888,646 +1888,6 @@ const obtenerKgPorArticuloVendido = async (
   }
 };
 
-// const obtenerStock = async (req, res, next) => {
-//   // const { fechaDesde, fechaHasta, sucursalId, inventarioId } = req.body;
-
-//   const {
-//     fechaDesde,
-//     fechaHasta,
-//     sucursalId,
-//     inventarioId,
-//     subcategoriasOmitidas = [],
-//   } = req.body;
-
-//   try {
-//     let sumaCantidadesMedias = [];
-
-//     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
-//       fechaDesde,
-//       fechaHasta,
-//       sucursalId,
-//       subcategoriasOmitidas
-//     );
-
-//     if (sumaMedias.length > 0) {
-//       const articulosPorcentaje = await ArticuloPorcentajetabla.findAll({
-//         include: [{ model: ArticuloTabla }],
-//       });
-
-//       // Crear un mapa para almacenar las cantidades de cada código de barras
-//       const codigoBarraCantidadMap = new Map();
-
-//       // Calcular las cantidades para cada código de barras
-//       for (const articuloPorcentaje of articulosPorcentaje) {
-//         const sumaMediaCorrespondiente = sumaMedias.find(
-//           (item) => item.subcategoria === articuloPorcentaje.subcategoria
-//         );
-
-//         if (sumaMediaCorrespondiente) {
-//           const nuevaCantidad =
-//             sumaMediaCorrespondiente.cantidad *
-//             (articuloPorcentaje.porcentaje / 100);
-
-//           // Agregar la cantidad calculada al mapa, agrupando por código de barras
-//           const codigoBarra = articuloPorcentaje.Articulotabla.codigobarra;
-//           const cantidadActual = codigoBarraCantidadMap.get(codigoBarra) || 0;
-//           codigoBarraCantidadMap.set(
-//             codigoBarra,
-//             cantidadActual + nuevaCantidad
-//           );
-//         }
-//       }
-
-//       // Convertir el mapa a un array de objetos
-//       sumaCantidadesMedias = Array.from(
-//         codigoBarraCantidadMap,
-//         ([codigo, cantidad]) => ({
-//           codigo,
-//           cantidad: cantidad.toFixed(2), // Redondear la cantidad a dos decimales
-//           descripcion: articulosPorcentaje.find(
-//             (item) => item.Articulotabla.codigobarra === codigo
-//           ).Articulotabla.descripcion,
-//           // Obtenemos la descripción correspondiente al código de barras actual
-//         })
-//       );
-//     }
-//     const sumaInventario = await obtenerKgsPorProductoUltimoInventario(
-//       sucursalId,
-//       inventarioId
-//     );
-//     const sumaMovimientos = await obtenerKgPorProductoMovimientosFiltrados(
-//       fechaDesde,
-//       fechaHasta,
-//       sucursalId
-//     );
-//     const sumaCantidadesVendidasPorArticulo = await obtenerKgPorArticuloVendido(
-//       fechaDesde,
-//       fechaHasta,
-//       sucursalId
-//     );
-
-//     // Crear un mapa para almacenar las cantidades por código de barras
-//     const codigoCantidadMap = new Map();
-//     const codigoVentasMap = new Map();
-//     const codigoEgresosMap = new Map();
-
-//     // Función para sumar cantidades al mapa
-//     const sumarCantidad = (codigo, cantidad) => {
-//       const cantidadActual = codigoCantidadMap.get(codigo) || 0;
-//       codigoCantidadMap.set(codigo, cantidadActual + cantidad);
-//     };
-
-//     const sumarVenta = (codigo, cantidad) => {
-//       const cantidadActual = codigoVentasMap.get(codigo) || 0;
-//       codigoVentasMap.set(codigo, cantidadActual + cantidad);
-//     };
-
-//     const sumarEgreso = (codigo, cantidad) => {
-//       const cantidadActual = codigoEgresosMap.get(codigo) || 0;
-//       codigoEgresosMap.set(codigo, cantidadActual + cantidad);
-//     };
-//     // Función para iterar sobre los datos y sumar cantidades al mapa
-//     const sumarCantidades = (datos) => {
-//       datos.forEach(({ codigo, cantidad }) => {
-//         sumarCantidad(codigo, parseFloat(cantidad));
-//       });
-//     };
-
-//     // Sumar cantidades de todas las fuentes de datos
-//     // sumarCantidades(sumaCantidadesMedias);
-//     // sumarCantidades(sumaInventario);
-//     // sumarCantidades(sumaMovimientos);
-//     // sumarCantidades(sumaCantidadesVendidasPorArticulo);
-
-//     // =====================================================
-//     // SUMAR INVENTARIO, MEDIAS Y MOVIMIENTOS
-//     // =====================================================
-
-//     sumarCantidades(sumaCantidadesMedias);
-//     sumarCantidades(sumaInventario);
-//     sumarCantidades(sumaMovimientos);
-
-//     // =====================================================
-//     // RESTAR VENTAS DEL STOCK
-//     // =====================================================
-
-//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-//       const cantidadVendida = Number(cantidad);
-
-//       if (!Number.isFinite(cantidadVendida)) return;
-
-//       // Las ventas se descuentan del stock.
-//       sumarCantidad(codigo, -cantidadVendida);
-//     });
-
-//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-//       sumarVenta(codigo, parseFloat(cantidad));
-//     });
-
-//     sumaMovimientos.forEach(({ codigo, cantidad }) => {
-//       const cantidadNumerica = parseFloat(cantidad);
-
-//       if (cantidadNumerica < 0) {
-//         sumarEgreso(codigo, Math.abs(cantidadNumerica));
-//       }
-//     });
-
-//     // Obtener las descripciones de los productos desde ArticuloTabla
-//     const descripcionMap = new Map();
-//     const codigosArticulos = Array.from(codigoCantidadMap.keys());
-
-//     if (codigosArticulos.length > 0) {
-//       const articulos = await ArticuloTabla.findAll({
-//         where: {
-//           codigobarra: codigosArticulos,
-//         },
-//       });
-
-//       articulos.forEach((articulo) => {
-//         descripcionMap.set(articulo.codigobarra, articulo.descripcion);
-//       });
-//     }
-
-//     const stock = Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-//       codigo,
-//       cantidad: cantidad.toFixed(2),
-//       ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
-//       egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
-//       descripcion: descripcionMap.get(codigo) || "",
-//     }));
-
-//     // Devolver el stock unificado
-//     res.status(200).json(stock);
-//   } catch (error) {
-//     console.error("Error al obtener el stock:", error);
-//     next(error);
-//   }
-// };
-
-// const obtenerStock = async (req, res, next) => {
-//   const {
-//     fechaDesde,
-//     fechaHasta,
-//     sucursalId,
-//     inventarioId,
-//     subcategoriasOmitidas = [],
-//   } = req.body;
-
-//   try {
-//     console.log("\n");
-//     console.log("======================================================");
-//     console.log("              INICIO CALCULO DE STOCK");
-//     console.log("======================================================");
-
-//     console.log("PARAMETROS RECIBIDOS:");
-//     console.table([
-//       {
-//         fechaDesde,
-//         fechaHasta,
-//         sucursalId,
-//         inventarioId,
-//         subcategoriasOmitidas: subcategoriasOmitidas.join(", "),
-//       },
-//     ]);
-
-//     let sumaCantidadesMedias = [];
-
-//     // =====================================================
-//     // 1. OBTENER PRODUCCION DE MEDIAS
-//     // =====================================================
-
-//     const sumaMedias = await obtenerSumaKgMediasPorSubcategoria(
-//       fechaDesde,
-//       fechaHasta,
-//       sucursalId,
-//       subcategoriasOmitidas
-//     );
-
-//     console.log("\n========== 1. MEDIAS POR SUBCATEGORIA ==========");
-
-//     console.table(sumaMedias);
-
-//     if (sumaMedias.length > 0) {
-//       const articulosPorcentaje = await ArticuloPorcentajetabla.findAll({
-//         include: [{ model: ArticuloTabla }],
-//       });
-
-//       const codigoBarraCantidadMap = new Map();
-
-//       // =====================================================
-//       // DIAGNOSTICO ARTICULO 52 - FILET
-//       // =====================================================
-
-//       const porcentajesFilet = articulosPorcentaje.filter(
-//         (item) =>
-//           String(item.Articulotabla?.codigobarra).trim() === "52"
-//       );
-
-//       console.log("\n========== DIAGNOSTICO FILET 52 ==========");
-
-//       console.log("1. CONFIGURACION DE PORCENTAJES:");
-
-//       console.table(
-//         porcentajesFilet.map((item) => ({
-//           codigo: item.Articulotabla?.codigobarra,
-//           descripcion: item.Articulotabla?.descripcion,
-//           subcategoria: item.subcategoria,
-//           porcentaje: item.porcentaje,
-//         }))
-//       );
-
-//       console.log("2. SUBCATEGORIAS DE MEDIAS OBTENIDAS:");
-
-//       console.table(sumaMedias);
-
-//       console.log("3. SUBCATEGORIAS OMITIDAS:");
-
-//       console.log(subcategoriasOmitidas);
-
-//       console.log("4. CALCULO FILET:");
-
-//       porcentajesFilet.forEach((item) => {
-//         const subcategoriaConfigurada =
-//           String(item.subcategoria ?? "").trim().toUpperCase();
-
-//         const mediaEncontrada = sumaMedias.find(
-//           (media) =>
-//             String(media.subcategoria ?? "").trim().toUpperCase() ===
-//             subcategoriaConfigurada
-//         );
-
-//         const kgMedias = Number(mediaEncontrada?.cantidad || 0);
-//         const porcentaje = Number(item.porcentaje || 0);
-
-//         const cantidadCalculada = kgMedias * (porcentaje / 100);
-
-//         console.table([
-//           {
-//             codigo: "52",
-//             subcategoriaConfigurada,
-//             mediaEncontrada: Boolean(mediaEncontrada),
-//             kgMedias,
-//             porcentaje,
-//             factorAplicado: porcentaje / 100,
-//             cantidadCalculada,
-//             cantidadRedondeada: cantidadCalculada.toFixed(2),
-//           },
-//         ]);
-//       });
-
-//       console.log("========== FIN DIAGNOSTICO FILET ==========\n");
-
-//       for (const articuloPorcentaje of articulosPorcentaje) {
-//         const sumaMediaCorrespondiente = sumaMedias.find(
-//           (item) => item.subcategoria === articuloPorcentaje.subcategoria
-//         );
-
-//         if (sumaMediaCorrespondiente) {
-//           const nuevaCantidad =
-//             sumaMediaCorrespondiente.cantidad *
-//             (articuloPorcentaje.porcentaje / 100);
-
-//           const codigoBarra =
-//             articuloPorcentaje.Articulotabla.codigobarra;
-
-//           const cantidadActual =
-//             codigoBarraCantidadMap.get(codigoBarra) || 0;
-
-//           codigoBarraCantidadMap.set(
-//             codigoBarra,
-//             cantidadActual + nuevaCantidad
-//           );
-//         }
-//       }
-
-//       sumaCantidadesMedias = Array.from(
-//         codigoBarraCantidadMap,
-//         ([codigo, cantidad]) => ({
-//           codigo,
-//           cantidad: cantidad.toFixed(2),
-//           descripcion: articulosPorcentaje.find(
-//             (item) => item.Articulotabla.codigobarra === codigo
-//           ).Articulotabla.descripcion,
-//         })
-//       );
-//     }
-
-//     console.log("\n========== 2. MEDIAS DISTRIBUIDAS POR ARTICULO ==========");
-
-//     console.table(sumaCantidadesMedias);
-
-//     // =====================================================
-//     // 2. OBTENER INVENTARIO INICIAL
-//     // =====================================================
-
-//     const sumaInventario = await obtenerKgsPorProductoUltimoInventario(
-//       sucursalId,
-//       inventarioId
-//     );
-
-//     console.log("\n========== 3. INVENTARIO INICIAL ==========");
-
-//     console.table(sumaInventario);
-
-//     // =====================================================
-//     // 3. OBTENER MOVIMIENTOS
-//     // =====================================================
-
-//     const sumaMovimientos = await obtenerKgPorProductoMovimientosFiltrados(
-//       fechaDesde,
-//       fechaHasta,
-//       sucursalId
-//     );
-
-//     console.log("\n========== 4. MOVIMIENTOS DE INVENTARIO ==========");
-
-//     console.table(sumaMovimientos);
-
-//     // =====================================================
-//     // 4. OBTENER VENTAS
-//     // =====================================================
-
-//     const sumaCantidadesVendidasPorArticulo =
-//       await obtenerKgPorArticuloVendido(
-//         fechaDesde,
-//         fechaHasta,
-//         sucursalId
-//       );
-
-//     console.log("\n========== 5. VENTAS POR ARTICULO ==========");
-
-//     console.table(sumaCantidadesVendidasPorArticulo);
-
-//     // =====================================================
-//     // 5. CREAR MAPAS
-//     // =====================================================
-
-//     const codigoCantidadMap = new Map();
-//     const codigoVentasMap = new Map();
-//     const codigoEgresosMap = new Map();
-
-//     const sumarCantidad = (codigo, cantidad) => {
-//       const cantidadActual = codigoCantidadMap.get(codigo) || 0;
-
-//       codigoCantidadMap.set(
-//         codigo,
-//         cantidadActual + cantidad
-//       );
-//     };
-
-//     const sumarVenta = (codigo, cantidad) => {
-//       const cantidadActual = codigoVentasMap.get(codigo) || 0;
-
-//       codigoVentasMap.set(
-//         codigo,
-//         cantidadActual + cantidad
-//       );
-//     };
-
-//     const sumarEgreso = (codigo, cantidad) => {
-//       const cantidadActual = codigoEgresosMap.get(codigo) || 0;
-
-//       codigoEgresosMap.set(
-//         codigo,
-//         cantidadActual + cantidad
-//       );
-//     };
-
-//     const sumarCantidades = (datos) => {
-//       datos.forEach(({ codigo, cantidad }) => {
-//         sumarCantidad(codigo, parseFloat(cantidad));
-//       });
-//     };
-
-//     // =====================================================
-//     // 6. SUMAR MEDIAS
-//     // =====================================================
-
-//     sumarCantidades(sumaCantidadesMedias);
-
-//     console.log("\n========== 6. STOCK DESPUES DE SUMAR MEDIAS ==========");
-
-//     console.table(
-//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-//         codigo,
-//         cantidad,
-//       }))
-//     );
-
-//     // =====================================================
-//     // 7. SUMAR INVENTARIO
-//     // =====================================================
-
-//     sumarCantidades(sumaInventario);
-
-//     console.log("\n========== 7. STOCK DESPUES DE SUMAR INVENTARIO ==========");
-
-//     console.table(
-//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-//         codigo,
-//         cantidad,
-//       }))
-//     );
-
-//     // =====================================================
-//     // 8. SUMAR MOVIMIENTOS
-//     // =====================================================
-
-//     sumarCantidades(sumaMovimientos);
-
-//     console.log("\n========== 8. STOCK DESPUES DE MOVIMIENTOS ==========");
-
-//     console.table(
-//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-//         codigo,
-//         cantidad,
-//       }))
-//     );
-
-//     // =====================================================
-//     // 9. RESTAR VENTAS
-//     // =====================================================
-
-//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-//       const cantidadVendida = Number(cantidad);
-
-//       if (!Number.isFinite(cantidadVendida)) return;
-
-//       sumarCantidad(codigo, -cantidadVendida);
-//     });
-
-//     console.log("\n========== 9. STOCK DESPUES DE RESTAR VENTAS ==========");
-
-//     console.table(
-//       Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-//         codigo,
-//         cantidad,
-//       }))
-//     );
-
-//     // =====================================================
-//     // 10. ACUMULAR VENTAS
-//     // =====================================================
-
-//     sumaCantidadesVendidasPorArticulo.forEach(({ codigo, cantidad }) => {
-//       sumarVenta(codigo, parseFloat(cantidad));
-//     });
-
-//     // =====================================================
-//     // 11. ACUMULAR EGRESOS
-//     // =====================================================
-
-//     sumaMovimientos.forEach(({ codigo, cantidad }) => {
-//       const cantidadNumerica = parseFloat(cantidad);
-
-//       if (cantidadNumerica < 0) {
-//         sumarEgreso(codigo, Math.abs(cantidadNumerica));
-//       }
-//     });
-
-//     // =====================================================
-//     // 12. OBTENER DESCRIPCIONES
-//     // =====================================================
-
-//     const descripcionMap = new Map();
-
-//     const codigosArticulos = Array.from(codigoCantidadMap.keys());
-
-//     if (codigosArticulos.length > 0) {
-//       const articulos = await ArticuloTabla.findAll({
-//         where: {
-//           codigobarra: codigosArticulos,
-//         },
-//       });
-
-//       articulos.forEach((articulo) => {
-//         descripcionMap.set(
-//           articulo.codigobarra,
-//           articulo.descripcion
-//         );
-//       });
-//     }
-
-//     // =====================================================
-//     // 13. GENERAR STOCK FINAL
-//     // =====================================================
-
-//     const stock = Array.from(
-//       codigoCantidadMap,
-//       ([codigo, cantidad]) => ({
-//         codigo,
-//         cantidad: cantidad.toFixed(2),
-//         ventas: (codigoVentasMap.get(codigo) || 0).toFixed(2),
-//         egresos: (codigoEgresosMap.get(codigo) || 0).toFixed(2),
-//         descripcion: descripcionMap.get(codigo) || "",
-//       })
-//     );
-
-//     // =====================================================
-//     // 14. RESUMEN COMPLETO POR ARTICULO
-//     // =====================================================
-
-//     const crearMapa = (datos) => {
-//       const mapa = new Map();
-
-//       datos.forEach(({ codigo, cantidad }) => {
-//         const cantidadActual = mapa.get(codigo) || 0;
-
-//         mapa.set(
-//           codigo,
-//           cantidadActual + Number(cantidad)
-//         );
-//       });
-
-//       return mapa;
-//     };
-
-//     const mapaMedias = crearMapa(sumaCantidadesMedias);
-//     const mapaInventario = crearMapa(sumaInventario);
-//     const mapaMovimientos = crearMapa(sumaMovimientos);
-//     const mapaVentas = crearMapa(sumaCantidadesVendidasPorArticulo);
-
-//     const resumenStock = stock.map((articulo) => {
-//       const codigo = articulo.codigo;
-
-//       return {
-//         codigo,
-//         descripcion: articulo.descripcion,
-
-//         inventario: Number(
-//           (mapaInventario.get(codigo) || 0).toFixed(2)
-//         ),
-
-//         medias: Number(
-//           (mapaMedias.get(codigo) || 0).toFixed(2)
-//         ),
-
-//         movimientos: Number(
-//           (mapaMovimientos.get(codigo) || 0).toFixed(2)
-//         ),
-
-//         ventas: Number(
-//           (mapaVentas.get(codigo) || 0).toFixed(2)
-//         ),
-
-//         stockFinal: Number(articulo.cantidad),
-//       };
-//     });
-
-//     console.log("\n");
-//     console.log("======================================================");
-//     console.log("             RESUMEN FINAL DEL STOCK");
-//     console.log("======================================================");
-
-//     console.table(resumenStock);
-
-//     // =====================================================
-//     // 15. TOTALES GENERALES
-//     // =====================================================
-
-//     const totalizar = (datos) =>
-//       datos.reduce(
-//         (total, item) => total + Number(item.cantidad || 0),
-//         0
-//       );
-
-//     const totalInventario = totalizar(sumaInventario);
-//     const totalMedias = totalizar(sumaCantidadesMedias);
-//     const totalMovimientos = totalizar(sumaMovimientos);
-//     const totalVentas = totalizar(sumaCantidadesVendidasPorArticulo);
-//     const totalStock = totalizar(stock);
-
-//     console.log("\n========== TOTALES GENERALES ==========");
-
-//     console.table([
-//       {
-//         inventario: totalInventario.toFixed(2),
-//         medias: totalMedias.toFixed(2),
-//         movimientos: totalMovimientos.toFixed(2),
-//         ventas: totalVentas.toFixed(2),
-//         stockFinal: totalStock.toFixed(2),
-//       },
-//     ]);
-
-//     console.log("======================================================");
-//     console.log("                FIN CALCULO STOCK");
-//     console.log("======================================================");
-//     console.log("\n");
-
-//     // =====================================================
-//     // 16. DEVOLVER RESPUESTA
-//     // =====================================================
-
-//     res.status(200).json(stock);
-
-//   } catch (error) {
-//     console.error("Error al obtener el stock:", error);
-//     next(error);
-//   }
-// };
-
-
-
 const obtenerStock = async (req, res, next) => {
   const {
     fechaDesde,
@@ -2538,10 +1898,10 @@ const obtenerStock = async (req, res, next) => {
   } = req.body;
 
   try {
-    console.log("\n");
-    console.log("======================================================");
-    console.log("              INICIO CALCULO DE STOCK");
-    console.log("======================================================");
+    // console.log("\n");
+    // console.log("======================================================");
+    // console.log("              INICIO CALCULO DE STOCK");
+    // console.log("======================================================");
 
     // =====================================================
     // PARAMETROS RECIBIDOS
@@ -2552,17 +1912,17 @@ const obtenerStock = async (req, res, next) => {
       ? subcategoriasOmitidas
       : [];
 
-    console.log("PARAMETROS RECIBIDOS:");
+    // console.log("PARAMETROS RECIBIDOS:");
 
-    console.table([
-      {
-        fechaDesde,
-        fechaHasta,
-        sucursalId,
-        inventarioId,
-        subcategoriasOmitidas: omisiones.join(", "),
-      },
-    ]);
+    // console.table([
+    //   {
+    //     fechaDesde,
+    //     fechaHasta,
+    //     sucursalId,
+    //     inventarioId,
+    //     subcategoriasOmitidas: omisiones.join(", "),
+    //   },
+    // ]);
 
     let sumaCantidadesMedias = [];
 
@@ -2577,8 +1937,8 @@ const obtenerStock = async (req, res, next) => {
       omisiones
     );
 
-    console.log("\n========== 1. MEDIAS POR SUBCATEGORIA ==========");
-    console.table(sumaMedias);
+    // console.log("\n========== 1. MEDIAS POR SUBCATEGORIA ==========");
+    // console.table(sumaMedias);
 
     // =====================================================
     // 2. CALCULAR TOTAL DE MEDIAS DISPONIBLES
@@ -2592,14 +1952,14 @@ const obtenerStock = async (req, res, next) => {
       0
     );
 
-    console.log("\n========== TOTAL DE MEDIAS DISPONIBLES ==========");
+    // console.log("\n========== TOTAL DE MEDIAS DISPONIBLES ==========");
 
-    console.log("Subcategorías omitidas:", omisiones);
+    // console.log("Subcategorías omitidas:", omisiones);
 
-    console.log("Detalle de medias incluidas:");
-    console.table(sumaMedias);
+    // console.log("Detalle de medias incluidas:");
+    // console.table(sumaMedias);
 
-    console.log("TOTAL KG MEDIAS DISPONIBLES:", totalKgMedias);
+    // console.log("TOTAL KG MEDIAS DISPONIBLES:", totalKgMedias);
 
     // =====================================================
     // 3. DISTRIBUIR MEDIAS POR PORCENTAJE DE CADA ARTICULO
@@ -2610,26 +1970,26 @@ const obtenerStock = async (req, res, next) => {
         include: [{ model: ArticuloTabla }],
       });
 
-      console.log(
-        "\n========== AUDITORIA TABLA DE PORCENTAJES =========="
-      );
+      // console.log(
+      //   "\n========== AUDITORIA TABLA DE PORCENTAJES =========="
+      // );
 
-      console.log(
-        "Total de registros encontrados:",
-        articulosPorcentaje.length
-      );
+      // console.log(
+      //   "Total de registros encontrados:",
+      //   articulosPorcentaje.length
+      // );
 
-      console.table(
-        articulosPorcentaje.map((item) => ({
-          id: item.id,
-          codigo: item.Articulotabla?.codigobarra,
-          descripcion: item.Articulotabla?.descripcion,
-          subcategoria: item.subcategoria,
-          porcentaje: item.porcentaje,
-        }))
-      );
+      // console.table(
+      //   articulosPorcentaje.map((item) => ({
+      //     id: item.id,
+      //     codigo: item.Articulotabla?.codigobarra,
+      //     descripcion: item.Articulotabla?.descripcion,
+      //     subcategoria: item.subcategoria,
+      //     porcentaje: item.porcentaje,
+      //   }))
+      // );
 
-      console.log("========== FIN AUDITORIA ==========\n");
+      // console.log("========== FIN AUDITORIA ==========\n");
 
       // =====================================================
       // ACUMULAR KG CALCULADOS POR ARTICULO
@@ -2683,18 +2043,18 @@ const obtenerStock = async (req, res, next) => {
           descripcion
         );
 
-        console.log("========== DISTRIBUCION DE MEDIAS ==========");
+        // console.log("========== DISTRIBUCION DE MEDIAS ==========");
 
-        console.log({
-          codigo: codigoBarra,
-          descripcion,
-          subcategoriaConfigurada: articuloPorcentaje.subcategoria,
-          porcentaje,
-          totalKgMedias,
-          cantidadCalculada: nuevaCantidad,
-          cantidadAcumulada:
-            codigoBarraCantidadMap.get(codigoBarra),
-        });
+        // console.log({
+        //   codigo: codigoBarra,
+        //   descripcion,
+        //   subcategoriaConfigurada: articuloPorcentaje.subcategoria,
+        //   porcentaje,
+        //   totalKgMedias,
+        //   cantidadCalculada: nuevaCantidad,
+        //   cantidadAcumulada:
+        //     codigoBarraCantidadMap.get(codigoBarra),
+        // });
       }
 
       // =====================================================
@@ -2711,11 +2071,11 @@ const obtenerStock = async (req, res, next) => {
       );
     }
 
-    console.log(
-      "\n========== 2. MEDIAS DISTRIBUIDAS POR ARTICULO =========="
-    );
+    // console.log(
+    //   "\n========== 2. MEDIAS DISTRIBUIDAS POR ARTICULO =========="
+    // );
 
-    console.table(sumaCantidadesMedias);
+    // console.table(sumaCantidadesMedias);
 
     // =====================================================
     // DIAGNOSTICO ESPECIFICO: FILET CODIGO 52
@@ -2725,15 +2085,15 @@ const obtenerStock = async (req, res, next) => {
       (item) => String(item.codigo).trim() === "52"
     );
 
-    console.log("\n========== DIAGNOSTICO FILET 52 ==========");
+    // console.log("\n========== DIAGNOSTICO FILET 52 ==========");
 
-    console.log({
-      totalKgMedias,
-      subcategoriasOmitidas: omisiones,
-      filetKgCalculados: Number(filetCalculado?.cantidad || 0),
-    });
+    // console.log({
+    //   totalKgMedias,
+    //   subcategoriasOmitidas: omisiones,
+    //   filetKgCalculados: Number(filetCalculado?.cantidad || 0),
+    // });
 
-    console.log("========== FIN DIAGNOSTICO FILET ==========\n");
+    // console.log("========== FIN DIAGNOSTICO FILET ==========\n");
 
     // =====================================================
     // 4. OBTENER INVENTARIO INICIAL
@@ -2744,9 +2104,9 @@ const obtenerStock = async (req, res, next) => {
       inventarioId
     );
 
-    console.log("\n========== 3. INVENTARIO INICIAL ==========");
+    // console.log("\n========== 3. INVENTARIO INICIAL ==========");
 
-    console.table(sumaInventario);
+    // console.table(sumaInventario);
 
     // =====================================================
     // 5. OBTENER MOVIMIENTOS
@@ -2759,11 +2119,11 @@ const obtenerStock = async (req, res, next) => {
         sucursalId
       );
 
-    console.log(
-      "\n========== 4. MOVIMIENTOS DE INVENTARIO =========="
-    );
+    // console.log(
+    //   "\n========== 4. MOVIMIENTOS DE INVENTARIO =========="
+    // );
 
-    console.table(sumaMovimientos);
+    // console.table(sumaMovimientos);
 
     // =====================================================
     // 6. OBTENER VENTAS
@@ -2776,9 +2136,9 @@ const obtenerStock = async (req, res, next) => {
         sucursalId
       );
 
-    console.log("\n========== 5. VENTAS POR ARTICULO ==========");
+    // console.log("\n========== 5. VENTAS POR ARTICULO ==========");
 
-    console.table(sumaCantidadesVendidasPorArticulo);
+    // console.table(sumaCantidadesVendidasPorArticulo);
 
     // =====================================================
     // 7. CREAR MAPAS
@@ -2817,16 +2177,16 @@ const obtenerStock = async (req, res, next) => {
 
     sumarCantidades(sumaCantidadesMedias);
 
-    console.log(
-      "\n========== 6. STOCK DESPUES DE SUMAR MEDIAS =========="
-    );
+    // console.log(
+    //   "\n========== 6. STOCK DESPUES DE SUMAR MEDIAS =========="
+    // );
 
-    console.table(
-      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-        codigo,
-        cantidad,
-      }))
-    );
+    // console.table(
+    //   Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+    //     codigo,
+    //     cantidad,
+    //   }))
+    // );
 
     // =====================================================
     // 9. SUMAR INVENTARIO
@@ -2834,16 +2194,16 @@ const obtenerStock = async (req, res, next) => {
 
     sumarCantidades(sumaInventario);
 
-    console.log(
-      "\n========== 7. STOCK DESPUES DE SUMAR INVENTARIO =========="
-    );
+    // console.log(
+    //   "\n========== 7. STOCK DESPUES DE SUMAR INVENTARIO =========="
+    // );
 
-    console.table(
-      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-        codigo,
-        cantidad,
-      }))
-    );
+    // console.table(
+    //   Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+    //     codigo,
+    //     cantidad,
+    //   }))
+    // );
 
     // =====================================================
     // 10. SUMAR MOVIMIENTOS
@@ -2851,16 +2211,16 @@ const obtenerStock = async (req, res, next) => {
 
     sumarCantidades(sumaMovimientos);
 
-    console.log(
-      "\n========== 8. STOCK DESPUES DE MOVIMIENTOS =========="
-    );
+    // console.log(
+    //   "\n========== 8. STOCK DESPUES DE MOVIMIENTOS =========="
+    // );
 
-    console.table(
-      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-        codigo,
-        cantidad,
-      }))
-    );
+    // console.table(
+    //   Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+    //     codigo,
+    //     cantidad,
+    //   }))
+    // );
 
     // =====================================================
     // 11. RESTAR VENTAS
@@ -2876,16 +2236,16 @@ const obtenerStock = async (req, res, next) => {
       }
     );
 
-    console.log(
-      "\n========== 9. STOCK DESPUES DE RESTAR VENTAS =========="
-    );
+    // console.log(
+    //   "\n========== 9. STOCK DESPUES DE RESTAR VENTAS =========="
+    // );
 
-    console.table(
-      Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
-        codigo,
-        cantidad,
-      }))
-    );
+    // console.table(
+    //   Array.from(codigoCantidadMap, ([codigo, cantidad]) => ({
+    //     codigo,
+    //     cantidad,
+    //   }))
+    // );
 
     // =====================================================
     // 12. ACUMULAR VENTAS
@@ -2986,12 +2346,12 @@ const obtenerStock = async (req, res, next) => {
       };
     });
 
-    console.log("\n");
-    console.log("======================================================");
-    console.log("             RESUMEN FINAL DEL STOCK");
-    console.log("======================================================");
+    // console.log("\n");
+    // console.log("======================================================");
+    // console.log("             RESUMEN FINAL DEL STOCK");
+    // console.log("======================================================");
 
-    console.table(resumenStock);
+    // console.table(resumenStock);
 
     // =====================================================
     // 16. TOTALES GENERALES
@@ -3009,22 +2369,22 @@ const obtenerStock = async (req, res, next) => {
     const totalVentas = totalizar(sumaCantidadesVendidasPorArticulo);
     const totalStock = totalizar(stock);
 
-    console.log("\n========== TOTALES GENERALES ==========");
+    // console.log("\n========== TOTALES GENERALES ==========");
 
-    console.table([
-      {
-        inventario: totalInventario.toFixed(2),
-        medias: totalMedias.toFixed(2),
-        movimientos: totalMovimientos.toFixed(2),
-        ventas: totalVentas.toFixed(2),
-        stockFinal: totalStock.toFixed(2),
-      },
-    ]);
+    // console.table([
+    //   {
+    //     inventario: totalInventario.toFixed(2),
+    //     medias: totalMedias.toFixed(2),
+    //     movimientos: totalMovimientos.toFixed(2),
+    //     ventas: totalVentas.toFixed(2),
+    //     stockFinal: totalStock.toFixed(2),
+    //   },
+    // ]);
 
-    console.log("======================================================");
-    console.log("                FIN CALCULO STOCK");
-    console.log("======================================================");
-    console.log("\n");
+    // console.log("======================================================");
+    // console.log("                FIN CALCULO STOCK");
+    // console.log("======================================================");
+    // console.log("\n");
 
     // =====================================================
     // 17. DEVOLVER RESPUESTA
@@ -3091,67 +2451,6 @@ const eliminarMovimientoOtro = async (req, res, next) => {
     next(error);
   }
 };
-
-// const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
-//   try {
-//     const { fechaDesde, fechaHasta, sucursalId } = req.body;
-
-//     const filters = {
-//       fecha: {
-//         [Op.between]: [fechaDesde, fechaHasta],
-//       },
-//     };
-
-//     let nombreSucursal = null;
-
-//     if (sucursalId) {
-//       const sucursal = await Sucursal.findByPk(sucursalId);
-//       nombreSucursal = sucursal?.nombre?.toUpperCase();
-//     }
-
-//     if (nombreSucursal === "FABRICA") {
-//       filters.sucursal_id = sucursalId;
-//     } else if (sucursalId) {
-//       filters.sucursaldestino_id = sucursalId;
-//     }
-
-//     const movimientos = await InventarioMovimientoOtro.findAll({
-//       where: filters,
-//     });
-
-//     const preciosArticulos = new Map();
-//     let montoTotalMovimientos = 0;
-
-//     for (const movimiento of movimientos) {
-//       let precioArticulo = preciosArticulos.get(movimiento.articulocodigo);
-
-//       if (!precioArticulo) {
-//         const precio = await buscarPrecioArticulo(movimiento.articulocodigo);
-//         if (precio) {
-//           preciosArticulos.set(movimiento.articulocodigo, precio);
-//           precioArticulo = precio;
-//         }
-//       }
-
-//       if (precioArticulo) {
-//         const cantidad = parseFloat(movimiento.cantidad) || 0;
-//         montoTotalMovimientos += cantidad * precioArticulo;
-//       }
-//     }
-
-//     // Si la sucursal es FABRICA, el monto se envía como negativo
-//     if (nombreSucursal === "FABRICA") {
-//       montoTotalMovimientos = -Math.abs(montoTotalMovimientos);
-//     }
-
-//     console.log("Monto total movimientos OTRO:", montoTotalMovimientos);
-
-//     res.status(200).json({ montoTotalMovimientos });
-//   } catch (error) {
-//     console.error("Error al calcular monto de movimientos OTRO:", error);
-//     next(error);
-//   }
-// };
 
 const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
   try {
@@ -3222,132 +2521,6 @@ const obtenerMontoMovimientosFiltradosOtro = async (req, res, next) => {
     next(error);
   }
 };
-
-// const crearMovimientosOtrosDesdeExcel = async (req, res) => {
-//   try {
-//     if (!req.file) {
-//       return res.status(400).json({ mensaje: "No se ha subido ningún archivo." });
-//     }
-
-//     const { tipo, sucursal_codigo } = req.body;
-
-//     if (!tipo || !sucursal_codigo) {
-//       return res.status(400).json({
-//         mensaje: "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
-//       });
-//     }
-
-//     if (!["FABRICA", "ACHURA"].includes(tipo)) {
-//       return res.status(400).json({
-//         mensaje: `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
-//       });
-//     }
-
-//     const sucursalOrigen = await Sucursal.findOne({
-//       where: { codigo: String(sucursal_codigo).trim() },
-//     });
-
-//     if (!sucursalOrigen) {
-//       throw new Error(`Sucursal origen inexistente (código: ${sucursal_codigo})`);
-//     }
-
-//     const workbook = xlsx.readFile(req.file.path);
-//     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-//     const data = xlsx.utils.sheet_to_json(sheet);
-
-//     const movimientosAInsertar = [];
-
-//     const parseFechaExcel = (fechaValor) => {
-//       if (typeof fechaValor === "string" && fechaValor.includes("/")) {
-//         const [dia, mes, anio] = fechaValor.split("/");
-//         const fechaISO = `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
-//         if (isNaN(new Date(fechaISO))) return null;
-//         return fechaISO;
-//       }
-
-//       if (typeof fechaValor === "number") {
-//         const date = new Date(Math.round((fechaValor - 25569) * 86400 * 1000));
-//         return date.toISOString().split("T")[0];
-//       }
-
-//       // Si viene como texto tipo "2024-05-01"
-//       const date = new Date(fechaValor);
-//       return isNaN(date) ? null : date.toISOString().split("T")[0];
-//     };
-
-//     for (let index = 0; index < data.length; index++) {
-//       const row = data[index];
-//       const fila = index + 2;
-
-//       const { fecha, articulocodigo, cantidad, remito, sucursaldestino_codigo } = row;
-
-//       if (!fecha || !articulocodigo || !cantidad || !sucursaldestino_codigo) {
-//         throw new Error(`Faltan campos obligatorios en la fila ${fila}.`);
-//       }
-
-//       const fechaNormalizada = parseFechaExcel(fecha);
-//       if (!fechaNormalizada) {
-//         throw new Error(`Fecha inválida en la fila ${fila}: ${fecha}`);
-//       }
-
-//       const sucursalDestino = await Sucursal.findOne({
-//         where: { codigo: String(sucursaldestino_codigo).trim() },
-//       });
-
-//       if (!sucursalDestino) {
-//         throw new Error(
-//           `Sucursal destino inexistente en fila ${fila} (código: ${sucursaldestino_codigo})`
-//         );
-//       }
-
-//       const articulo = await ArticuloTabla.findOne({
-//         where: { codigobarra: String(articulocodigo).trim() },
-//       });
-
-//       if (!articulo) {
-//         throw new Error(
-//           `Artículo inexistente en fila ${fila} (código: ${articulocodigo})`
-//         );
-//       }
-
-//       // Validar cantidad como número (puede venir como string con coma)
-//       const cantidadNormalizada = parseFloat(String(cantidad).replace(",", "."));
-//       if (isNaN(cantidadNormalizada)) {
-//         throw new Error(`Cantidad inválida en la fila ${fila}: ${cantidad}`);
-//       }
-
-//       movimientosAInsertar.push({
-//         fecha: fechaNormalizada,
-//         sucursal_id: sucursalOrigen.id,
-//         articulocodigo,
-//         articulodescripcion: articulo.descripcion,
-//         cantidad: cantidadNormalizada,
-//         tipo: tipo === "FABRICA" ? "FABRICA" : "ACHURA",
-//         numerolote: remito || null,
-//         sucursaldestino_id: sucursalDestino.id,
-//       });
-//     }
-
-//     const movimientosCreados = await InventarioMovimientoOtro.bulkCreate(movimientosAInsertar);
-
-//     if (fs.existsSync(req.file.path)) {
-//       fs.unlinkSync(req.file.path);
-//     }
-
-//     return res.status(200).json({
-//       mensaje: `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
-//       movimientos: movimientosCreados,
-//     });
-//   } catch (error) {
-//     console.error("Error al procesar Excel de movimientos otros:", error.message);
-//     if (req.file && fs.existsSync(req.file.path)) {
-//       fs.unlinkSync(req.file.path);
-//     }
-//     return res.status(400).json({
-//       mensaje: `Error al procesar archivo: ${error.message}`,
-//     });
-//   }
-// };
 
 const crearMovimientosOtrosDesdeExcel = async (req, res) => {
   try {
@@ -3667,310 +2840,6 @@ const crearMovimientosOtrosDesdeExcel = async (req, res) => {
     }
   }
 };
-
-// const crearMovimientosOtrosPegados = async (req, res) => {
-//   try {
-//     const {
-//       tipo,
-//       sucursal_codigo,
-//       movimientos = [],
-//     } = req.body;
-
-//     // ==========================================
-//     // VALIDACIONES GENERALES
-//     // ==========================================
-
-//     if (!tipo || !sucursal_codigo) {
-//       return res.status(400).json({
-//         mensaje:
-//           "Faltan los campos generales 'tipo' o 'sucursal_codigo'.",
-//       });
-//     }
-
-//     if (!["FABRICA", "ACHURA"].includes(tipo)) {
-//       return res.status(400).json({
-//         mensaje:
-//           `Tipo inválido: ${tipo}. Debe ser 'FABRICA' o 'ACHURA'.`,
-//       });
-//     }
-
-//     if (
-//       !Array.isArray(movimientos) ||
-//       movimientos.length === 0
-//     ) {
-//       return res.status(400).json({
-//         mensaje:
-//           "Debe enviar al menos un movimiento.",
-//       });
-//     }
-
-//     // ==========================================
-//     // SUCURSAL ORIGEN
-//     // ==========================================
-
-//     const sucursalOrigen =
-//       await Sucursal.findOne({
-//         where: {
-//           codigo: String(sucursal_codigo).trim(),
-//         },
-//       });
-
-//     if (!sucursalOrigen) {
-//       throw new Error(
-//         `Sucursal origen inexistente (código: ${sucursal_codigo})`
-//       );
-//     }
-
-//     // ==========================================
-//     // FUNCIÓN PARA NORMALIZAR FECHA
-//     // ==========================================
-
-//     const parseFecha = (fechaValor) => {
-//       if (!fechaValor) {
-//         return null;
-//       }
-
-//       const valor =
-//         String(fechaValor).trim();
-
-//       // Formato DD/MM/YYYY
-//       if (valor.includes("/")) {
-//         const partes =
-//           valor.split("/");
-
-//         if (partes.length !== 3) {
-//           return null;
-//         }
-
-//         const [dia, mes, anio] =
-//           partes;
-
-//         const fechaISO =
-//           `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-
-//         const date =
-//           new Date(
-//             `${fechaISO}T00:00:00`
-//           );
-
-//         if (isNaN(date.getTime())) {
-//           return null;
-//         }
-
-//         return fechaISO;
-//       }
-
-//       // Formato YYYY-MM-DD
-//       const match =
-//         valor.match(
-//           /^(\d{4})-(\d{1,2})-(\d{1,2})$/
-//         );
-
-//       if (match) {
-//         const [, anio, mes, dia] =
-//           match;
-
-//         const fechaISO =
-//           `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
-
-//         const date =
-//           new Date(
-//             `${fechaISO}T00:00:00`
-//           );
-
-//         if (isNaN(date.getTime())) {
-//           return null;
-//         }
-
-//         return fechaISO;
-//       }
-
-//       return null;
-//     };
-
-//     // ==========================================
-//     // PROCESAR MOVIMIENTOS
-//     // ==========================================
-
-//     const movimientosAInsertar = [];
-
-//     for (
-//       let index = 0;
-//       index < movimientos.length;
-//       index++
-//     ) {
-//       const row =
-//         movimientos[index];
-
-//       const fila =
-//         index + 1;
-
-//       const {
-//         fecha,
-//         articulocodigo,
-//         cantidad,
-//         remito,
-//         sucursaldestino_codigo,
-//       } = row;
-
-//       // ========================================
-//       // CAMPOS OBLIGATORIOS
-//       // ========================================
-
-//       if (
-//         !fecha ||
-//         !articulocodigo ||
-//         cantidad === undefined ||
-//         cantidad === null ||
-//         String(cantidad).trim() === "" ||
-//         !sucursaldestino_codigo
-//       ) {
-//         throw new Error(
-//           `Faltan campos obligatorios en la fila ${fila}.`
-//         );
-//       }
-
-//       // ========================================
-//       // FECHA
-//       // ========================================
-
-//       const fechaNormalizada =
-//         parseFecha(fecha);
-
-//       if (!fechaNormalizada) {
-//         throw new Error(
-//           `Fecha inválida en la fila ${fila}: ${fecha}`
-//         );
-//       }
-
-//       // ========================================
-//       // SUCURSAL DESTINO
-//       // ========================================
-
-//       const sucursalDestino =
-//         await Sucursal.findOne({
-//           where: {
-//             codigo:
-//               String(
-//                 sucursaldestino_codigo
-//               ).trim(),
-//           },
-//         });
-
-//       if (!sucursalDestino) {
-//         throw new Error(
-//           `Sucursal destino inexistente en fila ${fila} ` +
-//           `(código: ${sucursaldestino_codigo})`
-//         );
-//       }
-
-//       // ========================================
-//       // ARTÍCULO
-//       // ========================================
-
-//       const codigoArticulo =
-//         String(
-//           articulocodigo
-//         ).trim();
-
-//       const articulo =
-//         await ArticuloTabla.findOne({
-//           where: {
-//             codigobarra:
-//               codigoArticulo,
-//           },
-//         });
-
-//       if (!articulo) {
-//         throw new Error(
-//           `Artículo inexistente en fila ${fila} ` +
-//           `(código: ${articulocodigo})`
-//         );
-//       }
-
-//       // ========================================
-//       // CANTIDAD
-//       // ========================================
-
-//       const cantidadNormalizada =
-//         Number(
-//           String(cantidad)
-//             .trim()
-//             .replace(",", ".")
-//         );
-
-//       if (
-//         !Number.isFinite(
-//           cantidadNormalizada
-//         ) ||
-//         cantidadNormalizada <= 0
-//       ) {
-//         throw new Error(
-//           `Cantidad inválida en la fila ${fila}: ${cantidad}`
-//         );
-//       }
-
-//       // ========================================
-//       // PREPARAR MOVIMIENTO
-//       // ========================================
-
-//       movimientosAInsertar.push({
-//         fecha:
-//           fechaNormalizada,
-
-//         sucursal_id:
-//           sucursalOrigen.id,
-
-//         articulocodigo:
-//           codigoArticulo,
-
-//         articulodescripcion:
-//           articulo.descripcion,
-
-//         cantidad:
-//           cantidadNormalizada,
-
-//         tipo,
-
-//         numerolote:
-//           remito
-//             ? String(remito).trim()
-//             : null,
-
-//         sucursaldestino_id:
-//           sucursalDestino.id,
-//       });
-//     }
-
-//     // ==========================================
-//     // GUARDAR
-//     // ==========================================
-
-//     const movimientosCreados =
-//       await InventarioMovimientoOtro.bulkCreate(
-//         movimientosAInsertar
-//       );
-
-//     return res.status(200).json({
-//       mensaje:
-//         `Se procesaron correctamente ${movimientosCreados.length} movimientos.`,
-
-//       movimientos:
-//         movimientosCreados,
-//     });
-
-//   } catch (error) {
-//     console.error(
-//       "Error al procesar movimientos pegados:",
-//       error
-//     );
-
-//     return res.status(400).json({
-//       mensaje:
-//         `Error al procesar movimientos: ${error.message}`,
-//     });
-//   }
-// };
 
 const crearMovimientosOtrosPegados = async (req, res) => {
   try {
@@ -4317,7 +3186,7 @@ const cargarInventarioDesdeExcel = async (req, res, next) => {
   try {
     const file = req.file;
     const { anio, mes, fecha, sucursal_id, usuario_id } = req.body;
-    console.log("datos", anio, mes, fecha, sucursal_id, usuario_id)
+    // console.log("datos", anio, mes, fecha, sucursal_id, usuario_id)
 
     if (!file || !anio || !mes || !fecha || !sucursal_id || !usuario_id) {
       return res.status(400).json({ message: "Faltan datos requeridos en el formulario" });
@@ -4352,7 +3221,7 @@ const cargarInventarioDesdeExcel = async (req, res, next) => {
       const articulo = await ArticuloTabla.findOne({
         where: { codigobarra: codigo },
       });
-      console.log("articulo", articulo)
+      // console.log("articulo", articulo)
 
       const descripcion = articulo?.descripcion || "DESCONOCIDO";
 
@@ -4934,7 +3803,7 @@ const obtenerAchurasTotales = async (req, res, next) => {
       }
     }
 
-    console.log("monto", montoTotalAchuras)
+    // console.log("monto", montoTotalAchuras)
 
     res.status(200).json({ montoTotalAchuras });
   } catch (error) {
