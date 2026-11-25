@@ -1278,55 +1278,164 @@ const generarCodigos = async (req, res, next) => {
 };
 
 
+// const actualizarProductosPorTropa = async (req, res, next) => {
+//   try {
+//     const { tropa, categoria_producto, subcategoria, costo } = req.body;
+
+//     // Validar tropa obligatoria
+//     if (!tropa) {
+//       return res.status(400).json({ mensaje: "La tropa es obligatoria." });
+//     }
+
+//     // Validar categoría obligatoria para filtrar
+//     if (!categoria_producto) {
+//       return res.status(400).json({ mensaje: "La categoría del producto es obligatoria para realizar la actualización." });
+//     }
+
+//     // Construcción dinámica de los campos a actualizar
+//     const camposActualizar = {};
+
+//     if (categoria_producto) camposActualizar.categoria_producto = categoria_producto;
+//     if (subcategoria) camposActualizar.subcategoria = subcategoria;
+
+//     if (costo !== undefined && costo !== null && costo !== "") {
+//       const costoNum = parseFloat(costo);
+//       if (isNaN(costoNum)) {
+//         return res.status(400).json({ mensaje: "El costo debe ser un número válido." });
+//       }
+//       camposActualizar.costo = costoNum;
+//     }
+
+//     if (Object.keys(camposActualizar).length === 0) {
+//       return res.status(400).json({ mensaje: "No se proporcionó ningún campo para actualizar." });
+//     }
+
+//     // === NUEVA LÓGICA: tropa + categoria_producto ===
+//     const [updatedRows] = await Producto.update(camposActualizar, {
+//       where: {
+//         tropa,
+//         categoria_producto   // <-- condición agregada
+//       },
+//     });
+
+//     res.json({
+//       mensaje: `Se actualizaron ${updatedRows} productos con tropa ${tropa} y categoría ${categoria_producto}.`,
+//     });
+
+//   } catch (error) {
+//     console.error("Error en actualizarProductosPorTropa:", error);
+//     next(error);
+//   }
+// };
+
 const actualizarProductosPorTropa = async (req, res, next) => {
   try {
-    const { tropa, categoria_producto, subcategoria, costo } = req.body;
+    const {
+      tropa,
+      categoria_producto,
+      subcategoria,
+      costo,
+      fecha_faena,
+    } = req.body;
 
     // Validar tropa obligatoria
     if (!tropa) {
-      return res.status(400).json({ mensaje: "La tropa es obligatoria." });
+      return res.status(400).json({
+        mensaje: "La tropa es obligatoria.",
+      });
     }
 
     // Validar categoría obligatoria para filtrar
     if (!categoria_producto) {
-      return res.status(400).json({ mensaje: "La categoría del producto es obligatoria para realizar la actualización." });
+      return res.status(400).json({
+        mensaje:
+          "La categoría del producto es obligatoria para realizar la actualización.",
+      });
     }
 
     // Construcción dinámica de los campos a actualizar
     const camposActualizar = {};
 
-    if (categoria_producto) camposActualizar.categoria_producto = categoria_producto;
-    if (subcategoria) camposActualizar.subcategoria = subcategoria;
+    if (categoria_producto) {
+      camposActualizar.categoria_producto = categoria_producto;
+    }
 
+    if (subcategoria) {
+      camposActualizar.subcategoria = subcategoria;
+    }
+
+    // Actualizar costo solamente si fue informado
     if (costo !== undefined && costo !== null && costo !== "") {
       const costoNum = parseFloat(costo);
+
       if (isNaN(costoNum)) {
-        return res.status(400).json({ mensaje: "El costo debe ser un número válido." });
+        return res.status(400).json({
+          mensaje: "El costo debe ser un número válido.",
+        });
       }
+
       camposActualizar.costo = costoNum;
     }
 
-    if (Object.keys(camposActualizar).length === 0) {
-      return res.status(400).json({ mensaje: "No se proporcionó ningún campo para actualizar." });
+    // Actualizar fecha de faena solamente si fue informada
+    if (
+      fecha_faena !== undefined &&
+      fecha_faena !== null &&
+      fecha_faena !== ""
+    ) {
+      if (
+        typeof fecha_faena !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(fecha_faena)
+      ) {
+        return res.status(400).json({
+          mensaje:
+            "La fecha de faena debe tener el formato YYYY-MM-DD.",
+        });
+      }
+
+      const fechaValidada = new Date(
+        `${fecha_faena}T00:00:00Z`
+      );
+
+      if (
+        isNaN(fechaValidada.getTime()) ||
+        fechaValidada.toISOString().slice(0, 10) !== fecha_faena
+      ) {
+        return res.status(400).json({
+          mensaje: "La fecha de faena no es válida.",
+        });
+      }
+
+      camposActualizar.fecha_faena = fecha_faena;
     }
 
-    // === NUEVA LÓGICA: tropa + categoria_producto ===
-    const [updatedRows] = await Producto.update(camposActualizar, {
-      where: {
-        tropa,
-        categoria_producto   // <-- condición agregada
-      },
-    });
+    if (Object.keys(camposActualizar).length === 0) {
+      return res.status(400).json({
+        mensaje: "No se proporcionó ningún campo para actualizar.",
+      });
+    }
+
+    // Actualizar productos por tropa y categoría
+    const [updatedRows] = await Producto.update(
+      camposActualizar,
+      {
+        where: {
+          tropa,
+          categoria_producto,
+        },
+      }
+    );
 
     res.json({
       mensaje: `Se actualizaron ${updatedRows} productos con tropa ${tropa} y categoría ${categoria_producto}.`,
     });
-
   } catch (error) {
     console.error("Error en actualizarProductosPorTropa:", error);
     next(error);
   }
 };
+
+
 
 
 // controllers/productosController.js (o donde tengas los handlers de productos)
